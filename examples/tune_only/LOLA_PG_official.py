@@ -1,11 +1,16 @@
 ##########
-# Additional dependency needed:
-# A fork of LOLA https://github.com/Manuscrit/lola which corrects some errors in LOLA and add the logging through Tune
+# Additional dependencies are needed:
+# 1) Python 3.6
+# conda install python=3.6
+# 2) A fork of LOLA https://github.com/Manuscrit/lola which adds the logging through Tune
 # git clone https://github.com/Manuscrit/lola
+# git checkout d9c6724ea0d6bca42c8cf9688b1ff8d6fefd7267
 # pip install -e .
 ##########
 
-import lola.envs as envs
+# TODO only used envs from lola_dice
+import lola.envs
+import lola_dice.envs
 import lola.train_cg
 import lola.train_exact
 import lola.train_pg
@@ -14,19 +19,21 @@ from ray import tune
 
 
 def main(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
-         lr, lr_correction, batch_size, bs_mul, simple_net, hidden,
-         reg, gamma, lola_update, opp_model, mem_efficient, seed, set_zero):
+         lr, lr_correction, batch_size, bs_mul, simple_net, hidden, reg,
+         gamma, lola_update, opp_model, mem_efficient, seed, set_zero, **kwargs):
     # Instantiate the environment
     if exp_name == "IPD":
-        env = envs.IPD(trace_length)
+        env = lola.envs.IPD(trace_length)
     elif exp_name == "IMP":
-        env = envs.IMP(trace_length)
+        env = lola.envs.IMP(trace_length)
     elif exp_name == "CoinGame":
-        env = envs.CG(trace_length, batch_size, grid_size)
+        env = lola_dice.envs.CG(trace_length, batch_size, grid_size)
         env.seed(seed)
     elif exp_name == "AsymCoinGame":
-        env = envs.AsymCG(trace_length, batch_size, grid_size)
+        env = lola_dice.envs.AsymCG(trace_length, batch_size, grid_size)
         env.seed(seed)
+    else:
+        raise ValueError(f"exp_name: {exp_name}")
 
     # Import the right training function
     if exact:
@@ -106,8 +113,6 @@ def dynamically_change_config(full_config: dict) -> dict:
 
 
 if __name__ == "__main__":
-    run_n_seed_in_parallel = 2
-    ray.init(num_cpus=run_n_seed_in_parallel, num_gpus=0)
 
     full_config = {
         # Dynamically set
@@ -139,12 +144,15 @@ if __name__ == "__main__":
         # "exact": True,
         "exact": False,
 
-        "seed": tune.grid_search([1, 2, 3, 4, 5]),
+        "run_n_seed_in_parallel": 1,
+        "seed": tune.grid_search([1]),
     }
 
     full_config = dynamically_change_config(full_config)
 
-    analysis = tune.run(lola_training, name=f"LOLA_{full_config['exp_name']}", config=full_config)
+    ray.init(num_cpus=full_config["run_n_seed_in_parallel"], num_gpus=0)
+    name = f"LOLA_{'exact' if full_config['exact'] else 'PG'}_{full_config['exp_name']}"
+    analysis = tune.run(lola_training, name=name, config=full_config)
 
     # If needed, get a dataframe for analyzing trial results.
     df = analysis.results_df
