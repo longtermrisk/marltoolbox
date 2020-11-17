@@ -47,6 +47,7 @@ conda create -n marltoolbox python=3.8.5
 conda activate marltoolbox
 
 # Install marltoolbox
+conda install psutil
 git clone https://github.com/Manuscrit/temp_research_framework.git
 cd temp_research_framework
 pip install -e .
