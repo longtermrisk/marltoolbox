@@ -6,8 +6,9 @@ from ray.rllib.policy import Policy
 from ray.rllib.policy import build_torch_policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType
 from typing import Dict, List, Type, Union
+from ray.rllib.policy.torch_policy import LearningRateSchedule
+from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, _ = try_import_torch()
 
@@ -54,6 +55,7 @@ def spl_torch_loss(
 
     # Save the loss in the policy object for the spl_stats below.
     policy.spl_loss = policy.config["loss_fn"](predictions.dist.probs, targets)
+    policy.entropy = predictions.dist.entropy().mean()
 
     return policy.spl_loss
 
@@ -71,12 +73,28 @@ def spl_stats(policy: Policy,
     """
 
     return {
-        "policy_loss": policy.spl_loss.item(),
+        "cur_lr": policy.cur_lr,
+        "entropy": policy.entropy,
+        "err_policy_spl_loss": policy.spl_loss.item(),
     }
+
+def adam_optimizer(policy: Policy,
+                   config: TrainerConfigDict) -> "torch.optim.Optimizer":
+    return torch.optim.SGD(
+        policy.model.parameters(), lr=policy.cur_lr, eps=config["adam_epsilon"])
+
+def setup_early_mixins(policy: Policy, obs_space, action_space,
+                       config: TrainerConfigDict) -> None:
+    LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
 SPLTorchPolicy = build_torch_policy(
     name="SPLTorchPolicy",
     get_default_config=lambda: SPL_DEFAULT_CONFIG,
     loss_fn=spl_torch_loss,
-    stats_fn=spl_stats)
+    stats_fn=spl_stats,
+    optimizer_fn=adam_optimizer,
+    before_init=setup_early_mixins,
+    mixins=[
+        LearningRateSchedule,
+    ])

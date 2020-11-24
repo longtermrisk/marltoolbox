@@ -29,7 +29,8 @@ And also the [examples provided by RLLib](https://github.com/ray-project/ray/tre
 |:--------------------:|:-----------------------------------:|:---------------------------:|:---------------------------------:|
 |          IPD         |           Policy Gradient           |          [PG_IPD.py](https://github.com/Manuscrit/temp_research_framework/blob/master/examples/PG_IPD.py)           | Need to set good hyper-parameters |
 | (Asymmetric) Coin game |                 PPO                 |     [PPO_AsymCoinGame.py](https://github.com/Manuscrit/temp_research_framework/blob/master/examples/PPO_AsymCoinGame.py)     | Need to set good hyper-parameters |
-| (Asymmetric) Coin game |   LOLA-PG official implementation (with `Tune`)   |     [LOLA_PG_official.py](https://github.com/Manuscrit/temp_research_framework/blob/master/examples/LOLA_PG_official.py)     | OK |
+| (Asymmetric) Coin game |   LOLA-PG official implementation (with `Tune`)   |     [LOLA_PG_official.py](https://github.com/Manuscrit/temp_research_framework/blob/master/examples/tune_only/LOLA_PG_official.py)     | OK |
+| (Asymmetric) Coin game |   LOLA-DICE official implementation (with `Tune`)   |     [LOLA_DICE_official.py](https://github.com/Manuscrit/temp_research_framework/blob/master/examples/tune_only/LOLA_DICE_official.py)     | Not cooperating, WIP |
 |          IPD         | LOLA-DICE unofficial implementation |   [LOLA_DICE_unofficial.py](https://github.com/Manuscrit/temp_research_framework/blob/master/examples/LOLA_DICE_unofficial.py)    |     Not working properly, WIP     |
 |          IPD         |        Simplified L-TFT (LE)        |          [LE_IPD.py](https://github.com/Manuscrit/temp_research_framework/blob/master/examples/LE_IPD.py)          |     Not working properly, WIP     |
 |       BOTS + PD      |          Inequity Aversion          | [InequityAversion_BOTS_PD.py](https://github.com/Manuscrit/temp_research_framework/blob/master/examples/InequityAversion_BOTS_PD.py)  | Need to set good hyper-parameters |
@@ -57,6 +58,11 @@ rllib train --run=PPO --env=CartPole-v0 --torch
 
 # Check that marltoolbox is working
 python ./examples/PG_IPD.py
+
+# Visualize logs
+tensorboard --logdir ~/ray_results
+# If working on GCP: forward the conenction from a Virtual Machine(VM) to your machine
+gcloud compute ssh {replace-by-instance-name} --zone=us-central1-a -- -NfL 6006:localhost:6006
 
 # Stuff below are optionals: 
 
@@ -89,7 +95,10 @@ pip install tensorflow
 
 #### 0) Fall back to `Tune` when using `RLLib` is too costly
 Examples:  
-- LOLA-PG with Coin game: `LOLA_PG_official.py`
+- LOLA-PG (official) with Coin game: 
+[tune_only/LOLA_PG_official.py](https://github.com/Manuscrit/temp_research_framework/blob/master/examples/tune_only/LOLA_PG_official.py)
+- LOLA-DICE (official) with Coin game: 
+[tune_only/LOLA_DICE_official.py](https://github.com/Manuscrit/temp_research_framework/blob/master/examples/tune_only/LOLA_DICE_official.py)
 
 If the setup you want to train already has a training loop 
 and if the cost to convert it into `RLLib` is too expensive,
@@ -101,7 +110,7 @@ to take advantage of the following functionalities:
 - saving configuration files / tracking your experiments
 - hyper-parameter search
 
-Using Tune alone remove most of the constraints imposed by `RLLib` over the training process.
+Using `Tune` alone remove most of the constraints imposed by `RLLib` over the training process.
 Given a training function, you will need to do two changes:
 - Input the hyper-parameters through a config dictionary. 
 - At each time step of your future plots, 
@@ -121,11 +130,11 @@ And thus, you do not want to invest time in the conversion to `RLLib`.
 
 #### 1) Using components directly provided by `RLLib`
 Examples:
-- APEX_DDPG and the water world environment
+- APEX_DDPG and the water world environment:
 [rllib/examples/multi_agent_independent_learning.py](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py)
-- MADDPG and the two step game environment
+- MADDPG and the two step game environment:
 [rllib/examples/two_step_game.py](https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py)
-- Policy Gradient (PG) and the rock paper scissors environment (function `run_same_policy`) 
+- Policy Gradient (PG) and the rock paper scissors environment (function `run_same_policy`):
 [rllib/examples/rock_paper_scissors_multiagent.py](https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py)
 
 #### 2) Using custom environments

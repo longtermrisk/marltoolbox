@@ -4,45 +4,52 @@
 ##########
 
 import copy
-import logging
-import numbers
 from collections import deque
 from typing import List, Union, Optional, Dict, Tuple
 
+import numbers
 import numpy as np
+
 import torch
-from ray import rllib
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.policy.policy import Policy
+from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import TensorType, AgentID
+from ray.rllib.utils.typing import AgentID, PolicyID, TensorType
+from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import (FLOAT_MIN, huber_loss,
+                                       reduce_mean_ignore_inf,
+                                       softmax_cross_entropy_with_logits)
+from ray.rllib.utils import merge_dicts
 
-from marltoolbox.algos.supervised_learning import SPL_DEFAULT_CONFIG, SPLTorchPolicy
+from marltoolbox.utils import preprocessing, logging
+from marltoolbox.algos import hierarchical
 
-LE_DEFAULT_CONFIG_UPDATE = {
-    "percentile_for_likelihood_test": 95,
-    "punishment_time": 1,
-    "min_coop_epi_after_punishing": 0,
-    "defection_threshold": 0.0,
-    "average_defection_value": True,
-    "average_defection_value_len": 20,
-    "use_last_step_for_search": True,
-    "length_of_history": 200,
-    "n_steps_in_bootstrap_replicates": 20,
-    "n_bootstrap_replicates": 50,
-    'nested_policies': [
-        # Here the trainer need to be a DQNTrainer to provide the config for the 3 DQNTorchPolicy
-        {"Policy_class": DQNTorchPolicy, "config_update": {}},
-        {"Policy_class": DQNTorchPolicy, "config_update": {}},
-        {"Policy_class": DQNTorchPolicy, "config_update": {}},
-        {"Policy_class": SPLTorchPolicy, "config_update": copy.deepcopy(SPL_DEFAULT_CONFIG)},
-    ],
-}
+torch, nn = try_import_torch()
+
+LE_DEFAULT_CONFIG_UPDATE = merge_dicts(
+    hierarchical.HIERARCHICAL_DEFAULT_CONFIG_UPDATE,
+    {
+        # LE hyper-parameters
+        "percentile_for_likelihood_test": 95,
+        "punishment_time": 1,
+        "min_coop_epi_after_punishing": 0,
+        "defection_threshold": 0.0,
+        "average_defection_value": True,
+        "average_defection_value_len": 20,
+        "use_last_step_for_search": True,
+        "length_of_history": 200,
+        "n_steps_in_bootstrap_replicates": 20,
+        "n_bootstrap_replicates": 50,
+    }
+)
+
 
 
 # TODO make a parent class for nested/hierarchical algo?
-class LE(rllib.policy.TorchPolicy):
+class LE(hierarchical.HierarchicalTorchPolicy):
     """
     Learning Tit-for-tat or Learning Equilibrium(LE)
     """
@@ -55,13 +62,16 @@ class LE(rllib.policy.TorchPolicy):
     SPL_OPP_POLICY_IDX = 3
 
     WARMUP_LENGTH = 0
-    INITIAL_ACTIVE_ALGO = COOP_POLICY_IDX
-
-    UTILITARIAN_WELFARE_KEY = "utilitarian_welfare"
-    OPPONENT_NEGATIVE_REWARD_KEY = "opponent_negative_reward"
-    OPPONENT_ACTIONS_KEY = "opponent_actions"
+    INITIALLY_ACTIVE_ALGO = COOP_POLICY_IDX
 
     def __init__(self, observation_space, action_space, config, **kwargs):
+
+
+        super().__init__(observation_space, action_space, config,
+            after_init_nested=(lambda policy: [torch.nn.init.normal_(p, mean=0.0, std=0.1)
+                                               for p in policy.model.parameters()]),
+             **kwargs)
+
 
         self.percentile_for_likelihood_test = config['percentile_for_likelihood_test']
         self.punishment_time = config['punishment_time']
@@ -74,18 +84,6 @@ class LE(rllib.policy.TorchPolicy):
         self.n_steps_in_bootstrap_replicates = config['n_steps_in_bootstrap_replicates']
         self.n_bootstrap_replicates = config['n_bootstrap_replicates']
 
-        self.observation_space = observation_space
-        self.action_space = action_space
-        self.config = config
-
-        self.active_algo_idx = self.INITIAL_ACTIVE_ALGO
-
-        self.algorithms = []
-        for nested_config in config["nested_policies"]:
-            updated_config = copy.deepcopy(config)
-            updated_config.update(nested_config["config_update"])
-            Policy = nested_config["Policy_class"]
-            self.algorithms.append(Policy(observation_space, action_space, updated_config, **kwargs))
 
         assert len(self.algorithms) == 4, str(len(self.algorithms))
         self.opp_policy_from_supervised_learning = True
@@ -105,7 +103,6 @@ class LE(rllib.policy.TorchPolicy):
         self.being_punished_by_LE = False
 
         # Logging
-        self.to_log = {}
         log_len_in_steps = 100
         # for 1) Cooperative policy
         self.action_pd_coop = deque(maxlen=log_len_in_steps)
@@ -117,36 +114,6 @@ class LE(rllib.policy.TorchPolicy):
         self.action_pd_opp = deque(maxlen=log_len_in_steps)
         self.n_cooperation_steps_in_current_epi = 0
         self.n_punishment_steps_in_current_epi = 0
-
-    @property
-    def model(self):
-        return self.algorithms[self.active_algo_idx].model
-
-    @property
-    def dist_class(self):
-        return self.algorithms[self.active_algo_idx].dist_class
-
-    @property
-    def global_timestep(self):
-        return self.algorithms[self.active_algo_idx].global_timestep
-
-    @global_timestep.setter
-    def global_timestep(self, value):
-        for algo in self.algorithms:
-            algo.global_timestep = value
-
-    @property
-    def action_space_struct(self):
-        return self.algorithms[self.active_algo_idx].action_space_struct
-
-    @property
-    def update_target(self):
-        def nested_update_target():
-            for algo in self.algorithms:
-                if "update_target" in algo.__dict__:
-                    algo.update_target()
-
-        return nested_update_target
 
     def compute_actions(
             self,
@@ -160,52 +127,54 @@ class LE(rllib.policy.TorchPolicy):
             timestep: Optional[int] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        assert len(obs_batch) == 1, "LE only works with one step at a time"
-        state = obs_batch
+        assert len(obs_batch) == 1, "LE only works with sampling one step at a time"
 
-        action, _, algo_info = self.algorithms[self.active_algo_idx].compute_actions(state)
-        self.last_used_algo = self.active_algo_idx
+        actions, state_out, extra_fetches = super().compute_actions(obs_batch, state_batches, prev_action_batch,
+                                                                    prev_reward_batch, info_batch, episodes, explore,
+                                                                    timestep, **kwargs)
 
-        action_info_batch = {"punishing": [self.active_algo_idx == self.PUNITIVE_POLICY_IDX for _ in obs_batch]}
+        extra_fetches['punishing'] = [self.active_algo_idx == self.PUNITIVE_POLICY_IDX for _ in obs_batch]
 
-        return action, [], action_info_batch
+        return actions, [], extra_fetches
 
     def learn_on_batch(self, samples: SampleBatch):
         learner_stats = {"learner_stats": {}}
+
+        # Update LR used in optimizer
+        self.optimizer()
+
         for i, algo in enumerate(self.algorithms):
-            # TODO filter steps used to train
-            #  (like when being punished => do not use these steps to infer the opponent coop policy)
+
+            # Log true lr
+            # TODO Here it is only logging for the 1st parameter
+            for j, opt in enumerate(algo._optimizers):
+                self.to_log[f"algo_{i}_{j}_lr"] = [p["lr"] for p in opt.param_groups][0]
+
             # TODO use the RLLib batch format directly
-            samples_copy = copy.deepcopy(samples)
+            samples_copy = samples.copy()
             if i == self.COOP_POLICY_IDX or i == self.COOP_OPP_POLICY_IDX:
-                samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[self.UTILITARIAN_WELFARE_KEY])
+                samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[
+                                                                  preprocessing.UTILITARIAN_WELFARE_KEY])
+                samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="punishing")
             elif i == self.PUNITIVE_POLICY_IDX:
-                samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[self.OPPONENT_NEGATIVE_REWARD_KEY])
+                samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[
+                                                                  preprocessing.OPPONENT_NEGATIVE_REWARD_KEY])
+            elif i == self.COOP_OPP_POLICY_IDX:
+                samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[
+                                                                  preprocessing.UTILITARIAN_WELFARE_KEY])
+                samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="being_punished")
             elif i == self.SPL_OPP_POLICY_IDX:
-                samples_copy[samples_copy.ACTIONS] = np.array(samples_copy.data[self.OPPONENT_ACTIONS_KEY])
+                samples_copy[samples_copy.ACTIONS] = np.array(samples_copy.data[
+                                                                  preprocessing.OPPONENT_ACTIONS_KEY])
+                samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="being_punished")
 
-            learner_stats["learner_stats"][f"learner_stats_algo{i}"] = algo.learn_on_batch(samples_copy)
+            # TODO currently continue to learn because I use the batch to stop but the batch is sampled!
+            # print("len(samples_copy[samples_copy.ACTIONS])", len(samples_copy[samples_copy.ACTIONS]))
+            if len(samples_copy[samples_copy.ACTIONS]) > 0:
+                learner_stats["learner_stats"][f"learner_stats_algo{i}"] = algo.learn_on_batch(samples_copy)
+                self.to_log[f'algo{i}_cur_lr'] = algo.cur_lr
 
-        learner_stats.update(self.to_log)
-        self.to_log = {}
         return learner_stats
-
-    def get_weights(self):
-        return {i: algo.get_weights() for i, algo in enumerate(self.algorithms)}
-
-    def set_weights(self, weights):
-        for i, algo in enumerate(self.algorithms):
-            algo.set_weights(weights[i])
-
-    def optimizer(self
-                  ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
-        """Custom the local PyTorch optimizer(s) to use.
-
-        Returns:
-            Union[List[torch.optim.Optimizer], torch.optim.Optimizer]:
-                The local PyTorch optimizer(s) to use for this Policy.
-        """
-        raise NotImplementedError()
 
     def on_episode_step(self, opp_obs, opp_a, being_punished_by_LE):
 
@@ -275,45 +244,20 @@ class LE(rllib.policy.TorchPolicy):
         Returns:
             SampleBatch: Postprocessed sample batch.
         """
-        opponent_agent_ids = list(other_agent_batches.keys())
-        assert len(opponent_agent_ids) == 1
-        opponent_agent_id = opponent_agent_ids[0]
-        opponent_agent_batch = other_agent_batches[opponent_agent_id][1]
-
-        # For all experiences
-        # Add the utilitarian welfare
-        sample_batch.data[self.UTILITARIAN_WELFARE_KEY] = \
-            [own_r + opp_r for own_r, opp_r in \
-             zip(sample_batch[sample_batch.REWARDS], opponent_agent_batch[opponent_agent_batch.REWARDS])]
-        # Add the opposite of the opponent reward
-        sample_batch.data[self.OPPONENT_NEGATIVE_REWARD_KEY] = \
-            [- opp_r for opp_r in \
-             opponent_agent_batch[opponent_agent_batch.REWARDS]]
-        # Add the opponent action
-        sample_batch.data[self.OPPONENT_ACTIONS_KEY] = \
-            opponent_agent_batch[opponent_agent_batch.ACTIONS]
-
-        return sample_batch
+        return preprocessing.postprocess_trajectory(sample_batch, other_agent_batches, episode,
+                                                          add_utilitarian_welfare=True,
+                                                          add_opponent_action=True,
+                                                          add_opponent_neg_reward=True)
 
     def _put_log_likelihood_in_data_buffer(self, s, a, data_queue, log=True):
-        (log_likelihood_opponent_cooperating,
-         self.opp_coop_a_prob_distrib) = (
-            compute_s_a_log_likelihood(s=s,
-                                       a=a,
-                                       algo=self.algorithms[self.COOP_OPP_POLICY_IDX],
-                                       no_grad=False,
-                                       epsilon=self.EPSILON,
-                                       debug=self.DEBUG))
+        s = torch.from_numpy(s).unsqueeze(dim=0)
+        log_likelihood_opponent_cooperating = compute_log_likelihoods_wt_exploration(self.algorithms[self.COOP_OPP_POLICY_IDX], a, s)
+        log_likelihood_approximated_opponent = compute_log_likelihoods_wt_exploration(self.algorithms[self.SPL_OPP_POLICY_IDX], a, s)
+        log_likelihood_opponent_cooperating = float(log_likelihood_opponent_cooperating)
+        log_likelihood_approximated_opponent = float(log_likelihood_approximated_opponent)
 
-        (log_likelihood_approximated_opponent,
-         self.opp_spl_a_prob_distrib) = (
-            compute_s_a_log_likelihood(
-                s=s, a=a,
-                algo=self.algorithms[self.SPL_OPP_POLICY_IDX],
-                epsilon=self.EPSILON,
-                debug=self.DEBUG)
-        )
-
+        self.to_log["log_likelihood_opponent_cooperating"] = log_likelihood_opponent_cooperating
+        self.to_log["log_likelihood_approximated_opponent"] = log_likelihood_approximated_opponent
         data_queue.append([log_likelihood_opponent_cooperating,
                            log_likelihood_approximated_opponent])
 
@@ -360,40 +304,61 @@ class LE(rllib.policy.TorchPolicy):
         self.defection_metric = sum(self.defection_carac_queue) / len(self.defection_carac_queue)
         self.to_log["defection_metric"] = round(float(self.defection_metric), 4)
 
+# Modified from torch_policy_template
+def compute_log_likelihoods_wt_exploration(
+        policy,
+        actions: Union[List[TensorType], TensorType],
+        obs_batch: Union[List[TensorType], TensorType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Optional[Union[List[TensorType],
+                                          TensorType]] = None,
+        prev_reward_batch: Optional[Union[List[
+            TensorType], TensorType]] = None) -> TensorType:
 
-# TODO isn't this already compute in the default policy? (But this may be overwritten in LE)
-def compute_s_a_log_likelihood(s, a, algo, no_grad=True, epsilon=1e-12, debug=False):
-    """ Get the log_likelihood of the observed action under the algo policy """
-    train_batch = SampleBatch({"obs": torch.from_numpy(s).unsqueeze(dim=0)})
-    if no_grad:
-        with torch.no_grad():
-            dist_inputs, _ = algo.model.from_batch(train_batch)
-            # Create an action distribution object.
-            a_proba_distrib = algo.dist_class(dist_inputs, algo.model)
-    else:
-        # Pass the training data through our model to get distribution parameters.
-        dist_inputs, _ = algo.model.from_batch(train_batch)
-        # Create an action distribution object.
-        a_proba_distrib = algo.dist_class(dist_inputs, algo.model)
+    if policy.action_sampler_fn and policy.action_distribution_fn is None:
+        raise ValueError("Cannot compute log-prob/likelihood w/o an "
+                         "`action_distribution_fn` and a provided "
+                         "`action_sampler_fn`!")
 
-    # Squeeze batch dim since we work on one action only
-    assert a_proba_distrib.dist.probs.shape[0] == 1
-    observed_actions_all_proba = a_proba_distrib.dist.probs.detach().squeeze(dim=0)
+    with torch.no_grad():
+        input_dict = policy._lazy_tensor_dict({
+            SampleBatch.CUR_OBS: obs_batch,
+            SampleBatch.ACTIONS: actions
+        })
+        if prev_action_batch is not None:
+            input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
+        if prev_reward_batch is not None:
+            input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
+        seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
 
-    # Assert action is in discrete space
-    assert issubclass(a.dtype.type, numbers.Integral), f"a.dtype: {a.dtype.type}"
-    assert a >= 0
-    observed_action_idx = a
-    observed_action_proba = observed_actions_all_proba[observed_action_idx]
-    observed_action_proba = observed_action_proba.clamp(min=epsilon, max=1.0 - epsilon)
-    observed_action_log_likelihood = np.array(torch.log(observed_action_proba), dtype=np.float32)
+        # Exploration hook before each forward pass.
+        policy.exploration.before_compute_actions(explore=False)
 
-    if debug:
-        print("algo.algo_idx", algo.algo_idx)
-        print("a_proba_distrib.dist.probs", a_proba_distrib.dist.probs.shape, a_proba_distrib.dist.probs)
-        print("observed_action_proba", observed_action_proba)
-        print("observed_action_log_likelihood", observed_action_log_likelihood)
-    return observed_action_log_likelihood, a_proba_distrib
+        # Action dist class and inputs are generated via custom function.
+        if policy.action_distribution_fn:
+            dist_inputs, dist_class, _ = policy.action_distribution_fn(
+                policy=policy,
+                model=policy.model,
+                obs_batch=input_dict[SampleBatch.CUR_OBS],
+                explore=False,
+                is_training=False)
+        # Default action-dist inputs calculation.
+        else:
+            dist_class = policy.dist_class
+            dist_inputs, _ = policy.model(input_dict, state_batches,
+                                        seq_lens)
+
+        action_dist = dist_class(dist_inputs, policy.model)
+        if policy.config["explore"]:
+            # TODO Adding that because of a bug in TorchCategorical which modify dist_inputs through action_dist:
+            _, _ = policy.exploration.get_exploration_action(
+                    action_distribution=action_dist,
+                    timestep=policy.global_timestep,
+                    explore=policy.config["explore"])
+            action_dist = dist_class(dist_inputs, policy.model)
+
+        log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])
+        return log_likelihoods
 
 
 class LECallBacks(DefaultCallbacks):
@@ -421,14 +386,17 @@ class LECallBacks(DefaultCallbacks):
             if hasattr(policy, 'on_episode_step') and callable(policy.on_episode_step):
 
                 # TODO could I move this into the on_postprocess_trajectory callback?
+                #  on_postprocess_trajectory seems to be call in the local_worker (used for training) and just after
+                #  a sampling by a rollout worker => can't use it
                 opp_obs = episode.last_observation_for(opp_agent_id)
                 opp_a = episode.last_action_for(opp_agent_id)
                 if episode.length > 0:
                     being_punished_by_LE = episode.last_pi_info_for(opp_agent_id).get("punishing", False)
+                    policy.on_episode_step(opp_obs, opp_a, being_punished_by_LE)
                 else:
-                    being_punished_by_LE = False
+                    # Only during init
+                    policy.on_episode_step(opp_obs, opp_a, False)
 
-                policy.on_episode_step(opp_obs, opp_a, being_punished_by_LE)
 
     def on_episode_end(self, *, worker, base_env,
                        policies, episode, env_index, **kwargs):
@@ -451,3 +419,54 @@ class LECallBacks(DefaultCallbacks):
         for polidy_ID, policy in policies.items():
             if hasattr(policy, 'on_episode_end') and callable(policy.on_episode_end):
                 policy.on_episode_end()
+
+    def on_postprocess_trajectory(
+            self, *, worker: "RolloutWorker", episode: MultiAgentEpisode,
+            agent_id: AgentID, policy_id: PolicyID,
+            policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
+            original_batches: Dict[AgentID, SampleBatch], **kwargs):
+        """Called immediately after a policy's postprocess_fn is called.
+
+        You can use this callback to do additional postprocessing for a policy,
+        including looking at the trajectory data of other agents in multi-agent
+        settings.
+
+        Args:
+            worker (RolloutWorker): Reference to the current rollout worker.
+            episode (MultiAgentEpisode): Episode object.
+            agent_id (str): Id of the current agent.
+            policy_id (str): Id of the current policy for the agent.
+            policies (dict): Mapping of policy id to policy objects. In single
+                agent mode there will only be a single "default" policy.
+            postprocessed_batch (SampleBatch): The postprocessed sample batch
+                for this agent. You can mutate this object to apply your own
+                trajectory postprocessing.
+            original_batches (dict): Mapping of agents to their unpostprocessed
+                trajectory data. You should not mutate this object.
+            kwargs: Forward compatibility placeholder.
+        """
+
+        all_agent_keys = list(original_batches.keys())
+        all_agent_keys.remove(agent_id)
+        assert len(all_agent_keys) == 1
+
+        opponent_broadcast_punish_state = "punishing" in original_batches[all_agent_keys[0]][1].data.keys()
+        if opponent_broadcast_punish_state:
+            postprocessed_batch.data['being_punished'] = copy.deepcopy(
+                original_batches[all_agent_keys[0]][1].data["punishing"])
+        else:
+            postprocessed_batch.data['being_punished'] = [False] * len(postprocessed_batch[postprocessed_batch.OBS])
+
+    def on_train_result(self, *, trainer, result: dict, **kwargs):
+        """Called at the end of Trainable.train().
+
+        Args:
+            trainer (Trainer): Current trainer instance.
+            result (dict): Dict of results returned from trainer.train() call.
+                You can mutate this object to add additional metrics.
+            kwargs: Forward compatibility placeholder.
+        """
+        logging.update_train_result_wt_to_log(trainer, result)
+
+
+

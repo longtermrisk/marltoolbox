@@ -20,7 +20,8 @@ from ray import tune
 
 def main(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
          lr, lr_correction, batch_size, bs_mul, simple_net, hidden, reg,
-         gamma, lola_update, opp_model, mem_efficient, seed, set_zero, **kwargs):
+         gamma, lola_update, opp_model, mem_efficient, seed, set_zero,
+         warmup, **kwargs):
     # Instantiate the environment
     if exp_name == "IPD":
         env = lola.envs.IPD(trace_length)
@@ -73,7 +74,8 @@ def main(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
                       opp_model=opp_model,
                       hidden=hidden,
                       mem_efficient=mem_efficient,
-                      asymmetry=exp_name == "AsymCoinGame")
+                      asymmetry=exp_name == "AsymCoinGame",
+                      warmup=warmup)
     else:
         raise ValueError(f"exp_name: {exp_name}")
 
@@ -119,10 +121,11 @@ if __name__ == "__main__":
         "num_episodes": None,
         "trace_length": None,
         "lr": None,
+        # "lr": 0.005 / 10,  # None,
         "gamma": None,
         # !!! To use the default batch size with coin game, you need 35Go of memory per seed run in parallel !!!
         # "batch_size": None, # To use the defaults values from the official repository.
-        "batch_size": 10,
+        "batch_size": 100,
 
         # "exp_name": "IPD",
         # "exp_name": "IMP",
@@ -143,6 +146,8 @@ if __name__ == "__main__":
 
         # "exact": True,
         "exact": False,
+
+        "warmup": 100,  #False,
 
         "run_n_seed_in_parallel": 1,
         "seed": tune.grid_search([1]),

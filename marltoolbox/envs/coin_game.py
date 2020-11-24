@@ -9,6 +9,7 @@ import numpy as np
 
 import gym
 from gym.spaces import Discrete
+from gym.utils import seeding
 
 from numba import jit, prange
 from numba.typed import List
@@ -219,6 +220,11 @@ class CoinGame(MultiAgentEnv, gym.Env):
             self.red_pick_own = []
             self.blue_pick = []
             self.blue_pick_own = []
+
+    def seed(self, seed=None):
+        """Seed the PRNG of this space. """
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
 
     def reset(self):
         self.step_count = 0

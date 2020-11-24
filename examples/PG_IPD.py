@@ -52,5 +52,6 @@ if __name__ == "__main__":
         "log_level": "INFO"
     }
 
-    results = tune.run(PGTrainer, config=trainer_config_update, stop=stop, verbose=1)
+    results = tune.run(PGTrainer, config=trainer_config_update, stop=stop,
+                       verbose=1, checkpoint_freq=30)
     ray.shutdown()

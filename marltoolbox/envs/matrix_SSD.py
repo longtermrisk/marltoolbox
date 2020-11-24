@@ -7,6 +7,7 @@ from collections import Iterable
 
 import numpy as np
 from gym.spaces import Discrete
+from gym.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
@@ -43,6 +44,11 @@ class MatrixSocialDilemma(MultiAgentEnv, ABC):
         # To store info about the fraction of each states
         if self.get_additional_info:
             self._init_info()
+
+    def seed(self, seed=None):
+        """Seed the PRNG of this space. """
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
 
     def reset(self):
         self.step_count = 0
@@ -94,7 +100,7 @@ class MatrixSocialDilemma(MultiAgentEnv, ABC):
 
     def _add_randomness_to_reward(self, rewards:dict)->dict:
         for key in rewards.keys():
-            rewards[key] += float(np.random.normal(loc=0, scale=self.reward_randomness))
+            rewards[key] += float(self.np_random.normal(loc=0, scale=self.reward_randomness))
         return rewards
 
     def _init_info(self):
