@@ -3,20 +3,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
-#
-# def after_init_load_weights_and_set_lr(trainer: Trainer) -> None:
-#     """
-#     To use after restoring a model (useful it has a LRRateScheduler)
-#     """
-#     if trainer.workers.remote_workers():
-#         weights = ray.put(trainer.workers.local_worker().get_weights(
-#             trainer.policies))
-#         for e in trainer.workers.remote_workers():
-#             e.set_weights.remote(weights, _get_global_vars())
-#
-#     trainer.workers.local_worker().set_global_vars(_get_global_vars())
-
 LOAD_FROM_CONFIG_KEY = "checkpoint_to_load_from"
 
 def _load_checkpoint_from_config(worker):
@@ -39,6 +25,8 @@ def _load_checkpoint_from_config(worker):
                     policy.set_state(state)
             if not found_policy_id:
                 logger.warning(f'policy_id {policy_id} not in checkpoint["worker"]["state"].keys() {objs["state"].keys()}')
-
+        else:
+            print("no checkpoint found for policy_id:", policy_id,
+                  "by looking at config key:", LOAD_FROM_CONFIG_KEY)
 def after_init_load_checkpoint_from_config(trainer):
     trainer.workers.foreach_worker(_load_checkpoint_from_config)

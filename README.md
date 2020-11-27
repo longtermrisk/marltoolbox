@@ -1,4 +1,4 @@
-# CLR research framework
+"# CLR research framework
 
 Two components: 
 - [`RLLib 1.0.0` (Ray / Tune / RLLib)](https://docs.ray.io/en/master/rllib.html) 
@@ -115,6 +115,10 @@ Given a training function, you will need to do two changes:
 - Input the hyper-parameters through a config dictionary. 
 - At each time step of your future plots, 
 call tune.report() with a dictionary of values to log.   
+
+You can find more detail in the [introduction to `Tune`](https://docs.ray.io/en/master/tune/key-concepts.html).  
+You can find [more examples using `Tune` here](https://docs.ray.io/en/master/tune/examples/index.html#tune-general-examples
+).  
 
 **When is the conversion cost to `RLLib` too high?**  
 - If the algorithm has a complex unusual dataflow 

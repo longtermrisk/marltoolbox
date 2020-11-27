@@ -3,6 +3,7 @@ import random
 from typing import Callable, Optional
 
 import ray
+from ray.rllib.agents.pg import PGTrainer
 
 from marltoolbox.utils.restore import after_init_load_checkpoint_from_config, LOAD_FROM_CONFIG_KEY
 
@@ -13,10 +14,12 @@ def sequence_of_fn_wt_same_args(function_list, *args, **kwargs) -> None:
 
 
 def set_config_for_evaluation(config: dict) -> dict:
-    assert "multiagent" in config.keys()
     config_copy = copy.deepcopy(config)
 
     # Do not train
+    # Always multiagent
+    assert "multiagent" in config_copy.keys(), "Only working for config with multiagent key. " \
+                                               f"config_copy.keys(): {config_copy.keys()}"
     config_copy["multiagent"]["policies_to_train"] = []
 
     # Setup for evaluation
@@ -26,12 +29,14 @@ def set_config_for_evaluation(config: dict) -> dict:
     # Set to False for no exploration behavior (e.g., for evaluation).
     config_copy["explore"] = False
 
+    # TODO below is really useless? If so then clean it
     # The following is not really needed since we are not training any policies
     # === Optimization ===
     # Learning rate for adam optimizer
-    config_copy["lr"] = 0.0
-    # Learning rate schedule
-    config_copy["lr_schedule"] = None
+    # config_copy["lr"] = 0.0
+    # # Learning rate schedule
+    # if "lr_schedule" in trainer_default_config.keys():
+    #     config_copy["lr_schedule"] = None
 
     return config_copy
 
@@ -53,19 +58,25 @@ def prepare_trainer_to_load_checkpoints(TrainerClass, additionnal_after_init_fn)
 
 
 class SameAndCrossPlay:
+    """
+    Does support using RLLib policies only or RLLib Policies
+    """
 
-    def __init__(self, TrainerClass, evaluation_config: dict, stop_config: dict,
+    def __init__(self, evaluation_config: dict, stop_config: dict,
                  exp_name: str,
+                 TuneTrainerClass = None,
+                 TrainerClass = PGTrainer,
                  extract_checkpoints_from_results=None,
                  checkpoint_list: list = None,
                  additionnal_after_init_fn: Optional[Callable] = None,
                  n_same_play_per_checkpoint=1, n_cross_play_per_checkpoint=1,
                  call_after_init=True):
         """
-        Works for a unique pair of policies
-        # TODO parralize it with ray?
+        Works for a unique pair of RLLib policies
+        # TODO parallelize it with Ray/Tune?
         # TODO docstring
         """
+        # Either extract_checkpoints_from_results or checkpoint_list
         assert extract_checkpoints_from_results or checkpoint_list
         if extract_checkpoints_from_results:
             assert checkpoint_list is None
@@ -78,13 +89,15 @@ class SameAndCrossPlay:
         assert "multiagent" in evaluation_config.keys()
         assert len(evaluation_config["multiagent"]["policies"].keys()) == 2
 
-        TrainerClassWtLoading = prepare_trainer_to_load_checkpoints(TrainerClass, additionnal_after_init_fn)
+        self.TuneTrainerClass = TuneTrainerClass
+        TrainerClassWtCheckpointLoading = prepare_trainer_to_load_checkpoints(TrainerClass, additionnal_after_init_fn)
+        self.TrainerClass = TrainerClassWtCheckpointLoading
+
         evaluation_config = set_config_for_evaluation(evaluation_config)
 
         self.evaluation_config = evaluation_config
         self.stop_config = stop_config
         self.exp_name = exp_name
-        self.TrainerClassWtLoading = TrainerClassWtLoading
         self.checkpoint_list = checkpoint_list
         self.n_same_play_per_checkpoint = n_same_play_per_checkpoint
         self.n_cross_play_per_checkpoint = n_cross_play_per_checkpoint
@@ -123,6 +136,7 @@ class SameAndCrossPlay:
                 all_results.append(results_wt_metadata)
 
         print("all_results", all_results)
+        # TODO add analysis and plotting
 
     def _run_one_same_play(self, checkpoint_path, checkpoint_i) -> dict:
         results_wt_metadata = {"mode": "same-play"}
@@ -130,11 +144,12 @@ class SameAndCrossPlay:
 
         # Add the checkpoints to load from in the policy_config
         for policy_id in config_copy["multiagent"]["policies"].keys():
-            config_copy["multiagent"]["policies"][policy_id][3][LOAD_FROM_CONFIG_KEY] = \
-                checkpoint_path
+            config_copy["multiagent"]["policies"][policy_id][3][LOAD_FROM_CONFIG_KEY] = checkpoint_path
+            config_copy["multiagent"]["policies"][policy_id][3]["policy_id"] = policy_id
+            config_copy["multiagent"]["policies"][policy_id][3]["TuneTrainerClass"] = self.TuneTrainerClass
             results_wt_metadata[policy_id] = {"checkpoint_path": checkpoint_path, "checkpoint_i": checkpoint_i}
 
-        results = ray.tune.run(self.TrainerClassWtLoading, config=config_copy,
+        results = ray.tune.run(self.TrainerClass, config=config_copy,
                                stop=self.stop_config, verbose=1, name=f"{self.exp_name}_same_play")
 
         results_wt_metadata["results"] = results
@@ -165,12 +180,14 @@ class SameAndCrossPlay:
                 results_wt_metadata[policy_id] = {"checkpoint_path": selected_checkpoint_path,
                                                   "checkpoint_i": opponent_i}
 
-            config_copy["multiagent"]["policies"][policy_id][3][LOAD_FROM_CONFIG_KEY] = \
-                selected_checkpoint_path
+            config_copy["multiagent"]["policies"][policy_id][3][LOAD_FROM_CONFIG_KEY] = selected_checkpoint_path
+            config_copy["multiagent"]["policies"][policy_id][3]["policy_id"] = policy_id
+            config_copy["multiagent"]["policies"][policy_id][3]["TuneTrainerClass"] = self.TuneTrainerClass
 
-        results = ray.tune.run(self.TrainerClassWtLoading, config=config_copy,
+        results = ray.tune.run(self.TrainerClass, config=config_copy,
                                stop=self.stop_config, verbose=1, name=f"{self.exp_name}_cross_play")
 
         results_wt_metadata["results"] = results
         return results_wt_metadata
+
 

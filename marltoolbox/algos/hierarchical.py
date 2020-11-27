@@ -128,11 +128,12 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
                 The local PyTorch optimizer(s) to use for this Policy.
         """
 
-        # TODO find a clean solution to updating LR
+        # TODO find a clean solution to update the LR when using a LearningRateSchedule
         for algo in self.algorithms:
-            for opt in algo._optimizers:
-                for p in opt.param_groups:
-                    p["lr"] = algo.cur_lr
+            if hasattr(algo,"cur_lr"):
+                for opt in algo._optimizers:
+                    for p in opt.param_groups:
+                        p["lr"] = algo.cur_lr
 
         all_optimizers = []
         for algo in self.algorithms:

@@ -223,12 +223,12 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=5, num_gpus=0)
 
-    # Self-play
+    print("\n========== Training LE in self-play ==========\n")
     results = ray.tune.run(DQNTrainer, config=trainer_config_update,
                            stop=stop, verbose=1, name="LE_self_play_IPD")
 
 
-    # Against a naive opponent
+    print("\n========== Training LE against a naive opponent ==========\n")
     trainer_config_update["multiagent"]["policies"]["player_col"] = (
         None,
         IteratedPrisonersDilemma.OBSERVATION_SPACE,
@@ -237,7 +237,5 @@ if __name__ == "__main__":
     )
     results = ray.tune.run(DQNTrainer, config=trainer_config_update,
                            stop=stop, verbose=1, name="LE_vs_Naive_IPD")
-
-
 
     ray.shutdown()
