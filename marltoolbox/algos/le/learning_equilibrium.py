@@ -24,7 +24,7 @@ from ray.rllib.utils.torch_ops import (FLOAT_MIN, huber_loss,
                                        softmax_cross_entropy_with_logits)
 from ray.rllib.utils import merge_dicts
 
-from marltoolbox.utils import preprocessing, logging
+from marltoolbox.utils import preprocessing, log
 from marltoolbox.algos import hierarchical
 
 torch, nn = try_import_torch()
@@ -154,18 +154,18 @@ class LE(hierarchical.HierarchicalTorchPolicy):
             samples_copy = samples.copy()
             if i == self.COOP_POLICY_IDX or i == self.COOP_OPP_POLICY_IDX:
                 samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[
-                                                                  preprocessing.UTILITARIAN_WELFARE_KEY])
+                                                                  preprocessing.WELFARE_UTILITARIAN])
                 samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="punishing")
             elif i == self.PUNITIVE_POLICY_IDX:
                 samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[
-                                                                  preprocessing.OPPONENT_NEGATIVE_REWARD_KEY])
+                                                                  preprocessing.OPPONENT_NEGATIVE_REWARD])
             elif i == self.COOP_OPP_POLICY_IDX:
                 samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[
-                                                                  preprocessing.UTILITARIAN_WELFARE_KEY])
+                                                                  preprocessing.WELFARE_UTILITARIAN])
                 samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="being_punished")
             elif i == self.SPL_OPP_POLICY_IDX:
                 samples_copy[samples_copy.ACTIONS] = np.array(samples_copy.data[
-                                                                  preprocessing.OPPONENT_ACTIONS_KEY])
+                                                                  preprocessing.OPPONENT_ACTIONS])
                 samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="being_punished")
 
             # TODO currently continue to learn because I use the batch to stop but the batch is sampled!
@@ -219,35 +219,35 @@ class LE(hierarchical.HierarchicalTorchPolicy):
         if self.remaining_punishing_time <= 0:
             self.active_algo_idx = self.COOP_POLICY_IDX
 
-    def postprocess_trajectory(
-            self,
-            sample_batch: SampleBatch,
-            other_agent_batches: Optional[Dict[AgentID, Tuple[
-                "Policy", SampleBatch]]] = None,
-            episode: Optional["MultiAgentEpisode"] = None) -> SampleBatch:
-        """Implements algorithm-specific trajectory postprocessing.
-
-        This will be called on each trajectory fragment computed during policy
-        evaluation. Each fragment is guaranteed to be only from one episode.
-
-        Args:
-            sample_batch (SampleBatch): batch of experiences for the policy,
-                which will contain at most one episode trajectory.
-            other_agent_batches (dict): In a multi-agent env, this contains a
-                mapping of agent ids to (policy, agent_batch) tuples
-                containing the policy and experiences of the other agents.
-            episode (Optional[MultiAgentEpisode]): An optional multi-agent
-                episode object to provide access to all of the
-                internal episode state, which may be useful for model-based or
-                multi-agent algorithms.
-
-        Returns:
-            SampleBatch: Postprocessed sample batch.
-        """
-        return preprocessing.postprocess_trajectory(sample_batch, other_agent_batches, episode,
-                                                          add_utilitarian_welfare=True,
-                                                          add_opponent_action=True,
-                                                          add_opponent_neg_reward=True)
+    # def postprocess_trajectory(
+    #         self,
+    #         sample_batch: SampleBatch,
+    #         other_agent_batches: Optional[Dict[AgentID, Tuple[
+    #             "Policy", SampleBatch]]] = None,
+    #         episode: Optional["MultiAgentEpisode"] = None) -> SampleBatch:
+    #     """Implements algorithm-specific trajectory postprocessing.
+    #
+    #     This will be called on each trajectory fragment computed during policy
+    #     evaluation. Each fragment is guaranteed to be only from one episode.
+    #
+    #     Args:
+    #         sample_batch (SampleBatch): batch of experiences for the policy,
+    #             which will contain at most one episode trajectory.
+    #         other_agent_batches (dict): In a multi-agent env, this contains a
+    #             mapping of agent ids to (policy, agent_batch) tuples
+    #             containing the policy and experiences of the other agents.
+    #         episode (Optional[MultiAgentEpisode]): An optional multi-agent
+    #             episode object to provide access to all of the
+    #             internal episode state, which may be useful for model-based or
+    #             multi-agent algorithms.
+    #
+    #     Returns:
+    #         SampleBatch: Postprocessed sample batch.
+    #     """
+    #     return preprocessing.postprocess_trajectory(sample_batch, other_agent_batches, episode,
+    #                                                       add_utilitarian_welfare=True,
+    #                                                       add_opponent_action=True,
+    #                                                       add_opponent_neg_reward=True)
 
     def _put_log_likelihood_in_data_buffer(self, s, a, data_queue, log=True):
         s = torch.from_numpy(s).unsqueeze(dim=0)
@@ -361,7 +361,12 @@ def compute_log_likelihoods_wt_exploration(
         return log_likelihoods
 
 
-class LECallBacks(DefaultCallbacks):
+class LECallBacks(preprocessing.WelfareAndPostprocessCallbacks):
+
+    ADD_UTILITARIAN_WELFARE = True
+    ADD_OPPONENT_ACTION = True
+    ADD_OPPONENT_NEG_REWARD = True
+    ADD_INEQUITY_AVERSION_WELFARE = False
 
     def on_episode_step(self, *, worker, base_env,
                         episode, env_index, **kwargs):
@@ -397,6 +402,8 @@ class LECallBacks(DefaultCallbacks):
                     # Only during init
                     policy.on_episode_step(opp_obs, opp_a, False)
 
+        super().on_episode_step(worker=worker, base_env=base_env,
+                        episode=episode, env_index=env_index, **kwargs)
 
     def on_episode_end(self, *, worker, base_env,
                        policies, episode, env_index, **kwargs):
@@ -419,6 +426,9 @@ class LECallBacks(DefaultCallbacks):
         for polidy_ID, policy in policies.items():
             if hasattr(policy, 'on_episode_end') and callable(policy.on_episode_end):
                 policy.on_episode_end()
+
+        super().on_episode_end(worker=worker, base_env=base_env, policies=policies,
+                        episode=episode, env_index=env_index, **kwargs)
 
     def on_postprocess_trajectory(
             self, *, worker: "RolloutWorker", episode: MultiAgentEpisode,
@@ -457,16 +467,9 @@ class LECallBacks(DefaultCallbacks):
         else:
             postprocessed_batch.data['being_punished'] = [False] * len(postprocessed_batch[postprocessed_batch.OBS])
 
-    def on_train_result(self, *, trainer, result: dict, **kwargs):
-        """Called at the end of Trainable.train().
-
-        Args:
-            trainer (Trainer): Current trainer instance.
-            result (dict): Dict of results returned from trainer.train() call.
-                You can mutate this object to add additional metrics.
-            kwargs: Forward compatibility placeholder.
-        """
-        logging.update_train_result_wt_to_log(trainer, result)
-
+        super().on_postprocess_trajectory(worker=worker, episode=episode,
+            agent_id=agent_id, policy_id=policy_id,
+            policies=policies, postprocessed_batch=postprocessed_batch,
+            original_batches=original_batches, **kwargs)
 
 

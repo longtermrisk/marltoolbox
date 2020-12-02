@@ -13,7 +13,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 from marltoolbox.algos.lola.LOLA_DICE_torch_unofficial import LolaDiceTorchPolicyMixin, LolaDiceTorchTrainerMixin, \
     init_lola, LOLACallbacks
 from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma
-from marltoolbox.utils.logging import stats_fn_wt_additionnal_logs
+from marltoolbox.utils.log import stats_fn_wt_additionnal_logs
 
 
 class AllCallbacks(LOLACallbacks, DefaultCallbacks):

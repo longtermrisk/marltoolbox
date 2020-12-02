@@ -25,7 +25,8 @@ def main(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
          lr, lr_correction, batch_size, bs_mul, simple_net, hidden, reg,
          gamma, lola_update, opp_model, mem_efficient, seed, set_zero,
          warmup, changed_config, ac_lr, summary_len, use_MAE, perform_lola_update,
-         use_toolbox_env, clip_lola_update_norm, clip_loss_norm, **kwargs):
+         use_toolbox_env, clip_lola_update_norm, clip_loss_norm, entropy_coeff,
+         weigth_decay, **kwargs):
     # Instantiate the environment
     if exp_name == "IPD":
         env = lola.envs.IPD(trace_length)
@@ -104,6 +105,8 @@ def main(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
                       use_toolbox_env=use_toolbox_env,
                        clip_lola_update_norm=clip_lola_update_norm,
                        clip_loss_norm=clip_loss_norm,
+                       entropy_coeff=entropy_coeff,
+                    weigth_decay=weigth_decay,
         )
     else:
         raise ValueError(f"exp_name: {exp_name}")
@@ -152,8 +155,8 @@ if __name__ == "__main__":
         "trace_length": 20 if debug else None,
         "lr": None,
         # "lr": 0.005 / 10,  # None,
-        # "gamma": None,
-        "gamma": 0.5    ,
+        "gamma": None,
+        # "gamma": 0.5,
         # !!! To use the default batch size with coin game, you need 35Go of memory per seed run in parallel !!!
         # "batch_size": None, # To use the defaults values from the official repository.
         "batch_size": 64 if debug else None,
@@ -161,7 +164,7 @@ if __name__ == "__main__":
         # "exp_name": "IPD",
         # "exp_name": "IMP",
         "exp_name": "CoinGame",
-        # "exp_name": "AsymCoinGame",
+       # "exp_name": "AsymCoinGame",
 
         "pseudo": False,
         "grid_size": 3,
@@ -185,8 +188,8 @@ if __name__ == "__main__":
         "seed": tune.grid_search([1]),
 
         "changed_config": False,
-        # "ac_lr": 1.0,
-        "ac_lr": 0.005,
+        "ac_lr": 1.0,
+        # "ac_lr": 0.005,
         "summary_len": 1,
         "use_MAE": False,
         # "use_MAE": True,
@@ -197,10 +200,14 @@ if __name__ == "__main__":
         # "use_toolbox_env": False,
         "use_toolbox_env": True,
 
-        # "clip_lola_update_norm":False,
-        # "clip_loss_norm":False,
-        "clip_lola_update_norm": 5.0,
-        "clip_loss_norm": 10.0,
+        "clip_lola_update_norm": False,
+        "clip_loss_norm": False,
+        # "clip_lola_update_norm": 0.5,
+        # "clip_loss_norm": 10.0,
+
+        "entropy_coeff": 0.1,
+
+        "weigth_decay": 0.003,  # 0.001 working well
     }
 
     full_config = dynamically_change_config(full_config)

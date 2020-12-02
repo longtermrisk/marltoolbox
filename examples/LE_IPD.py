@@ -16,7 +16,7 @@ torch, nn = try_import_torch()
 from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma
 from marltoolbox.algos.le.learning_equilibrium import LE_DEFAULT_CONFIG_UPDATE, LE, LECallBacks
 from marltoolbox.utils.exploration import SoftQSchedule
-from marltoolbox.utils import logging
+from marltoolbox.utils import log
 from marltoolbox.algos.supervised_learning import SPLTorchPolicy
 
 
@@ -58,18 +58,18 @@ if __name__ == "__main__":
                 # Here the trainer need to be a DQNTrainer to provide the config for the 3 DQNTorchPolicy
                 {"Policy_class": DQNTorchPolicy.with_updates(
                     optimizer_fn=sgd_optimizer_dqn,
-                    stats_fn=logging.stats_fn_wt_additionnal_logs(build_q_stats)),
-                    # extra_action_out_fn=logging.extra_action_out_fn_torch_dqn_policy),
+                    stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats)),
+                    # extra_action_out_fn=log.extra_action_out_fn_torch_dqn_policy),
                     "config_update": {}},
                 {"Policy_class": DQNTorchPolicy.with_updates(
                     optimizer_fn=sgd_optimizer_dqn,
-                    stats_fn=logging.stats_fn_wt_additionnal_logs(build_q_stats)),
-                    # extra_action_out_fn=logging.extra_action_out_fn_torch_dqn_policy),
+                    stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats)),
+                    # extra_action_out_fn=log.extra_action_out_fn_torch_dqn_policy),
                     "config_update": {}},
                 {"Policy_class": DQNTorchPolicy.with_updates(
                     optimizer_fn=sgd_optimizer_dqn,
-                    stats_fn=logging.stats_fn_wt_additionnal_logs(build_q_stats)),
-                    # extra_action_out_fn=logging.extra_action_out_fn_torch_dqn_policy),
+                    stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats)),
+                    # extra_action_out_fn=log.extra_action_out_fn_torch_dqn_policy),
                     "config_update": {}},
                 {"Policy_class": SPLTorchPolicy.with_updates(optimizer_fn=sgd_optimizer_spl), "config_update": {
                     "learn_action": True,

@@ -1,7 +1,4 @@
 from gym.spaces import Discrete
-from typing import Union
-import copy
-
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
@@ -9,8 +6,10 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.stochastic_sampling import StochasticSampling
 from ray.rllib.utils.framework import TensorType
 from ray.rllib.utils.framework import get_variable
-from ray.rllib.utils.schedules import Schedule, PiecewiseSchedule
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.schedules import Schedule, PiecewiseSchedule
+from typing import Union
+
 
 class SoftQSchedule(StochasticSampling):
     """Special case of StochasticSampling w/ Categorical and temperature param.
@@ -47,6 +46,7 @@ class SoftQSchedule(StochasticSampling):
         # The current timestep value (tf-var or python int).
         self.last_timestep = get_variable(
             0, framework=framework, tf_name="timestep")
+        self.temperature = self.temperature_schedule(self.last_timestep)
 
     @override(StochasticSampling)
     def get_exploration_action(self,
@@ -55,17 +55,20 @@ class SoftQSchedule(StochasticSampling):
                                explore: bool = True):
         cls = type(action_distribution)
         assert cls in [Categorical, TorchCategorical]
-        # Re-create the action distribution with the correct temperature
-        # applied.
 
-        temperature = self.temperature_schedule(timestep if timestep is not None else
-                                        self.last_timestep)
         self.last_timestep = timestep
+        # TODO This step changes the Q value, even when we are not exploring, create an issue
+        # Quick correction
+        # TODO this correction breaks the LE algo?
+        if explore:
+            self.temperature = self.temperature_schedule(timestep if timestep is not None else self.last_timestep)
+        else:
+            self.temperature = 1.0
+
+        # Re-create the action distribution with the correct temperature applied.
         dist = cls(
             action_distribution.inputs,
-            # copy.deepcopy(action_distribution.inputs),
             self.model,
-            temperature=temperature)
+            temperature=self.temperature)
         # Delegate to super method.
-        return super().get_exploration_action(
-            action_distribution=dist, timestep=timestep, explore=explore)
+        return super().get_exploration_action(action_distribution=dist, timestep=timestep, explore=explore)

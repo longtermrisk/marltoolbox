@@ -1,4 +1,4 @@
-"# CLR research framework
+# CLR research framework
 
 Two components: 
 - [`RLLib 1.0.0` (Ray / Tune / RLLib)](https://docs.ray.io/en/master/rllib.html) 
@@ -7,6 +7,33 @@ Two components:
 To explore `RLLib` please refer to the 
 [RLLib/Tune/Ray documentation](https://docs.ray.io/en/master/rllib-toc.html).
 And also the [examples provided by RLLib](https://github.com/ray-project/ray/tree/master/rllib/examples). 
+
+# Training models
+
+There is 3 possible ways to run some training:
+
+**Tune function API**  
+The Tune function API where you only need to provide the training function. 
+Best if you simply want to run some code from an external repository.
+[See Tune documentation](https://docs.ray.io/en/master/tune/key-concepts.html).  
+**Functionalities:** running several seeds in parallel and comparing their results, 
+easy plotting to Tensorboard, visualizing the plots in live, 
+saving configuration files / tracking your experiments, hyper-parameter search 
+
+**The Tune class API**  
+You need to provide a Trainer class with at minimum a setup method and a train method (one
+ iteration one). Best if you want to run some code from an external repository and you need checkpoints or you 
+want to evaluate (no training) it against other RLLib algorithms or with some experimentation tools in utils.
+[See Tune documentation](https://docs.ray.io/en/master/tune/key-concepts.html).  
+**Additional functionalities:** Checkpoints.
+
+**RLLib Trainer class**  
+You need to use RLLib Trainer and Policy classes. 
+The RLLib Trainer class is the RLLib implementation for the Tune class API.
+Best if you are creating a new training/policy from scratch.  
+**Additional functionalities:** Using components from RLLib 
+(models, environments, algorithms, exploration, etc.)
+
 
 # Content
 - envs
@@ -21,7 +48,7 @@ And also the [examples provided by RLLib](https://github.com/ray-project/ray/tre
         - `LOLA-PG` Official implementation running with `Tune`
         - `LOLA-DICE` Unofficial implementation **Not working properly, WIP**
 - utils  
-    - logging: `stats_fn_wt_additionnal_logs`
+    - log: `stats_fn_wt_additionnal_logs`
   
 **Custom examples:**
 

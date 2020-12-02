@@ -157,7 +157,11 @@ def analyse_reward(reward_red, reward_blue, asymmetric):
         blue_pick_any = (reward_blue == 1).sum()
         # Both picked blue
         blue_pick_any += (reward_blue == -1).sum()
+        # Blue pick something less blue picked red alone
         blue_pick_blue = blue_pick_any - (reward_red < 0).sum()
+        # Less blue picked red and red picked red
+        blue_pick_blue -= (np.logical_and(reward_red == 1, reward_blue == 1)).sum()
+
     else:
         # Red picked alone or red players picked blue
         red_pick_any = (reward_red == 1).sum()
@@ -203,7 +207,7 @@ class CoinGame(MultiAgentEnv, gym.Env):
         self.grid_size = config.get("grid_size", 3)
         assert self.grid_size == 3, "hardoced in the generate_state function"
         self.reward_randomness = config.get("reward_randomness", 0.0)
-        self.get_additional_info = config.get("get_additional_info", False)
+        self.get_additional_info = config.get("get_additional_info", True)
         self.asymmetric = config.get("asymmetric", False)
 
         self.OBSERVATION_SPACE = gym.spaces.Box(
@@ -317,7 +321,11 @@ class CoinGame(MultiAgentEnv, gym.Env):
 
     def _accumulate_info(self, reward):
         # for efficiency remove the 0 values
-        reward_red, reward_blue = tuple([player_reward[np.nonzero(player_reward)] for player_reward in reward])
+        # TODO check that this really increase speed
+        if self.asymmetric:
+            reward_red, reward_blue = reward
+        else:
+            reward_red, reward_blue = tuple([player_reward[np.nonzero(player_reward)] for player_reward in reward])
 
         (red_pick_any, red_pick_red,
          blue_pick_any, blue_pick_blue) = analyse_reward(reward_red, reward_blue, self.asymmetric)

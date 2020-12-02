@@ -37,7 +37,7 @@ class MatrixSocialDilemma(MultiAgentEnv, ABC):
         self.player_row_id, self.player_col_id = self.players_ids
         self.max_steps = config.get("max_steps", 20)
         self.reward_randomness = config.get("reward_randomness", 0.0)
-        self.get_additional_info = config.get("get_additional_info", False)
+        self.get_additional_info = config.get("get_additional_info", True)
 
         self.step_count = None
 
