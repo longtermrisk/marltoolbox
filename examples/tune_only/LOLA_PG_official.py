@@ -8,23 +8,23 @@
 # pip install -e .
 ##########
 
-# TODO only used envs from lola_dice
-import lola.envs
-import lola_dice.envs
-from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
-
-from lola import train_cg, train_exact, train_pg
-# from lola_unchanged import train_cg, train_exact, train_pg
-
-
 import ray
 from ray import tune
 
+# TODO only used envs from lola_dice
+import lola.envs
+import lola_dice.envs
+from lola import train_cg, train_exact, train_pg
+from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
+from marltoolbox.utils import log
+
+
+# from lola_unchanged import train_cg, train_exact, train_pg
 
 def main(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
          lr, lr_correction, batch_size, bs_mul, simple_net, hidden, reg,
          gamma, lola_update, opp_model, mem_efficient, seed, set_zero,
-         warmup, changed_config, ac_lr, summary_len, use_MAE, perform_lola_update,
+         warmup, changed_config, ac_lr, summary_len, use_MAE,
          use_toolbox_env, clip_lola_update_norm, clip_loss_norm, entropy_coeff,
          weigth_decay, **kwargs):
     # Instantiate the environment
@@ -39,6 +39,7 @@ def main(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
                 "max_steps": trace_length,
                 "grid_size": grid_size,
                 "get_additional_info": True,
+                "add_position_in_epi": False,
             })
         else:
             env = lola_dice.envs.CG(trace_length, batch_size, grid_size)
@@ -50,6 +51,7 @@ def main(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
                 "max_steps": trace_length,
                 "grid_size": grid_size,
                 "get_additional_info": True,
+                "add_position_in_epi": False,
             })
         else:
             env = lola_dice.envs.AsymCG(trace_length, batch_size, grid_size)
@@ -60,56 +62,56 @@ def main(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
     # Import the right training function
     if exact:
         train_exact.train(env,
-                         num_episodes=num_episodes,
-                         trace_length=trace_length,
-                         simple_net=simple_net,
-                         corrections=lola_update,
-                         pseudo=pseudo,
-                         num_hidden=hidden,
-                         reg=reg,
-                         lr=lr,
-                         lr_correction=lr_correction,
-                         gamma=gamma)
+                          num_episodes=num_episodes,
+                          trace_length=trace_length,
+                          simple_net=simple_net,
+                          corrections=lola_update,
+                          pseudo=pseudo,
+                          num_hidden=hidden,
+                          reg=reg,
+                          lr=lr,
+                          lr_correction=lr_correction,
+                          gamma=gamma)
     elif exp_name in ("IPD", "IMP"):
         train_pg.train(env,
-                      num_episodes=num_episodes,
-                      trace_length=trace_length,
-                      batch_size=batch_size,
-                      gamma=gamma,
-                      set_zero=set_zero,
-                      lr=lr,
-                      corrections=lola_update,
-                      simple_net=simple_net,
-                      hidden=hidden,
-                      mem_efficient=mem_efficient)
+                       num_episodes=num_episodes,
+                       trace_length=trace_length,
+                       batch_size=batch_size,
+                       gamma=gamma,
+                       set_zero=set_zero,
+                       lr=lr,
+                       corrections=lola_update,
+                       simple_net=simple_net,
+                       hidden=hidden,
+                       mem_efficient=mem_efficient)
     elif exp_name in ("CoinGame", "AsymCoinGame"):
         train_cg.train(env,
-                      num_episodes=num_episodes,
-                      trace_length=trace_length,
-                      batch_size=batch_size,
-                      bs_mul=bs_mul,
-                      gamma=gamma,
-                      grid_size=grid_size,
-                      lr=lr,
-                      corrections=lola_update,
-                      opp_model=opp_model,
-                      hidden=hidden,
-                      mem_efficient=mem_efficient,
-                      asymmetry=exp_name == "AsymCoinGame",
-                      warmup=warmup,
-                      changed_config=changed_config,
-                      ac_lr=ac_lr,
-                      summary_len=summary_len,
-                      use_MAE=use_MAE,
-                      perform_lola_update=perform_lola_update,
-                      use_toolbox_env=use_toolbox_env,
+                       num_episodes=num_episodes,
+                       trace_length=trace_length,
+                       batch_size=batch_size,
+                       bs_mul=bs_mul,
+                       gamma=gamma,
+                       grid_size=grid_size,
+                       lr=lr,
+                       corrections=lola_update,
+                       opp_model=opp_model,
+                       hidden=hidden,
+                       mem_efficient=mem_efficient,
+                       asymmetry=exp_name == "AsymCoinGame",
+                       warmup=warmup,
+                       changed_config=changed_config,
+                       ac_lr=ac_lr,
+                       summary_len=summary_len,
+                       use_MAE=use_MAE,
+                       use_toolbox_env=use_toolbox_env,
                        clip_lola_update_norm=clip_lola_update_norm,
                        clip_loss_norm=clip_loss_norm,
                        entropy_coeff=entropy_coeff,
-                    weigth_decay=weigth_decay,
-        )
+                       weigth_decay=weigth_decay,
+                       )
     else:
         raise ValueError(f"exp_name: {exp_name}")
+
 
 def lola_training(config):
     main(**config)
@@ -152,9 +154,9 @@ if __name__ == "__main__":
     full_config = {
         # Dynamically set
         "num_episodes": None,
-        "trace_length": 20 if debug else None,
+        "trace_length": 150 if debug else None,
         "lr": None,
-        # "lr": 0.005 / 10,  # None,
+        # "lr": 0.0005,  # None,
         "gamma": None,
         # "gamma": 0.5,
         # !!! To use the default batch size with coin game, you need 35Go of memory per seed run in parallel !!!
@@ -164,12 +166,12 @@ if __name__ == "__main__":
         # "exp_name": "IPD",
         # "exp_name": "IMP",
         "exp_name": "CoinGame",
-       # "exp_name": "AsymCoinGame",
+        # "exp_name": "AsymCoinGame",
 
         "pseudo": False,
         "grid_size": 3,
-        "lola_update": True,
-        # "lola_update": False,
+        # "lola_update": True,
+        "lola_update": False,
         "opp_model": False,
         "mem_efficient": True,
         "lr_correction": 1,
@@ -182,20 +184,17 @@ if __name__ == "__main__":
         # "exact": True,
         "exact": False,
 
-        "warmup": 1,  #False,
+        "warmup": 1,  # False,
 
         "run_n_seed_in_parallel": 1,
         "seed": tune.grid_search([1]),
 
         "changed_config": False,
-        "ac_lr": 1.0,
-        # "ac_lr": 0.005,
+        # "ac_lr": 1.0,
+        "ac_lr": 0.005,
         "summary_len": 1,
         "use_MAE": False,
         # "use_MAE": True,
-
-        "perform_lola_update": True,
-        # "perform_lola_update": False,
 
         # "use_toolbox_env": False,
         "use_toolbox_env": True,
@@ -205,17 +204,22 @@ if __name__ == "__main__":
         # "clip_lola_update_norm": 0.5,
         # "clip_loss_norm": 10.0,
 
+        # "entropy_coeff": 0.0,
         "entropy_coeff": 0.1,
 
-        "weigth_decay": 0.003,  # 0.001 working well
+        # "weigth_decay": 0.0,  # 0.001 working well
+        "weigth_decay": 0.001,  # 0.001 working well
     }
 
     full_config = dynamically_change_config(full_config)
 
     ray.init(num_cpus=full_config["run_n_seed_in_parallel"], num_gpus=0)
     name = f"LOLA_{'exact' if full_config['exact'] else 'PG'}_{full_config['exp_name']}"
-    analysis = tune.run(lola_training, name=name, config=full_config)
+    analysis = tune.run(lola_training, name=log.exp_name(name), config=full_config)
 
     # If needed, get a dataframe for analyzing trial results.
     df = analysis.results_df
     ray.shutdown()
+
+
+# TODO not using critic: critic loss *0.0 + remove valku in correction + remove UpdateModel in main

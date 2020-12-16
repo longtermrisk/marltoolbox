@@ -1,5 +1,8 @@
 from typing import Dict, Callable
 import numbers
+from collections import Iterable
+import datetime
+import os
 
 import gym
 
@@ -21,7 +24,7 @@ def _log_action_prob_pytorch(policy: Policy, train_batch: SampleBatch) -> Dict[s
     # TODO add entropy
     to_log = {}
     if isinstance(policy.action_space, gym.spaces.Discrete):
-
+        # print("train_batch", train_batch)
         # DO not support nested discrete spaces
         assert train_batch["action_dist_inputs"].dim() == 2
 
@@ -29,36 +32,26 @@ def _log_action_prob_pytorch(policy: Policy, train_batch: SampleBatch) -> Dict[s
         action_dist_inputs_single = train_batch["action_dist_inputs"][-1, :]
 
         for action_i in range(policy.action_space.n):
-            to_log[f"action_dist_inputs_avg"] = action_dist_inputs_avg[action_i]
-            to_log[f"action_dist_inputs_single"] = action_dist_inputs_single[action_i]
+            to_log[f"act_dist_inputs_avg_{action_i}"] = action_dist_inputs_avg[action_i]
+            to_log[f"act_dist_inputs_single_{action_i}"] = action_dist_inputs_single[action_i]
 
         assert train_batch["action_prob"].dim() == 1
         to_log[f"action_prob_avg"] = train_batch["action_prob"].mean(axis=0)
         to_log[f"action_prob_single"] = train_batch["action_prob"][-1]
+
+        if "q_values" in train_batch.keys():
+            assert train_batch["q_values"].dim() == 2
+            q_values_avg = train_batch["q_values"].mean(axis=0)
+            q_values_single = train_batch["q_values"][-1, :]
+
+            for action_i in range(policy.action_space.n):
+                to_log[f"q_values_avg_{action_i}"] = q_values_avg[action_i]
+                to_log[f"q_values_single_{action_i}"] = q_values_single[action_i]
+
+
     else:
         raise NotImplementedError()
     return to_log
-
-# def log_env_info(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
-#     to_log = {}
-#
-#     # TODO is there a way without touching to the interceptor?
-#     get_interceptor = train_batch.get_interceptor
-#     train_batch.get_interceptor = None
-#
-#     # This will only log the last infos in the bach (overwriting the other)
-#     # This is unrealiable since the batch can be sampled from a buffer
-#     # This may log unwanted stuff (and thus crash)
-#     # TODO Improve this like only logging train_batch['infos']['to_log']
-#     # TODO break after found one?
-#     # TODO Check for non TensorType
-#     for info in train_batch['infos'].tolist():
-#         to_log.update(info)
-#
-#     train_batch.get_interceptor = get_interceptor
-#
-#     return to_log
-
 
 def stats_fn_wt_additionnal_logs(stats_function: Callable[[Policy, SampleBatch], Dict[str, TensorType]]):
     """
@@ -85,8 +78,10 @@ def stats_fn_wt_additionnal_logs(stats_function: Callable[[Policy, SampleBatch],
 
 
 
-
+#TODO problem this add max, min, avg of each log...
 class LoggingCallbacks(DefaultCallbacks):
+    VERBOSE = 1
+    WEIGHTS_FREQUENCY = 10
 
     def on_episode_step(self, *, worker: "RolloutWorker", base_env: BaseEnv,
                         episode: MultiAgentEpisode, env_index: int, **kwargs):
@@ -104,8 +99,8 @@ class LoggingCallbacks(DefaultCallbacks):
                 episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
-
-        self._add_env_info_to_custom_metrics(worker, episode)
+        if self.VERBOSE > 0:
+            self._add_env_info_to_custom_metrics(worker, episode)
 
     def on_train_result(self, *, trainer, result: dict, **kwargs):
         """Called at the end of Trainable.train().
@@ -116,7 +111,28 @@ class LoggingCallbacks(DefaultCallbacks):
                 You can mutate this object to add additional metrics.
             kwargs: Forward compatibility placeholder.
         """
-        self._update_train_result_wt_to_log(trainer, result)
+        if self.VERBOSE > 0:
+            self._update_train_result_wt_to_log(trainer, result,
+                                                function_to_exec=self._get_log_from_policy)
+        if self.VERBOSE > 2:
+            if not hasattr(self, "on_train_result_counter"):
+                self.on_train_result_counter = 0
+            if self.on_train_result_counter % self.WEIGHTS_FREQUENCY == 0:
+                self._update_train_result_wt_to_log(trainer, result,
+                                                    function_to_exec=self._get_weights_from_policy)
+            self.on_train_result_counter += 1
+
+    @staticmethod
+    def _get_weights_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
+        """Gets the to_log var from a policy and rename its keys, adding the policy_id as a prefix."""
+        to_log = {}
+        weights = policy.get_weights()
+
+        for k, v in weights.items():
+            if isinstance(v, Iterable):
+                to_log[f"{policy_id}/{k}"] = v
+
+        return to_log
 
     @staticmethod
     def _add_env_info_to_custom_metrics(worker, episode):
@@ -125,22 +141,29 @@ class LoggingCallbacks(DefaultCallbacks):
             info = episode.last_info_for(agent_id)
             for k, v in info.items():
                 if isinstance(v, numbers.Number):
-                    episode.custom_metrics[f"{k}_{agent_id}"] = v
+                    # TODO this add stuff as metrics (with mean, min, max) => available to select checkpoint but
+                    #  produce a lot of logs !! Should be better if
+                    episode.custom_metrics[f"{k}/{agent_id}"] = v
 
 
-    def _update_train_result_wt_to_log(self, trainer, result: dict):
+    def _update_train_result_wt_to_log(self, trainer, result: dict, function_to_exec):
         """
         Add logs from every policies (from policy.to_log:dict) to the results (which are then plotted in Tensorboard).
         To be called from the on_train_result callback.
         """
-        to_log_list = trainer.workers.foreach_policy(self._get_log_from_policy)
-        for i, to_log in enumerate(to_log_list):
-            for k, v in to_log.items():
-                key = f"worker_{i}_{k}"
-                if key not in result.keys():
-                    result[key] = v
-                else:
-                    raise ValueError(f"key:{key} already exists in result.keys(): {result.keys()}")
+        def to_exec(worker):
+            return worker.foreach_policy(function_to_exec)
+
+        # to_log_list = trainer.workers.foreach_policy(function_to_exec)
+        to_log_list_list = trainer.workers.foreach_worker(to_exec)
+        for worker_idx, to_log_list in enumerate(to_log_list_list):
+            for to_log in to_log_list:
+                for k, v in to_log.items():
+                    key = f"{k}/worker_{worker_idx}"
+                    if key not in result.keys():
+                        result[key] = v
+                    else:
+                        raise ValueError(f"key:{key} already exists in result.keys(): {result.keys()}")
 
 
     @staticmethod
@@ -149,6 +172,71 @@ class LoggingCallbacks(DefaultCallbacks):
         to_log = {}
         if hasattr(policy, "to_log"):
             for k, v in policy.to_log.items():
-                to_log[f"{k}_{policy_id}"] = v
+                to_log[f"{k}/{policy_id}"] = v
             policy.to_log = {}
         return to_log
+
+
+
+def exp_name(name:str, n_days_worth_of_exp_in_same_dir=0,
+             base_dir="~/ray_results", create_symlinks=True) -> str:
+    """
+    Give back f'{name}/YEAR_MONTH_DAY' and
+    add symlinks to see the logs a few days old in this dir
+    (to prevent long load time in tensorboard)
+    :param name:
+    :param n_days_worth_of_exp_in_same_dir:
+    :param base_dir:
+    :param create_symlinks:
+    :return:
+    """
+    import datetime
+    import os
+    base_dir = os.path.expanduser(base_dir)
+    if not os.path.exists(base_dir):
+        os.mkdir(base_dir)
+
+    intermediary_dir_path = os.path.join(base_dir, name)
+    if not os.path.exists(intermediary_dir_path):
+        os.mkdir(intermediary_dir_path)
+
+    now = datetime.datetime.now()
+    date_str = now.strftime("%Y_%m_%d")
+    new_dir_name = os.path.join(name, date_str)
+    new_dir_path = os.path.join(base_dir, new_dir_name)
+    if not os.path.exists(new_dir_path):
+        os.mkdir(new_dir_path)
+
+    if create_symlinks:
+        past_dirs = []
+        for i in range(n_days_worth_of_exp_in_same_dir):
+            now = now - datetime.timedelta(1)
+            date_str = now.strftime("%Y_%m_%d")
+            past_dirs.append(os.path.join(name, date_str))
+
+        for past_dir in past_dirs:
+            path = os.path.join(base_dir, past_dir)
+            if os.path.exists(path) and os.path.isdir(path):
+                # link to child to prevent a chain of symlinks
+                childs = [f.path for f in os.scandir(path) if f.is_dir()]
+                for child_path in childs:
+                    # child_path = os.path.join(path, child)
+                    child_tail, child_head = os.path.split(child_path)
+                    sym_link_path = os.path.join(new_dir_path, child_head)
+                    if not os.path.exists(sym_link_path):
+                        print("Create sym_link src:", child_path, "dst:", sym_link_path)
+                        os.symlink(src=child_path, dst=sym_link_path)
+
+    return new_dir_name
+
+
+def put_everything_in_one_dir(exp_name):
+    now = datetime.datetime.now()
+    date_str = now.strftime("%Y_%m_%d")
+    hour_str = now.strftime("%H_%M_%S")
+    exp_name = os.path.join(exp_name,date_str)
+    exp_name = os.path.join(exp_name,hour_str)
+    base_dir = "~/ray_results"
+    base_dir = os.path.expanduser(base_dir)
+    exp_dir_path = os.path.join(base_dir, exp_name)
+    return exp_name, exp_dir_path

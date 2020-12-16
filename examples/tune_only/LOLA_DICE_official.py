@@ -33,7 +33,7 @@ def make_conv_policy(ob_size, num_actions, prev=None):
 
 def make_adam_optimizer(*, lr):
     return tf.train.AdamOptimizer(learning_rate=lr, beta1=0.9, beta2=0.999, epsilon=1e-08, use_locking=False,
-                                  name='Adam')
+                                       name='Adam')
 
 
 def make_sgd_optimizer(*, lr):

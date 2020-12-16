@@ -1,0 +1,71 @@
+from ray.rllib.policy.sample_batch import SampleBatch
+
+from marltoolbox.utils import preprocessing
+
+
+def generate_batch(own_rew, opp_rew):
+    own_fake_data = {SampleBatch.REWARDS: own_rew}
+    opp_fake_data = {SampleBatch.REWARDS: opp_rew}
+    sample_batch = SampleBatch(**own_fake_data)
+    opp_ag_batch = SampleBatch(**opp_fake_data)
+    return sample_batch, opp_ag_batch
+
+
+class TestWelfareAndPostprocessCallbacks(object):
+
+    def test_add_inequity_aversion_welfare_to_batch_beta(self):
+        callbacks = preprocessing.WelfareAndPostprocessCallbacks()
+
+        gamma = 0.0
+        lambda_ = 0.0
+        # Disvalue lower than opp
+        alpha = 0.0
+        # Disvalue higher than opp
+        beta = 1.0
+
+        sample_batch, opp_ag_batch = generate_batch(own_rew=[0, 1, 0, 10, 1, 0, -2, -888, -888],
+                                                    opp_rew=[0, 0, 1, 11, 0.5, -1, -4, -1888, 1888])
+        callbacks._add_inequity_aversion_welfare_to_batch(sample_batch, opp_ag_batch, alpha, beta, gamma, lambda_)
+        assert sample_batch[preprocessing.WELFARE_INEQUITY_AVERSION] == [0, 0, 0, 10, 0.5, -1, -4, -1888, -888]
+
+    def test_add_inequity_aversion_welfare_to_batch_alpha(self):
+        callbacks = preprocessing.WelfareAndPostprocessCallbacks()
+
+        gamma = 0.0
+        lambda_ = 0.0
+        # Disvalue lower than opp
+        alpha = 0.5
+        # Disvalue higher than opp
+        beta = 0.0
+
+        sample_batch, opp_ag_batch = generate_batch(own_rew=[0, 1, 0, 10, 1, 0, -2, -888, -500],
+                                                    opp_rew=[0, 0, 1, 11, 0.5, -1, -4, -1888, 1500])
+        callbacks._add_inequity_aversion_welfare_to_batch(sample_batch, opp_ag_batch, alpha, beta, gamma, lambda_)
+        assert sample_batch[preprocessing.WELFARE_INEQUITY_AVERSION] == [0, 1, -.5, 9.5, 1, 0, -2, -888, -1500]
+
+    def test_add_inequity_aversion_welfare_to_batch_lambda(self):
+        callbacks = preprocessing.WelfareAndPostprocessCallbacks()
+
+        gamma = 1.0
+        lambda_ = 0.9
+        # Disvalue lower than opp
+        alpha = 0.0
+        # Disvalue higher than opp
+        beta = 0.5
+
+        sample_batch, opp_ag_batch = generate_batch(
+            #  smoothed cumulative rewards [0, 1, 0.9, 1.81]
+            own_rew=[0, 1, 0, 1],
+            #  smoothed cumulative rewards [0, 0, 0.5, 0.45]
+            opp_rew=[0, 0, 0.5, 0])
+        callbacks._add_inequity_aversion_welfare_to_batch(sample_batch, opp_ag_batch, alpha, beta, gamma, lambda_)
+        assert sample_batch[preprocessing.WELFARE_INEQUITY_AVERSION] == [0.0, 0.5, -0.2, 1-0.68]
+
+
+    def test_add_utilitarian_welfare_to_batch(self):
+        callbacks = preprocessing.WelfareAndPostprocessCallbacks()
+
+        sample_batch, opp_ag_batch = generate_batch(own_rew=[0, 1, 0, 10, 1, 0, -2, -888, -888],
+                                                    opp_rew=[0, 0, 1, 11, 0.5, -1, -4, -1888, 1888])
+        callbacks._add_utilitarian_welfare_to_batch(sample_batch, [opp_ag_batch])
+        assert sample_batch[preprocessing.WELFARE_UTILITARIAN] == [0, 1, 1, 21, 1.5, -1, -6, -2776, 1000]

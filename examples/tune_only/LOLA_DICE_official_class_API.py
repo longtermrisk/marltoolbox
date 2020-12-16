@@ -1,0 +1,252 @@
+##########
+# Additional dependencies are needed:
+# 1) Python 3.6
+# conda install python=3.6
+# 2) A fork of LOLA https://github.com/Manuscrit/lola which adds the logging through Tune
+# git clone https://github.com/Manuscrit/lola
+# git checkout d9c6724ea0d6bca42c8cf9688b1ff8d6fefd7267
+# pip install -e .
+##########
+
+import copy
+import os
+import time
+import ray
+from ray import tune
+
+from lola_dice.train_tune_class_API import LOLADICE
+from lola.train_pg_tune_class_API import LOLAPGMatrice
+
+from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
+from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma, IteratedBoS, IteratedMatchingPennies
+from marltoolbox.utils import policy, log, same_and_cross_perf
+
+
+
+def get_config(hp: dict) -> dict:
+    config = copy.deepcopy(hp)
+    assert config['env'] in ("CoinGame", "IPD", "IMP", "AsymCoinGame", "IBoT")
+
+    if config["env"] in ("IPD", "IMP", "IBoT"):
+        config["make_policy"] = ("make_simple_policy", {})
+        config["base_lr"] = 1.0
+
+        config["trace_length"] = 150 if config["trace_length"] is None else config["trace_length"]
+        config["make_optimizer"] = ("make_sgd_optimizer", {})
+
+        env_config = {
+            "players_ids": ["player_row", "player_col"],
+            "batch_size": config["batch_size"],
+            "max_steps": config["trace_length"],
+            "grid_size": config["grid_size"],
+            "get_additional_info": True,
+        }
+        # config['metric'] = "ag_0_returns_player_1"
+
+    if config["env"] in ("IPD", "IBoT"):
+        config["gamma"] = 0.96 if config["gamma"] is None else config["gamma"]
+        config["save_dir"] = "dice_results_ipd"
+    elif config["env"] == "IMP":
+        config["gamma"] = 0.9 if config["gamma"] is None else config["gamma"]
+        config["save_dir"] = "dice_results_imp"
+    elif config["env"] in ("CoinGame", "AsymCoinGame"):
+        config["trace_length"] = 150 if config["trace_length"] is None else config["trace_length"]
+        config["epochs"] *= 10
+        config["make_optimizer"] = ("make_adam_optimizer", {"hidden_sizes":[16, 32]})
+        config["save_dir"] = "dice_results_coin_game"
+        config["gamma"] = 0.96 if config["gamma"] is None else config["gamma"]
+        config["make_policy"] = ("make_conv_policy",{})
+        config["base_lr"] = 0.005
+
+        env_config = {
+            "players_ids": ["player_row", "player_col"],
+            "batch_size": config["batch_size"],
+            "max_steps": config["trace_length"],
+            "get_additional_info": True,
+        }
+        # config['metric'] = "ag_0_returns_player_1"
+
+    # hp["make_optim_source"] = inspect.getsource(hp["make_optim"])
+    # hp["policy_maker_source"] = inspect.getsource(hp["policy_maker"])
+    config["lr_inner"] = config["lr_inner"] * config["base_lr"]
+    config["lr_outer"] = config["lr_outer"] * config["base_lr"]
+    config["lr_value"] = config["lr_value"] * config["base_lr"]
+    config["lr_om"] = config["lr_om"] * config["base_lr"]
+
+    stop = {"episodes_total": config['epochs']}
+
+    return config, stop, env_config
+
+
+def train(hp):
+
+    config, stop, _ = get_config(hp)
+    # Train with the Tune Class API (not RLLib Class)
+    training_results = tune.run(LOLADICE, name=hp["exp_name"], config=config,
+                                checkpoint_at_end=True,
+                                stop=stop, metric=hp["metric"], mode="max")
+    return training_results
+
+
+
+def evaluate(training_results, hp):
+    hp_eval = copy.deepcopy(hp)
+
+    plot_config = {}
+
+    hp_eval["seed"] = 2020
+    hp_eval["batch_size"] = 1
+    hp_eval["num_episodes"] = 100
+    config, stop, env_config = get_config(hp_eval)
+    config['TuneTrainerClass'] = LOLADICE
+
+    plot_config["group_names"] = ["lola"]
+    plot_config["scale_multipliers"] = ((1 / config['trace_length'], 1 / config['trace_length']),)
+    plot_config["jitter"] = 0.05
+
+    if hp_eval["env"] == "IPD":
+        hp_eval["env"] = IteratedPrisonersDilemma
+        plot_config["x_limits"] = ((-3.5, 0.5),)
+        plot_config["y_limits"] = ((-3.5, 0.5),)
+    elif hp_eval["env"] == "IMP":
+        hp_eval["env"] = IteratedMatchingPennies
+        plot_config["x_limits"] = ((-1.0, 1.0),)
+        plot_config["y_limits"] = ((-1.0, 1.0),)
+    elif hp_eval["env"] == "IBoT":
+        hp_eval["env"] = IteratedBoS
+        plot_config["x_limits"] = ((-0.5, 3.5),)
+        plot_config["y_limits"] = ((-0.5, 3.5),)
+    elif hp_eval["env"] == "CoinGame":
+        hp_eval["env"] = CoinGame
+        plot_config["x_limits"] = ((-1.0, 3.0),)
+        plot_config["y_limits"] = ((-1.0, 3.0),)
+        plot_config["jitter"] = 0.02
+    elif hp_eval["env"] == "AsymCoinGame":
+        hp_eval["env"] = AsymCoinGame
+        plot_config["x_limits"] = ((-1.0, 3.0),)
+        plot_config["y_limits"] = ((-1.0, 3.0),)
+        plot_config["jitter"] = 0.02
+    else:
+        raise NotImplementedError()
+
+
+    rllib_config = {
+        "env": hp_eval["env"],
+        "env_config": env_config,
+        "multiagent": {
+            "policies": {
+                env_config["players_ids"][0]: (
+                    policy.FreezedPolicyFromTuneTrainer,
+                    hp_eval["env"](env_config).OBSERVATION_SPACE,
+                    hp_eval["env"].ACTION_SPACE,
+                    copy.deepcopy(config)),
+
+                env_config["players_ids"][1]: (
+                    policy.FreezedPolicyFromTuneTrainer,
+                    hp_eval["env"](env_config).OBSERVATION_SPACE,
+                    hp_eval["env"].ACTION_SPACE,
+                    copy.deepcopy(config)),
+            },
+            "policy_mapping_fn": lambda agent_id: agent_id,
+            "policies_to_train": ["None"],
+        },
+        "seed": hp_eval["seed"],
+    }
+
+    evaluate_same_and_cross_perf(training_results, rllib_config, stop, env_config, hp_eval, plot_config)
+
+
+def evaluate_same_and_cross_perf(training_results, rllib_config, stop, env_config, hp, plot_config):
+
+    policies_to_load = copy.deepcopy(env_config["players_ids"])
+
+    evaluator = same_and_cross_perf.SameAndCrossPlayEvaluation(TuneTrainerClass=LOLADICE,
+                                                               group_names=plot_config["group_names"],
+                                                               evaluation_config=rllib_config,
+                                                               stop_config=stop,
+                                                               exp_name=hp["exp_name"],
+                                                               policies_to_train=["None"],
+                                                               policies_to_load_from_checkpoint=policies_to_load,
+                                                               )
+
+    if hparams["load_plot_data"] is None:
+        analysis_metrics_per_mode = evaluator.perf_analysis(n_same_play_per_checkpoint=1,
+                                                            n_cross_play_per_checkpoint=(train_n_replicates * len(
+                                                                plot_config["group_names"])) - 1,
+                                                            extract_checkpoints_from_results=[training_results],
+                                                            )
+    else:
+        analysis_metrics_per_mode = evaluator.load_results(to_load_path=hparams["load_plot_data"])
+
+    evaluator.plot_results(analysis_metrics_per_mode,
+                           title_sufix=": " + hp['env'].NAME,
+                           metrics=((f"policy_reward_mean/{env_config['players_ids'][0]}",
+                                     f"policy_reward_mean/{env_config['players_ids'][1]}"),),
+                           x_limits=plot_config["x_limits"], y_limits=plot_config["y_limits"],
+                           scale_multipliers=plot_config["scale_multipliers"],
+                           markersize=5,
+                           alpha=1.0,
+                           jitter=plot_config["jitter"],
+                           colors=["red", "blue"],
+                           xlabel="player 1 payoffs", ylabel="player 2 payoffs", add_title=False, frameon=True,
+                           show_groups=False
+                           )
+
+
+if __name__ == "__main__":
+    debug = False
+    train_n_replicates = 4
+    timestamp = int(time.time())
+    seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
+
+    exp_name, _ = log.put_everything_in_one_dir("LOLA_DICE")
+
+    hparams = {
+
+        "load_plot_data": None,
+        # IPD
+        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-2/LOLA_DICE/2020_12_15/11_44_21/2020_12_15/12_07_42/SameAndCrossPlay_save.p",
+        # BOS
+        "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-3/LOLA_DICE/2020_12_15/12_04_40/2020_12_15/12_28_37/SameAndCrossPlay_save.p",
+
+        "exp_name": exp_name,
+
+        # "env": "IPD",
+        # "env": "IMP",
+        "env": "IBoT",
+        # "env": "CoinGame",
+        # "env": "AsymCoinGame",
+
+        "gamma": None,
+        "trace_length": 10 if debug else None,
+
+        "epochs": 2 if debug else 200,
+        "lr_inner": .1,
+        "lr_outer": .2,
+        "lr_value": .1,
+        "lr_om": .1,
+        "inner_asymm": True,
+        "n_agents": 2,
+        "n_inner_steps": 1 if debug else 2,
+        "batch_size": 10 if debug else 64,
+        "value_batch_size": 16,
+        "value_epochs": 0,
+        "om_batch_size": 16,
+        "om_epochs": 0,
+        "grid_size": 3,
+        "use_baseline": False,
+        "use_dice": True,
+        "use_opp_modeling": False,
+
+        "seed": tune.grid_search(seeds),
+        "metric": "ag_0_returns_player_1",
+    }
+
+    if hparams["load_plot_data"] is None:
+        ray.init(num_cpus=os.cpu_count(), num_gpus=0)
+        training_results = train(hparams)
+    else:
+        training_results = None
+
+    evaluate(training_results, hparams)
+    ray.shutdown()

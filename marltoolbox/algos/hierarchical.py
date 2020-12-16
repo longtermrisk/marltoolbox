@@ -10,6 +10,8 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 torch, nn = try_import_torch()
 
+from marltoolbox.utils import miscellaneous
+
 
 HIERARCHICAL_DEFAULT_CONFIG_UPDATE = {
     'nested_policies': [
@@ -29,7 +31,9 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         self.to_log = {}
 
         self.algorithms = []
-        for nested_config in config["nested_policies"]:
+        self.config = config
+        print("config", self.config)
+        for nested_config in self.config["nested_policies"]:
             updated_config = copy.deepcopy(config)
             updated_config.update(nested_config["config_update"])
             if nested_config["Policy_class"] is None:
@@ -37,6 +41,7 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
                                  f'in config["nested_config"]["Policy_class"] '
                                  f'current value is {nested_config["Policy_class"]}')
             Policy = nested_config["Policy_class"]
+            print("Spawn nested algo with config:",updated_config)
             policy = Policy(observation_space, action_space, updated_config, **kwargs)
             if after_init_nested is not None:
                 after_init_nested(policy)
@@ -44,6 +49,8 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
 
         self.active_algo_idx = self.INITIALLY_ACTIVE_ALGO
 
+        # if not miscellaneous.check_using_tune_class(self.config):
+        # Init parents only if we are using RLLib components (not Tune only)
         super().__init__(observation_space, action_space, config,
                          model=self.model,
                          loss=None,
@@ -52,6 +59,9 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
 
         for algo in self.algorithms:
             algo.model = algo.model.to(self.device)
+        # else:
+        #     self.observation_space = observation_space
+        #     self.action_space = action_space
 
     @property
     def model(self):
@@ -92,11 +102,14 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         return nested_update_target
 
     def get_weights(self):
-        return {i: algo.get_weights() for i, algo in enumerate(self.algorithms)}
+        return {self._nested_key(i): algo.get_weights() for i, algo in enumerate(self.algorithms)}
 
     def set_weights(self, weights):
         for i, algo in enumerate(self.algorithms):
-            algo.set_weights(weights[i])
+            algo.set_weights(weights[self._nested_key(i)])
+
+    def _nested_key(self, i):
+        return f"nested_{i}"
 
     def compute_actions(
             self,

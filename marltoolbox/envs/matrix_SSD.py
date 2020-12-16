@@ -31,19 +31,26 @@ class MatrixSocialDilemma(MultiAgentEnv, ABC):
 
         assert self.PAYOUT_MATRIX is not None
         if "players_ids" in config:
-            assert isinstance(config["players_ids"], Iterable) and len(config["players_ids"]) == self.N_AGENTS
+            assert isinstance(config["players_ids"], Iterable) and len(config["players_ids"]) == self.NUM_AGENTS
 
         self.players_ids = config.get("players_ids", ["player_row", "player_col"])
         self.player_row_id, self.player_col_id = self.players_ids
         self.max_steps = config.get("max_steps", 20)
         self.reward_randomness = config.get("reward_randomness", 0.0)
         self.get_additional_info = config.get("get_additional_info", True)
+        self.get_available_actions = config.get("get_available_actions", False)
 
         self.step_count = None
 
         # To store info about the fraction of each states
         if self.get_additional_info:
             self._init_info()
+
+        # TODO available_actions
+        # self.available_actions = [
+        #     np.ones((batch_size, self.NUM_ACTIONS), dtype=int)
+        #     for _ in range(self.NUM_AGENTS)
+        # ]
 
     def seed(self, seed=None):
         """Seed the PRNG of this space. """
@@ -55,8 +62,8 @@ class MatrixSocialDilemma(MultiAgentEnv, ABC):
         if self.get_additional_info:
             self._reset_info()
         return {
-            self.player_row_id: self.N_STATES - 1,
-            self.player_col_id: self.N_STATES - 1
+            self.player_row_id: self.NUM_STATES - 1,
+            self.player_col_id: self.NUM_STATES - 1
         }
 
     def step(self, action):
@@ -73,8 +80,8 @@ class MatrixSocialDilemma(MultiAgentEnv, ABC):
             rewards = self._add_randomness_to_reward(rewards)
 
         observations = {
-            self.player_row_id: ac0 * self.N_ACTIONS + ac1,
-            self.player_col_id: ac1 * self.N_ACTIONS + ac0
+            self.player_row_id: ac0 * self.NUM_ACTIONS + ac1,
+            self.player_col_id: ac1 * self.NUM_ACTIONS + ac0
         }
 
         if self.step_count == self.max_steps:
@@ -99,6 +106,8 @@ class MatrixSocialDilemma(MultiAgentEnv, ABC):
         return observations, rewards, done, info
 
     def _add_randomness_to_reward(self, rewards:dict)->dict:
+        if not hasattr(self, "np_random"):
+            self.seed()
         for key in rewards.keys():
             rewards[key] += float(self.np_random.normal(loc=0, scale=self.reward_randomness))
         return rewards
@@ -149,11 +158,11 @@ class IteratedMatchingPennies(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     """
     A two-agent environment for the Matching Pennies game.
     """
-    N_AGENTS = 2
-    N_ACTIONS = 2
-    N_STATES = N_ACTIONS ** N_AGENTS + 1
-    ACTION_SPACE = Discrete(N_ACTIONS)
-    OBSERVATION_SPACE = Discrete(N_STATES)
+    NUM_AGENTS = 2
+    NUM_ACTIONS = 2
+    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    ACTION_SPACE = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array([[[+1, -1], [-1, +1]],
                               [[-1, +1], [+1, -1]]])
     NAME = "IMP"
@@ -164,12 +173,26 @@ class IteratedPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     A two-agent environment for the Prisoner's Dilemma game.
     """
 
-    N_AGENTS = 2
-    N_ACTIONS = 2
-    N_STATES = N_ACTIONS ** N_AGENTS + 1
-    ACTION_SPACE = Discrete(N_ACTIONS)
-    OBSERVATION_SPACE = Discrete(N_STATES)
+    NUM_AGENTS = 2
+    NUM_ACTIONS = 2
+    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    ACTION_SPACE = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array([[[-1, -1], [-3, +0]],
+                              [[+0, -3], [-2, -2]]])
+    NAME = "IPD"
+
+class AsymIteratedPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+    """
+    A two-agent environment for the Prisoner's Dilemma game.
+    """
+
+    NUM_AGENTS = 2
+    NUM_ACTIONS = 2
+    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    ACTION_SPACE = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    PAYOUT_MATRIX = np.array([[[+0, -1], [-3, +0]],
                               [[+0, -3], [-2, -2]]])
     NAME = "IPD"
 
@@ -178,11 +201,11 @@ class IteratedStagHunt(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     A two-agent environment for the Stag Hunt game.
     """
 
-    N_AGENTS = 2
-    N_ACTIONS = 2
-    N_STATES = N_ACTIONS ** N_AGENTS + 1
-    ACTION_SPACE = Discrete(N_ACTIONS)
-    OBSERVATION_SPACE = Discrete(N_STATES)
+    NUM_AGENTS = 2
+    NUM_ACTIONS = 2
+    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    ACTION_SPACE = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array([[[3, 3], [0, 2]],
                               [[2, 0], [1, 1]]])
     NAME = "IteratedStagHunt"
@@ -193,27 +216,81 @@ class IteratedChicken(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     A two-agent environment for the Chicken game.
     """
 
-    N_AGENTS = 2
-    N_ACTIONS = 2
-    N_STATES = N_ACTIONS ** N_AGENTS + 1
-    ACTION_SPACE = Discrete(N_ACTIONS)
-    OBSERVATION_SPACE = Discrete(N_STATES)
+    NUM_AGENTS = 2
+    NUM_ACTIONS = 2
+    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    ACTION_SPACE = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array([[[+0, +0], [-1., +1.]],
                               [[+1, -1], [-10, -10]]])
     NAME = "IteratedChicken"
 
+class IteratedAsymChicken(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+    """
+    A two-agent environment for the Chicken game.
+    """
 
-class BOTS_PD(MatrixSocialDilemma):
+    NUM_AGENTS = 2
+    NUM_ACTIONS = 2
+    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    ACTION_SPACE = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    PAYOUT_MATRIX = np.array([[[+2.0, +0], [-1., +1.]],
+                              [[+3.0, -1], [-3, -3]]])
+    NAME = "AsymmetricIteratedChicken"
+
+class IteratedBoS(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+    """
+    A two-agent environment for the BoS game.
+    """
+
+    NUM_AGENTS = 2
+    NUM_ACTIONS = 2
+    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    ACTION_SPACE = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    PAYOUT_MATRIX = np.array([[[+3.0, +2.0], [+0.0, +0.0]],
+                              [[+0.0, +0.0], [+2.0, +3.0]]])
+    NAME = "IteratedBoS"
+
+
+
+class NPlayersDiscreteActionsInfo:
+
+    def _init_info(self):
+        self.info_counters = {"n_steps_accumulated": 0}
+
+    def _reset_info(self):
+        self.info_counters = {"n_steps_accumulated": 0}
+
+    def _get_info_summary(self):
+        info = {}
+        if self.info_counters["n_steps_accumulated"] > 0:
+            for k, v in self.info_counters.items():
+                if k != "n_steps_accumulated":
+                    info[k] = v / self.info_counters["n_steps_accumulated"]
+
+        return info
+
+    def _accumulate_info(self, *actions):
+        id = "_".join([str(a) for a in actions])
+        if id not in self.info_counters:
+            self.info_counters[id] = 0
+        self.info_counters[id] += 1
+        self.info_counters["n_steps_accumulated"] += 1
+
+
+class IteratedBoSAndPD(NPlayersDiscreteActionsInfo, MatrixSocialDilemma):
     """
     A two-agent environment for the BOTS + PD game.
     """
 
-    N_AGENTS = 2
-    N_ACTIONS = 3
-    N_STATES = N_ACTIONS ** N_AGENTS + 1
-    ACTION_SPACE = Discrete(N_ACTIONS)
-    OBSERVATION_SPACE = Discrete(N_STATES)
+    NUM_AGENTS = 2
+    NUM_ACTIONS = 3
+    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    ACTION_SPACE = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array([[[3.5, +1], [+0, +0], [-3, +2]],
                               [[+0., +0], [+1, +3], [-3, +2]],
                               [[+2., -3], [+2, -3], [-1, -1]]])
-    NAME = "BOTS+PD"
+    NAME = "IteratedBoSAndPD"
