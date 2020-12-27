@@ -23,32 +23,6 @@ from marltoolbox.utils import restore, log, miscellaneous
 logger = logging.getLogger(__name__)
 
 
-def set_config_for_evaluation(config: dict, policies_to_train=["None"]) -> dict:
-    config_copy = copy.deepcopy(config)
-
-    # Do not train
-    # Always multiagent
-    assert "multiagent" in config_copy.keys(), "Only working for config with multiagent key. " \
-                                               f"config_copy.keys(): {config_copy.keys()}"
-    config_copy["multiagent"]["policies_to_train"] = policies_to_train
-
-    # Setup for evaluation
-    # === Exploration Settings ===
-    # Default exploration behavior, iff `explore`=None is passed into
-    # compute_action(s).
-    # Set to False for no exploration behavior (e.g., for evaluation).
-    config_copy["explore"] = False
-
-    # TODO below is really useless? If so then clean it
-    # The following is not really needed since we are not training any policies
-    # === Optimization ===
-    # Learning rate for adam optimizer
-    config_copy["lr"] = 0.0
-    # # Learning rate schedule
-    if "lr_schedule" in config_copy.keys():
-        config_copy["lr_schedule"] = None
-
-    return config_copy
 
 
 class SameAndCrossPlayEvaluation:
@@ -62,8 +36,8 @@ class SameAndCrossPlayEvaluation:
     # TODO docstring
     # TODO test it
     # TODO add capability to load and replot (save data) and call plot with custom args
-    SELF_PLAY_MODE = "same training run"
-    CROSS_PLAY_MODE = "cross training run"
+    SELF_PLAY_MODE = "same-play"
+    CROSS_PLAY_MODE = "cross-play"
     MODES = [CROSS_PLAY_MODE, SELF_PLAY_MODE]
 
     # TODO warning must give policy which allow checkpoint loading!!
@@ -94,11 +68,11 @@ class SameAndCrossPlayEvaluation:
 
         assert "multiagent" in evaluation_config.keys()
         assert len(evaluation_config["multiagent"]["policies"].keys()) == 2
-        evaluation_config = set_config_for_evaluation(evaluation_config, policies_to_train)
+        evaluation_config = miscellaneous.set_config_for_evaluation(evaluation_config, policies_to_train)
         self.evaluation_config = evaluation_config
         self.stop_config = stop_config
 
-        self.exp_name, self.exp_parent_dir = log.put_everything_in_one_dir(exp_name)
+        self.exp_name, self.exp_parent_dir = log.log_in_current_day_dir(exp_name)
         self.results_file_name = "SameAndCrossPlay_save.p"
         self.save_path = os.path.join(self.exp_parent_dir, self.results_file_name)
 
@@ -151,7 +125,8 @@ class SameAndCrossPlayEvaluation:
                                                                   n_same_play_per_checkpoint)
         # TODO same_cross_play => same_cross_perf_evaluation
         results = ray.tune.run(self.TrainerClass, config=master_config,
-                               stop=self.stop_config, name=os.path.join(self.exp_name, "same_cross_play"))
+                               stop=self.stop_config, name=os.path.join(self.exp_name, "same_cross_play"),
+                               checkpoint_freq=0, checkpoint_at_end=False)
         for i in range(len(all_metadata)):
             all_metadata[i]["results"] = results.trials[i]
 
@@ -171,9 +146,11 @@ class SameAndCrossPlayEvaluation:
         all_play = same_play + cross_play
         all_metadata = [play[0] for play in all_play]
         all_config = [play[1] for play in all_play]
-        all_multiagent = [play["multiagent"] for play in all_config]
         master_config = all_config[0]
-        master_config["multiagent"] = tune.grid_search(all_multiagent)
+        # all_multiagent = [play["multiagent"] for play in all_config]
+        # master_config["multiagent"] = tune.grid_search(all_multiagent)
+        all_multiagent_policies = [play["multiagent"]["policies"] for play in all_config]
+        master_config["multiagent"]["policies"] = tune.grid_search(all_multiagent_policies)
 
         return master_config, all_metadata
 
@@ -257,6 +234,7 @@ class SameAndCrossPlayEvaluation:
                 analysis_per_mode.append((mode, filtered_analysis_list, filtered_ids[0], filtered_names[0]))
         return analysis_per_mode
 
+    # TODO make a helper function (already started somewhere in examples)
     def _extract_all_metrics(self, analysis_per_mode):
         analysis_metrics_per_mode = []
         for mode_i, mode_data in enumerate(analysis_per_mode):
@@ -280,7 +258,7 @@ class SameAndCrossPlayEvaluation:
                      scale_multipliers: Iterable = None, show=False, save_fig=True,
                      figsize=(6, 6), markersize=5, jitter=None, title_sufix="",
                      save_matrix=True, xlabel=None, ylabel=None, add_title=True, frameon=None,
-                     show_groups = True):
+                     show_groups = True, plot_max_n_points=None):
 
         colors = list(matplotlib.colors.BASE_COLORS.keys()) if colors is None else colors
         if self.checkpoint_list_group_idx is not None and len(set(self.checkpoint_list_group_idx)) > 1:
@@ -304,22 +282,25 @@ class SameAndCrossPlayEvaluation:
             for mode_i, mode_data in enumerate(analysis_metrics_per_mode):
                 mode, available_metrics_list, group_pair_id, group_pair_name = mode_data
 
+                if mode == "Same-play" or mode == "same training run":
+                    mode = self.SELF_PLAY_MODE
+                elif mode == "Cross-play" or mode == "cross training run":
+                    mode = self.CROSS_PLAY_MODE
+
                 print("Evaluator mode:", mode)
                 if group_pair_name is not None and all([name is not None for name in group_pair_name]) and show_groups:
                     print("Using group_pair_name:", group_pair_name)
                     label = f"{mode}: " + " vs ".join(group_pair_name)
                 else:
-                    if mode == "Same-play":
-                        label = self.SELF_PLAY_MODE
-                    elif mode == "Cross-play":
-                        label = self.CROSS_PLAY_MODE
-                    else:
-                        label = mode
+                    label = mode
+                label = label.replace('_', ' ')
 
                 x, y = [], []
                 assert len(available_metrics_list) > 0
+                counter = 0
+                random.shuffle(available_metrics_list)
                 for available_metrics in available_metrics_list:
-                    print("available_metrics:", available_metrics)
+                    # print("available_metrics:", available_metrics)
                     x_point = available_metrics[metric_x][metric_mode]
                     y_point = available_metrics[metric_y][metric_mode]
                     if scale_multipliers is not None:
@@ -327,6 +308,9 @@ class SameAndCrossPlayEvaluation:
                         y_point *= scale_multipliers[metric_i][1]
                     x.append(x_point)
                     y.append(y_point)
+                    counter += 1
+                    if plot_max_n_points is not None and counter >= plot_max_n_points:
+                        break
                 if save_matrix:
                     x_means.append(sum(x)/len(x))
                     x_se.append(np.array(x).std()/np.sqrt(len(x)))
@@ -359,6 +343,7 @@ class SameAndCrossPlayEvaluation:
                 file_name = f'same_and_cross_play_{metric_y}_vs_{metric_x}.png'
                 file_name = file_name.replace('/', '_')
                 file_path = os.path.join(self.exp_parent_dir, file_name)
+                print("save fig to", file_path)
                 fig.savefig(file_path, dpi=fig.dpi)
             if save_matrix:
                 file_name = f'same_and_cross_play_{metric_y}_vs_{metric_x}_matrix.json'

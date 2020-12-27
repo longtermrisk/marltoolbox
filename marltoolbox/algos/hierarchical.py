@@ -13,7 +13,7 @@ torch, nn = try_import_torch()
 from marltoolbox.utils import miscellaneous
 
 
-HIERARCHICAL_DEFAULT_CONFIG_UPDATE = {
+DEFAULT_CONFIG = {
     'nested_policies': [
         # You need to provide the policy class for every nested Policies
         {"Policy_class": None, "config_update": {}},
@@ -153,9 +153,15 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
             all_optimizers.extend(algo.optimizer())
         return all_optimizers
 
+    # TODO Move this in helper functions
     def _filter_sample_batch(self, samples: SampleBatch, filter_key, remove=True, copy_data=False) -> SampleBatch:
         filter = samples.data[filter_key]
         if remove:
             # torch logical not
             filter = ~ filter
         return SampleBatch({k: np.array(v, copy=copy_data)[filter] for (k, v) in samples.data.items()})
+
+    def postprocess_trajectory(self, sample_batch,
+                                   other_agent_batches=None,
+                                   episode=None):
+        return self.algorithms[self.active_algo_idx].postprocess_trajectory(sample_batch, other_agent_batches, episode)

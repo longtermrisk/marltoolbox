@@ -55,7 +55,7 @@ def prepare_config_for_lvl1_training(config: dict, lvl0_policy_id: str, lvl1_pol
     population.replace_opponent_by_population_of_opponents(
         config=config,
         opponent_policy_id=lvl0_policy_id,
-        opponents_checkpoints=miscellaneous.use_seed_as_idx(checkpoints_list))
+        opponents_checkpoints=miscellaneous.seed_to_checkpoint(checkpoints_list))
 
     return config
 

@@ -1,17 +1,213 @@
-from typing import Dict, Callable
-import numbers
-from collections import Iterable
 import datetime
-import os
+import copy
+from collections import Iterable
 
+import datetime
 import gym
-
-from ray.rllib.utils.typing import PolicyID, TensorType
+import numbers
+import os
+import pickle
+import pprint
+import re
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
+from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation import MultiAgentEpisode
+from ray.rllib.utils.typing import PolicyID, TensorType
+from typing import Dict, Callable
+
+
+# TODO problem this add max, min, avg of each log...
+def get_logging_callbacks_class(log_env_step=True,
+                                log_from_policy=True,
+                                log_full_epi=False, log_full_epi_delay=100,
+                                log_weights=False, log_weigths_interval=100):
+    class LoggingCallbacks(DefaultCallbacks):
+
+        def on_episode_step(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+                            episode: MultiAgentEpisode, env_index: int, **kwargs):
+            """Runs on each episode step.
+
+            Args:
+                worker (RolloutWorker): Reference to the current rollout worker.
+                base_env (BaseEnv): BaseEnv running the episode. The underlying
+                    env object can be gotten by calling base_env.get_unwrapped().
+                episode (MultiAgentEpisode): Episode object which contains episode
+                    state. You can use the `episode.user_data` dict to store
+                    temporary data, and `episode.custom_metrics` to store custom
+                    metrics for the episode.
+                env_index (int): The index of the (vectorized) env, which the
+                    episode belongs to.
+                kwargs: Forward compatibility placeholder.
+            """
+            if log_env_step:
+                self._add_env_info_to_custom_metrics(worker, episode)
+            if log_full_epi and self.log_full_epi_steps:
+                self._add_step_in_buffer(episode)
+
+        def _add_step_in_buffer(self, episode):
+            data = {}
+            for agent_id in episode._policies.keys():
+                action = episode.last_action_for(agent_id).tolist()
+                info = episode.last_info_for(agent_id)
+                epi = episode.episode_id
+                # TODO make this clean
+                if isinstance(action, Iterable) and len(action) == 1:
+                    action = action[0]
+                rewards = episode._agent_reward_history[agent_id]
+                reward = rewards[-1].tolist() if len(rewards) > 0 else None
+                if reward is not None and isinstance(reward, Iterable) and len(reward) == 1:
+                    reward = reward[0]
+                data[agent_id] = {"action": action, "reward": reward, "info": info, "epi": epi}
+            self.buffer.append(data)
+
+        def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+                             policies: Dict[PolicyID, Policy],
+                             episode: MultiAgentEpisode, env_index: int, **kwargs):
+            """Callback run on the rollout worker before each episode starts.
+
+            Args:
+                worker (RolloutWorker): Reference to the current rollout worker.
+                base_env (BaseEnv): BaseEnv running the episode. The underlying
+                    env object can be gotten by calling base_env.get_unwrapped().
+                policies (dict): Mapping of policy id to policy objects. In single
+                    agent mode there will only be a single "default" policy.
+                episode (MultiAgentEpisode): Episode object which contains episode
+                    state. You can use the `episode.user_data` dict to store
+                    temporary data, and `episode.custom_metrics` to store custom
+                    metrics for the episode.
+                env_index (int): The index of the (vectorized) env, which the
+                    episode belongs to.
+                kwargs: Forward compatibility placeholder.
+            """
+            if log_full_epi:
+                if not hasattr(self, "log_full_epi_step"):
+                    self.log_full_epi_steps = True
+                    self.buffer = []
+                    self.delay_counter = log_full_epi_delay
+
+                if self.buffer == []:
+                    if self.delay_counter >= log_full_epi_delay:
+                        self.log_full_epi_steps = True
+                        self.delay_counter = 0
+
+        def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+                           policies: Dict[PolicyID, Policy],
+                           episode: MultiAgentEpisode, env_index: int, **kwargs):
+            """Runs when an episode is done.
+
+            Args:
+                worker (RolloutWorker): Reference to the current rollout worker.
+                base_env (BaseEnv): BaseEnv running the episode. The underlying
+                    env object can be gotten by calling base_env.get_unwrapped().
+                policies (dict): Mapping of policy id to policy objects. In single
+                    agent mode there will only be a single "default" policy.
+                episode (MultiAgentEpisode): Episode object which contains episode
+                    state. You can use the `episode.user_data` dict to store
+                    temporary data, and `episode.custom_metrics` to store custom
+                    metrics for the episode.
+                env_index (int): The index of the (vectorized) env, which the
+                    episode belongs to.
+                kwargs: Forward compatibility placeholder.
+            """
+            if log_full_epi:
+                self.log_full_epi_steps = False
+
+        def on_train_result(self, *, trainer, result: dict, **kwargs):
+            """Called at the end of Trainable.train().
+
+            Args:
+                trainer (Trainer): Current trainer instance.
+                result (dict): Dict of results returned from trainer.train() call.
+                    You can mutate this object to add additional metrics.
+                kwargs: Forward compatibility placeholder.
+            """
+            if log_from_policy:
+                self._update_train_result_wt_to_log(trainer, result,
+                                                    function_to_exec=self._get_log_from_policy)
+            if log_weights:
+                if not hasattr(self, "on_train_result_counter"):
+                    self.on_train_result_counter = 0
+                if self.on_train_result_counter % log_weigths_interval == 0:
+                    self._update_train_result_wt_to_log(trainer, result,
+                                                        function_to_exec=self._get_weights_from_policy)
+                self.on_train_result_counter += 1
+
+            if log_full_epi:
+                if not hasattr(self, "delay_counter"):
+                    self.delay_counter = 0
+                self.delay_counter += 1
+                self._get_log_from_buffer(trainer, result)
+
+        @staticmethod
+        def _get_weights_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
+            """Gets the to_log var from a policy and rename its keys, adding the policy_id as a prefix."""
+            to_log = {}
+            weights = policy.get_weights()
+
+            for k, v in weights.items():
+                if isinstance(v, Iterable):
+                    to_log[f"{policy_id}/{k}"] = v
+
+            return to_log
+
+        def _get_log_from_buffer(self, trainer, result) -> dict:
+            """Gets the to_log var from a policy and rename its keys, adding the policy_id as a prefix."""
+            # print("_get_log_from_buffer", len(self.buffer))
+            if len(self.buffer) > 0:
+                data = self.buffer.pop(0)
+                for agent_id, agent_data in data.items():
+                    for k, v in agent_data.items():
+                        key = f"intra_epi_{agent_id}_{k}"
+                        if key not in result.keys():
+                            result[key] = v
+                        else:
+                            raise ValueError(f"key:{key} already exists in result.keys(): {result.keys()}")
+
+        @staticmethod
+        def _add_env_info_to_custom_metrics(worker, episode):
+
+            for agent_id in worker.policy_map.keys():
+                info = episode.last_info_for(agent_id)
+                for k, v in info.items():
+                    if isinstance(v, numbers.Number):
+                        # TODO this add stuff as metrics (with mean, min, max) => available to select checkpoint but
+                        #  produce a lot of logs !! Should be better if
+                        episode.custom_metrics[f"{k}/{agent_id}"] = v
+
+        def _update_train_result_wt_to_log(self, trainer, result: dict, function_to_exec):
+            """
+            Add logs from every policies (from policy.to_log:dict) to the results (which are then plotted in Tensorboard).
+            To be called from the on_train_result callback.
+            """
+
+            def to_exec(worker):
+                return worker.foreach_policy(function_to_exec)
+
+            # to_log_list = trainer.workers.foreach_policy(function_to_exec)
+            to_log_list_list = trainer.workers.foreach_worker(to_exec)
+            for worker_idx, to_log_list in enumerate(to_log_list_list):
+                for to_log in to_log_list:
+                    for k, v in to_log.items():
+                        key = f"{k}/worker_{worker_idx}"
+                        if key not in result.keys():
+                            result[key] = v
+                        else:
+                            raise ValueError(f"key:{key} already exists in result.keys(): {result.keys()}")
+
+        @staticmethod
+        def _get_log_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
+            """Gets the to_log var from a policy and rename its keys, adding the policy_id as a prefix."""
+            to_log = {}
+            if hasattr(policy, "to_log"):
+                for k, v in policy.to_log.items():
+                    to_log[f"{k}/{policy_id}"] = v
+                policy.to_log = {}
+            return to_log
+
+    return LoggingCallbacks
+
 
 def _log_action_prob_pytorch(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     """
@@ -53,6 +249,7 @@ def _log_action_prob_pytorch(policy: Policy, train_batch: SampleBatch) -> Dict[s
         raise NotImplementedError()
     return to_log
 
+
 def stats_fn_wt_additionnal_logs(stats_function: Callable[[Policy, SampleBatch], Dict[str, TensorType]]):
     """
     Return a function executing the given function and adding additional logs about the TRAINING BATCH
@@ -75,168 +272,115 @@ def stats_fn_wt_additionnal_logs(stats_function: Callable[[Policy, SampleBatch],
     return wt_additional_info
 
 
+# def exp_name(name: str, n_days_worth_of_exp_in_same_dir=0,
+#              base_dir="~/ray_results", create_symlinks=True) -> str:
+#     """
+#     Give back f'{name}/YEAR_MONTH_DAY' and
+#     add symlinks to see the logs a few days old in this dir
+#     (to prevent long load time in tensorboard)
+#     :param name:
+#     :param n_days_worth_of_exp_in_same_dir:
+#     :param base_dir:
+#     :param create_symlinks:
+#     :return:
+#     """
+#     import datetime
+#     import os
+#     base_dir = os.path.expanduser(base_dir)
+#     if not os.path.exists(base_dir):
+#         os.mkdir(base_dir)
+#
+#     intermediary_dir_path = os.path.join(base_dir, name)
+#     if not os.path.exists(intermediary_dir_path):
+#         os.mkdir(intermediary_dir_path)
+#
+#     now = datetime.datetime.now()
+#     date_str = now.strftime("%Y_%m_%d")
+#     new_dir_name = os.path.join(name, date_str)
+#     new_dir_path = os.path.join(base_dir, new_dir_name)
+#     if not os.path.exists(new_dir_path):
+#         os.mkdir(new_dir_path)
+#
+#     if create_symlinks:
+#         past_dirs = []
+#         for i in range(n_days_worth_of_exp_in_same_dir):
+#             now = now - datetime.timedelta(1)
+#             date_str = now.strftime("%Y_%m_%d")
+#             past_dirs.append(os.path.join(name, date_str))
+#
+#         for past_dir in past_dirs:
+#             path = os.path.join(base_dir, past_dir)
+#             if os.path.exists(path) and os.path.isdir(path):
+#                 # link to child to prevent a chain of symlinks
+#                 childs = [f.path for f in os.scandir(path) if f.is_dir()]
+#                 for child_path in childs:
+#                     # child_path = os.path.join(path, child)
+#                     child_tail, child_head = os.path.split(child_path)
+#                     sym_link_path = os.path.join(new_dir_path, child_head)
+#                     if not os.path.exists(sym_link_path):
+#                         print("Create sym_link src:", child_path, "dst:", sym_link_path)
+#                         os.symlink(src=child_path, dst=sym_link_path)
+#
+#     return new_dir_name
 
 
-
-#TODO problem this add max, min, avg of each log...
-class LoggingCallbacks(DefaultCallbacks):
-    VERBOSE = 1
-    WEIGHTS_FREQUENCY = 10
-
-    def on_episode_step(self, *, worker: "RolloutWorker", base_env: BaseEnv,
-                        episode: MultiAgentEpisode, env_index: int, **kwargs):
-        """Runs on each episode step.
-
-        Args:
-            worker (RolloutWorker): Reference to the current rollout worker.
-            base_env (BaseEnv): BaseEnv running the episode. The underlying
-                env object can be gotten by calling base_env.get_unwrapped().
-            episode (MultiAgentEpisode): Episode object which contains episode
-                state. You can use the `episode.user_data` dict to store
-                temporary data, and `episode.custom_metrics` to store custom
-                metrics for the episode.
-            env_index (int): The index of the (vectorized) env, which the
-                episode belongs to.
-            kwargs: Forward compatibility placeholder.
-        """
-        if self.VERBOSE > 0:
-            self._add_env_info_to_custom_metrics(worker, episode)
-
-    def on_train_result(self, *, trainer, result: dict, **kwargs):
-        """Called at the end of Trainable.train().
-
-        Args:
-            trainer (Trainer): Current trainer instance.
-            result (dict): Dict of results returned from trainer.train() call.
-                You can mutate this object to add additional metrics.
-            kwargs: Forward compatibility placeholder.
-        """
-        if self.VERBOSE > 0:
-            self._update_train_result_wt_to_log(trainer, result,
-                                                function_to_exec=self._get_log_from_policy)
-        if self.VERBOSE > 2:
-            if not hasattr(self, "on_train_result_counter"):
-                self.on_train_result_counter = 0
-            if self.on_train_result_counter % self.WEIGHTS_FREQUENCY == 0:
-                self._update_train_result_wt_to_log(trainer, result,
-                                                    function_to_exec=self._get_weights_from_policy)
-            self.on_train_result_counter += 1
-
-    @staticmethod
-    def _get_weights_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
-        """Gets the to_log var from a policy and rename its keys, adding the policy_id as a prefix."""
-        to_log = {}
-        weights = policy.get_weights()
-
-        for k, v in weights.items():
-            if isinstance(v, Iterable):
-                to_log[f"{policy_id}/{k}"] = v
-
-        return to_log
-
-    @staticmethod
-    def _add_env_info_to_custom_metrics(worker, episode):
-
-        for agent_id in worker.policy_map.keys():
-            info = episode.last_info_for(agent_id)
-            for k, v in info.items():
-                if isinstance(v, numbers.Number):
-                    # TODO this add stuff as metrics (with mean, min, max) => available to select checkpoint but
-                    #  produce a lot of logs !! Should be better if
-                    episode.custom_metrics[f"{k}/{agent_id}"] = v
-
-
-    def _update_train_result_wt_to_log(self, trainer, result: dict, function_to_exec):
-        """
-        Add logs from every policies (from policy.to_log:dict) to the results (which are then plotted in Tensorboard).
-        To be called from the on_train_result callback.
-        """
-        def to_exec(worker):
-            return worker.foreach_policy(function_to_exec)
-
-        # to_log_list = trainer.workers.foreach_policy(function_to_exec)
-        to_log_list_list = trainer.workers.foreach_worker(to_exec)
-        for worker_idx, to_log_list in enumerate(to_log_list_list):
-            for to_log in to_log_list:
-                for k, v in to_log.items():
-                    key = f"{k}/worker_{worker_idx}"
-                    if key not in result.keys():
-                        result[key] = v
-                    else:
-                        raise ValueError(f"key:{key} already exists in result.keys(): {result.keys()}")
-
-
-    @staticmethod
-    def _get_log_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
-        """Gets the to_log var from a policy and rename its keys, adding the policy_id as a prefix."""
-        to_log = {}
-        if hasattr(policy, "to_log"):
-            for k, v in policy.to_log.items():
-                to_log[f"{k}/{policy_id}"] = v
-            policy.to_log = {}
-        return to_log
-
-
-
-def exp_name(name:str, n_days_worth_of_exp_in_same_dir=0,
-             base_dir="~/ray_results", create_symlinks=True) -> str:
-    """
-    Give back f'{name}/YEAR_MONTH_DAY' and
-    add symlinks to see the logs a few days old in this dir
-    (to prevent long load time in tensorboard)
-    :param name:
-    :param n_days_worth_of_exp_in_same_dir:
-    :param base_dir:
-    :param create_symlinks:
-    :return:
-    """
-    import datetime
-    import os
-    base_dir = os.path.expanduser(base_dir)
-    if not os.path.exists(base_dir):
-        os.mkdir(base_dir)
-
-    intermediary_dir_path = os.path.join(base_dir, name)
-    if not os.path.exists(intermediary_dir_path):
-        os.mkdir(intermediary_dir_path)
-
-    now = datetime.datetime.now()
-    date_str = now.strftime("%Y_%m_%d")
-    new_dir_name = os.path.join(name, date_str)
-    new_dir_path = os.path.join(base_dir, new_dir_name)
-    if not os.path.exists(new_dir_path):
-        os.mkdir(new_dir_path)
-
-    if create_symlinks:
-        past_dirs = []
-        for i in range(n_days_worth_of_exp_in_same_dir):
-            now = now - datetime.timedelta(1)
-            date_str = now.strftime("%Y_%m_%d")
-            past_dirs.append(os.path.join(name, date_str))
-
-        for past_dir in past_dirs:
-            path = os.path.join(base_dir, past_dir)
-            if os.path.exists(path) and os.path.isdir(path):
-                # link to child to prevent a chain of symlinks
-                childs = [f.path for f in os.scandir(path) if f.is_dir()]
-                for child_path in childs:
-                    # child_path = os.path.join(path, child)
-                    child_tail, child_head = os.path.split(child_path)
-                    sym_link_path = os.path.join(new_dir_path, child_head)
-                    if not os.path.exists(sym_link_path):
-                        print("Create sym_link src:", child_path, "dst:", sym_link_path)
-                        os.symlink(src=child_path, dst=sym_link_path)
-
-    return new_dir_name
-
-
-def put_everything_in_one_dir(exp_name):
+def log_in_current_day_dir(exp_name):
     now = datetime.datetime.now()
     date_str = now.strftime("%Y_%m_%d")
     hour_str = now.strftime("%H_%M_%S")
-    exp_name = os.path.join(exp_name,date_str)
-    exp_name = os.path.join(exp_name,hour_str)
-    base_dir = "~/ray_results"
+    base_dir = os.getenv('TUNE_RESULT_DIR', "~/ray_results")
     base_dir = os.path.expanduser(base_dir)
+    exp_name = os.path.join(exp_name, date_str, hour_str)
     exp_dir_path = os.path.join(base_dir, exp_name)
     return exp_name, exp_dir_path
+
+
+def extract_all_metrics_from_results(results, limit=False):
+    metrics = []
+    for trial in results.trials:
+        metric_analysis = trial.metric_analysis
+        config = trial.config
+        if limit:
+            last_results = None
+            config.pop("callbacks", None)
+            config.pop("multiagent", None)
+        else:
+            last_results = trial.last_result
+        evaluated_params = trial.evaluated_params
+
+        metrics.append({"metric_analysis": metric_analysis, "last_results": last_results,
+                        "config": config, "evaluated_params": evaluated_params})
+    return metrics
+
+
+def save_metrics(results, exp_name, filename, limit=False):
+    save_path = os.path.join(f"~/ray_results", exp_name, filename)
+    save_path = os.path.expanduser(save_path)
+    with open(save_path, "wb") as f:
+        metrics = extract_all_metrics_from_results(results, limit=limit)
+        print("metrics", metrics)
+        pickle.dump(metrics, f)
+
+
+def filter_nested(dict_or_list, keywords_to_keep):
+    if isinstance(dict_or_list, list):
+        dict_or_list = [filter_nested(v, keywords_to_keep) for v in dict_or_list]
+        return dict_or_list
+
+    dict_ = copy.deepcopy(dict_or_list)
+    for k, v in dict_.items():
+        if all([re.search(keyword, k) is None for keyword in keywords_to_keep]):
+            dict_or_list.pop(k)
+        else:
+            if isinstance(v, dict) or isinstance(v, list):
+                dict_or_list[k] = filter_nested(v, keywords_to_keep)
+    return dict_or_list
+
+
+def print_saved_metrics(file_path, keywords_to_print=None):
+    pp = pprint.PrettyPrinter(depth=4)
+    with open(file_path, "rb") as f:
+        metrics = pickle.load(f)
+        if keywords_to_print is not None:
+            metrics = filter_nested(metrics, keywords_to_print)
+        pp.pprint(metrics)

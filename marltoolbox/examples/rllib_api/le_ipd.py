@@ -14,10 +14,9 @@ from ray.rllib.utils.typing import TrainerConfigDict
 torch, nn = try_import_torch()
 
 from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma
-from marltoolbox.algos.le.learning_equilibrium import LE_DEFAULT_CONFIG_UPDATE, LE, LECallBacks
-from marltoolbox.utils.exploration import SoftQSchedule
-from marltoolbox.utils import log
+from marltoolbox.algos.le.learning_equilibrium import LE_DEFAULT_CONFIG_UPDATE, LE, LECallbacks
 from marltoolbox.algos.supervised_learning import SPLTorchPolicy
+from marltoolbox.utils import log, miscellaneous, exploration
 
 
 def sgd_optimizer_dqn(policy: Policy, config: TrainerConfigDict) -> "torch.optim.Optimizer":
@@ -30,25 +29,21 @@ def sgd_optimizer_spl(policy: Policy, config: TrainerConfigDict) -> "torch.optim
         policy.model.parameters(), lr=policy.cur_lr, momentum=config["sgd_momentum"])
 
 
-# TODO update the unique rollout worker after every episode
-# TODO check than no bug arise from the fact that there is 2 policies
-#  (one used to produce samples in the rolloutworker and one used to train the models)
-if __name__ == "__main__":
-    n_epi = int(200 * 1)
-    n_steps_per_epi = 20
-    bs_epi_mul = 4
-    base_lr = 0.04
-    spl_lr_mul = 10.0
+def get_rllib_config(hp:dict):
 
     stop = {
-        "episodes_total": n_epi,  # 4000 steps in 200 epi
+        "episodes_total": hp["n_epi"],  # 4000 steps in 200 epi
     }
 
     env_config = {
         "players_ids": ["player_row", "player_col"],
-        "max_steps": n_steps_per_epi,
+        "max_steps": hp["n_steps_per_epi"],
         "reward_randomness": 0.1,
     }
+
+    MyDQNTorchPolicy = DQNTorchPolicy.with_updates(
+        optimizer_fn=sgd_optimizer_dqn,
+        stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats))
 
     LE_CONFIG_UPDATE = merge_dicts(
         LE_DEFAULT_CONFIG_UPDATE,
@@ -56,32 +51,21 @@ if __name__ == "__main__":
             "sgd_momentum": 0.9,
             'nested_policies': [
                 # Here the trainer need to be a DQNTrainer to provide the config for the 3 DQNTorchPolicy
-                {"Policy_class": DQNTorchPolicy.with_updates(
-                    optimizer_fn=sgd_optimizer_dqn,
-                    stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats)),
-                    # extra_action_out_fn=log.extra_action_out_fn_torch_dqn_policy),
-                    "config_update": {}},
-                {"Policy_class": DQNTorchPolicy.with_updates(
-                    optimizer_fn=sgd_optimizer_dqn,
-                    stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats)),
-                    # extra_action_out_fn=log.extra_action_out_fn_torch_dqn_policy),
-                    "config_update": {}},
-                {"Policy_class": DQNTorchPolicy.with_updates(
-                    optimizer_fn=sgd_optimizer_dqn,
-                    stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats)),
-                    # extra_action_out_fn=log.extra_action_out_fn_torch_dqn_policy),
-                    "config_update": {}},
+                {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
+                {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
+                {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
                 {"Policy_class": SPLTorchPolicy.with_updates(optimizer_fn=sgd_optimizer_spl), "config_update": {
                     "learn_action": True,
                     "learn_reward": False,
                     "sgd_momentum": 0.75,
                     "explore": False,
-                    "timesteps_per_iteration": n_steps_per_epi,
+                    "timesteps_per_iteration": hp["n_steps_per_epi"],
                     # === Optimization ===
                     # Learning rate for adam optimizer
-                    "lr": base_lr * spl_lr_mul,
+                    "lr": hp["base_lr"] * hp["spl_lr_mul"],
                     # Learning rate schedule
-                    "lr_schedule": [(0, base_lr * spl_lr_mul), (int(n_steps_per_epi * n_epi), base_lr / 1e9)],
+                    "lr_schedule": [(0, hp["base_lr"] * hp["spl_lr_mul"]),
+                                    (int(hp["n_steps_per_epi"] * hp["n_epi"]), hp["base_lr"] / 1e9)],
                     "loss_fn": torch.nn.CrossEntropyLoss(
                         weight=None,
                         size_average=None,
@@ -94,7 +78,7 @@ if __name__ == "__main__":
     )
 
     # TODO remove the useless hyper-parameters
-    trainer_config_update = {
+    rllib_config = {
         "env": IteratedPrisonersDilemma,
         "env_config": env_config,
         "multiagent": {
@@ -117,13 +101,13 @@ if __name__ == "__main__":
         # === DQN Models ===
         # Minimum env steps to optimize for per train call. This value does
         # not affect learning, only the length of iterations.
-        "timesteps_per_iteration": n_steps_per_epi,
+        "timesteps_per_iteration": hp["n_steps_per_epi"],
         # Update the target network every `target_network_update_freq` steps.
-        "target_network_update_freq": n_steps_per_epi,
+        "target_network_update_freq": hp["n_steps_per_epi"],
         # === Replay buffer ===
         # Size of the replay buffer. Note that if async_updates is set, then
         # each worker will have a replay buffer of this size.
-        "buffer_size": int(n_steps_per_epi * n_epi),
+        "buffer_size": int(hp["n_steps_per_epi"] * hp["n_epi"]),
         # Whether to use dueling dqn
         "dueling": False,
         # Dense-layer setup for each the advantage branch and the value branch
@@ -142,26 +126,27 @@ if __name__ == "__main__":
 
         "gamma": 0.5,
         "min_iter_time_s": 0.33,
-        "seed": tune.grid_search([1, 2]),
+        "seed": tune.grid_search(hp["seeds"]),
 
         # === Optimization ===
         # Learning rate for adam optimizer
-        "lr": base_lr,
+        "lr": hp["base_lr"],
         # Learning rate schedule
-        "lr_schedule": [(0, base_lr), (int(n_steps_per_epi * n_epi), base_lr / 1e9)],
+        "lr_schedule": [(0, hp["base_lr"]),
+                        (int(hp["n_steps_per_epi"] * hp["n_epi"]), hp["base_lr"] / 1e9)],
         # Adam epsilon hyper parameter
         # "adam_epsilon": 1e-8,
         # If not None, clip gradients during optimization at this value
         "grad_clip": 1,
         # How many steps of the model to sample before learning starts.
-        "learning_starts": int(n_steps_per_epi * bs_epi_mul),
+        "learning_starts": int(hp["n_steps_per_epi"] * hp["bs_epi_mul"]),
         # Update the replay buffer with this many samples at once. Note that
         # this setting applies per-worker if num_workers > 1.
-        "rollout_fragment_length": n_steps_per_epi,
+        "rollout_fragment_length": hp["n_steps_per_epi"],
         # Size of a batch sampled from replay buffer for training. Note that
         # if async_updates is set, then each worker returns gradients for a
         # batch of this size.
-        "train_batch_size": int(n_steps_per_epi * bs_epi_mul),
+        "train_batch_size": int(hp["n_steps_per_epi"] * hp["bs_epi_mul"]),
 
         # === Exploration Settings ===
         # Default exploration behavior, iff `explore`=None is passed into
@@ -175,11 +160,11 @@ if __name__ == "__main__":
             # You can also provide the python class directly or the full location
             # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
             # EpsilonGreedy").
-            "type": SoftQSchedule,
+            "type": exploration.SoftQSchedule,
             # Add constructor kwargs here (if any).
             "temperature_schedule": PiecewiseSchedule(
                 endpoints=[
-                    (0, 1.0), (int(n_steps_per_epi * n_epi * 0.75), 0.1)],
+                    (0, 1.0), (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.75), 0.1)],
                 outside_value=0.1,
                 framework="torch")
         },
@@ -209,7 +194,8 @@ if __name__ == "__main__":
         # `DefaultCallbacks` class and `examples/custom_metrics_and_callbacks.py`
         # for more usage information.
         # "callbacks": DefaultCallbacks,
-        "callbacks": LECallBacks,
+        "callbacks": miscellaneous.merge_callbacks(LECallbacks,
+                                                   log.get_logging_callbacks_class()),
         # Whether to attempt to continue training if a worker crashes. The number
         # of currently healthy workers is reported as the "num_healthy_workers"
         # metric.
@@ -221,21 +207,47 @@ if __name__ == "__main__":
         "fake_sampler": False,
     }
 
-    ray.init(num_cpus=5, num_gpus=0)
+    return rllib_config, env_config, stop
 
+
+def main(debug):
+    train_n_replicates = 1 if debug else 1
+    seeds = miscellaneous.get_random_seeds(train_n_replicates)
+    exp_name, _ = log.log_in_current_day_dir("LE_IPD")
+
+    hparameters = {
+        "n_epi": 10 if debug else 200,
+        "n_steps_per_epi": 20,
+        "bs_epi_mul": 4,
+        "base_lr": 0.04,
+        "spl_lr_mul":  10.0,
+        "seeds": seeds,
+        "debug": debug,
+    }
+
+    rllib_config, env_config, stop = get_rllib_config(hparameters)
+    ray.init(num_cpus=os.cpu_count(), num_gpus=0)
     print("\n========== Training LE in self-play ==========\n")
-    results = ray.tune.run(DQNTrainer, config=trainer_config_update,
-                           stop=stop, verbose=1, name="LE_self_play_IPD")
+    results = ray.tune.run(DQNTrainer, config=rllib_config,
+                           verbose=1, checkpoint_freq = 0, stop=stop,
+                           checkpoint_at_end = True, name = exp_name)
+
 
 
     print("\n========== Training LE against a naive opponent ==========\n")
-    trainer_config_update["multiagent"]["policies"]["player_col"] = (
+    # Set player_col to use a naive policy
+    rllib_config["multiagent"]["policies"][env_config["players_ids"][1]] = (
         None,
         IteratedPrisonersDilemma.OBSERVATION_SPACE,
         IteratedPrisonersDilemma.ACTION_SPACE,
         {}
     )
-    results = ray.tune.run(DQNTrainer, config=trainer_config_update,
-                           stop=stop, verbose=1, name="LE_vs_Naive_IPD")
+    results = ray.tune.run(DQNTrainer, config=rllib_config,
+                           verbose=1, checkpoint_freq = 0, stop=stop,
+                           checkpoint_at_end = True, name = exp_name)
 
     ray.shutdown()
+
+if __name__ == "__main__":
+    debug = False
+    main(debug)

@@ -12,6 +12,8 @@ from ray.rllib.agents.a3c.a3c import A3CTrainer
 from ray.rllib.agents.a3c.a3c import DEFAULT_CONFIG as A3C_CONFIG
 from ray.rllib.utils import merge_dicts
 
+# TODO this is not working since the advantage is copute before modifying the reward with inequity aversion?
+# TODO Use what is in postprocessing
 def reward_postprocessing(policy, rollout, other_agent_batches, episode):
     completed = rollout[SampleBatch.DONES][-1]
 

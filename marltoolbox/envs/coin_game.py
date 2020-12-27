@@ -3,18 +3,15 @@
 ##########
 
 from collections import Iterable
-import copy
-
-import numpy as np
 
 import gym
+import numpy as np
 from gym.spaces import Discrete
 from gym.utils import seeding
-
 from numba import jit, prange
 from numba.typed import List
-
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+
 
 @jit(nopython=True)
 def _same_pos(x, y):
@@ -24,9 +21,6 @@ def _same_pos(x, y):
 @jit(nopython=True)
 def move_players(batch_size, actions, red_pos, blue_pos, moves, grid_size):
     for j in prange(batch_size):
-        # a0, a1 = actions[j]
-        # assert a0 in {0, 1, 2, 3} and a1 in {0, 1, 2, 3}
-
         red_pos[j] = \
             (red_pos[j] + moves[actions[j, 0]]) % grid_size
         blue_pos[j] = \
@@ -35,7 +29,8 @@ def move_players(batch_size, actions, red_pos, blue_pos, moves, grid_size):
 
 
 @jit(nopython=True)
-def compute_reward(batch_size, red_pos, blue_pos, coin_pos, red_coin):
+def compute_reward(batch_size, red_pos, blue_pos, coin_pos, red_coin, asymmetric):
+    # Changing something here imply changing something in the analysis of the rewards
     reward_red = np.zeros(batch_size)
     reward_blue = np.zeros(batch_size)
     generate = np.zeros(batch_size, dtype=np.bool_)
@@ -44,6 +39,8 @@ def compute_reward(batch_size, red_pos, blue_pos, coin_pos, red_coin):
             if _same_pos(red_pos[i], coin_pos[i]):
                 generate[i] = True
                 reward_red[i] += 1
+                if asymmetric:
+                    reward_red[i] += 3
             if _same_pos(blue_pos[i], coin_pos[i]):
                 generate[i] = True
                 reward_red[i] += -2
@@ -53,36 +50,8 @@ def compute_reward(batch_size, red_pos, blue_pos, coin_pos, red_coin):
                 generate[i] = True
                 reward_red[i] += 1
                 reward_blue[i] += -2
-            if _same_pos(blue_pos[i], coin_pos[i]):
-                generate[i] = True
-                reward_blue[i] += 1
-    reward = [reward_red, reward_blue]
-    return reward, generate
-
-
-@jit(nopython=True)
-def compute_asymmetric_reward(batch_size, red_pos, blue_pos, coin_pos, red_coin):
-    reward_red = np.zeros(batch_size)
-    reward_blue = np.zeros(batch_size)
-    generate = np.zeros(batch_size, dtype=np.bool_)
-    for i in prange(batch_size):
-        if red_coin[i]:
-            if _same_pos(red_pos[i], coin_pos[i]):
-                generate[i] = True
-                # reward_red[i] += 1
-                # reward_red[i] += 1 + 1
-                reward_red[i] += 1 + 3
-            if _same_pos(blue_pos[i], coin_pos[i]):
-                generate[i] = True
-                reward_red[i] += -2
-                # reward_red[i] += -2 + 1
-                reward_blue[i] += 1
-        else:
-            if _same_pos(red_pos[i], coin_pos[i]):
-                generate[i] = True
-                # reward_red[i] += 1
-                reward_red[i] += 1 + 3
-                reward_blue[i] += -2
+                if asymmetric:
+                    reward_red[i] += 3
             if _same_pos(blue_pos[i], coin_pos[i]):
                 generate[i] = True
                 reward_blue[i] += 1
@@ -124,11 +93,12 @@ def generate_coin(batch_size, generate, red_coin, red_pos, blue_pos, coin_pos, g
 
 
 @jit(nopython=True)
-def generate_state(batch_size, red_pos, blue_pos, coin_pos, red_coin, add_position_in_epi, step_count, max_steps):
+def generate_state(batch_size, red_pos, blue_pos, coin_pos, red_coin,
+                   add_position_in_epi, step_count, max_steps, grid_size):
     if add_position_in_epi:
-        state = np.zeros((batch_size, 3, 3, 5))  # TODO: Avoid hard coding this
+        state = np.zeros((batch_size, grid_size, grid_size, 5))  # TODO: Avoid hard coding this
     else:
-        state = np.zeros((batch_size, 3, 3, 4))  # TODO: Avoid hard coding this
+        state = np.zeros((batch_size, grid_size, grid_size, 4))  # TODO: Avoid hard coding this
     for i in prange(batch_size):
         state[i, red_pos[i][0], red_pos[i][1], 0] = 1
         state[i, blue_pos[i][0], blue_pos[i][1], 1] = 1
@@ -145,18 +115,15 @@ def generate_state(batch_size, red_pos, blue_pos, coin_pos, red_coin, add_positi
 def step(actions, batch_size, red_pos, blue_pos, coin_pos, red_coin, moves,
          grid_size: int, asymmetric: bool, add_position_in_epi: bool, step_count: int, max_steps: int):
     red_pos, blue_pos = move_players(batch_size, actions, red_pos, blue_pos, moves, grid_size)
-    if asymmetric:
-        reward, generate = compute_asymmetric_reward(batch_size, red_pos, blue_pos, coin_pos, red_coin)
-    else:
-        reward, generate = compute_reward(batch_size, red_pos, blue_pos, coin_pos, red_coin)
+    reward, generate = compute_reward(batch_size, red_pos, blue_pos, coin_pos, red_coin, asymmetric)
     coin_pos = generate_coin(batch_size, generate, red_coin, red_pos, blue_pos, coin_pos, grid_size)
-    state = generate_state(batch_size, red_pos, blue_pos, coin_pos, red_coin, add_position_in_epi, step_count, max_steps)
+    state = generate_state(batch_size, red_pos, blue_pos, coin_pos, red_coin, add_position_in_epi, step_count,
+                           max_steps, grid_size)
     return red_pos, blue_pos, reward, coin_pos, state, red_coin
 
 
 @jit(nopython=True)
 def analyse_reward(reward_red, reward_blue, asymmetric):
-
     if asymmetric:
         # Red picked something
         red_pick_any = (reward_red > 0).sum()
@@ -170,7 +137,7 @@ def analyse_reward(reward_red, reward_blue, asymmetric):
         # Blue pick something less blue picked red alone
         blue_pick_blue = blue_pick_any - (reward_red < 0).sum()
         # Less blue picked red and red picked red
-        blue_pick_blue -= (np.logical_and(reward_red == 1, reward_blue == 1)).sum()
+        blue_pick_blue -= (np.logical_and(reward_red == 2, reward_blue == 1)).sum()
 
     else:
         # Red picked alone or red players picked blue
@@ -218,16 +185,22 @@ class CoinGame(MultiAgentEnv, gym.Env):
         self.grid_size = config.get("grid_size", 3)
         assert self.grid_size == 3, "hardoced in the generate_state function"
         self.reward_randomness = config.get("reward_randomness", 0.0)
+        self.reward_randomness = 0.0 if self.reward_randomness is None else self.reward_randomness
         self.get_additional_info = config.get("get_additional_info", True)
         self.asymmetric = config.get("asymmetric", False)
         self.add_position_in_epi = config.get("add_position_in_epi", False)
+        self.flatten_obs = config.get("flatten_obs", False)
 
-        self.OBSERVATION_SPACE = gym.spaces.Box(
-            low=0,
-            high=1,
-            shape=(self.grid_size, self.grid_size, 4 + int(self.add_position_in_epi)),
-            dtype='uint8'
-        )
+        if self.flatten_obs:
+            self.NUM_STATES = self.grid_size ** 2 * 2 * self.NUM_AGENTS
+            self.OBSERVATION_SPACE = Discrete(self.NUM_STATES)
+        else:
+            self.OBSERVATION_SPACE = gym.spaces.Box(
+                low=0,
+                high=1,
+                shape=(self.grid_size, self.grid_size, 4 + int(self.add_position_in_epi)),
+                dtype='uint8'
+            )
 
         self.step_count = None
 
@@ -263,7 +236,11 @@ class CoinGame(MultiAgentEnv, gym.Env):
         self.coin_pos = generate_coin(
             self.batch_size, generate, self.red_coin, self.red_pos, self.blue_pos, self.coin_pos, self.grid_size)
         state = generate_state(self.batch_size, self.red_pos, self.blue_pos, self.coin_pos,
-                               self.red_coin, self.add_position_in_epi, self.step_count, self.max_steps)
+                               self.red_coin, self.add_position_in_epi, self.step_count,
+                               self.max_steps, self.grid_size)
+
+        if self.flatten_obs:
+            state = np.reshape(state, (state.shape[0], -1))
 
         # Unvectorize if batch_size == 1 (do not return batch of states)
         if self.batch_size == 1 and not self.force_vectorized:
@@ -274,19 +251,23 @@ class CoinGame(MultiAgentEnv, gym.Env):
             self.player_blue_id: state
         }
 
+    def _preprocess_actions(self, actions):
+        # Format actions from dict of players to list of lists
+        ac_red, ac_blue = actions[self.player_red_id], actions[self.player_blue_id]
+        if not isinstance(ac_red, Iterable):
+            ac_red, ac_blue = [ac_red], [ac_blue]
+        actions = [ac_red, ac_blue]
+        actions = np.array(actions).T
+        return actions
+
     def step(self, actions: Iterable):
         """
 
         :param actions: Dict containing both actions for player_1 and player_2
         :return: state, reward, done, info
         """
-        # Format actions from dict of players to list of lists
-        ac_red, ac_blue = actions[self.player_red_id], actions[self.player_blue_id]
-        if not isinstance(ac_red, Iterable):
-            ac_red, ac_blue = [ac_red], [ac_blue]
-        actions = [ac_red, ac_blue]
+        actions = self._preprocess_actions(actions)
 
-        actions = np.array(actions).T
         self.step_count += 1
         self.red_pos, self.blue_pos, reward, self.coin_pos, state, self.red_coin = step(
             actions, self.batch_size, self.red_pos, self.blue_pos, self.coin_pos, self.red_coin, self.MOVES,
@@ -294,6 +275,9 @@ class CoinGame(MultiAgentEnv, gym.Env):
 
         if self.get_additional_info:
             self._accumulate_info(reward)
+
+        if self.flatten_obs:
+            state = np.reshape(state, (state.shape[0], -1))
 
         # Unvectorize if batch_size == 1 (do not return batch of states and rewards)
         if self.batch_size == 1 and not self.force_vectorized:
@@ -369,10 +353,71 @@ class CoinGame(MultiAgentEnv, gym.Env):
         self.blue_pick.clear()
         self.blue_pick_own.clear()
 
+    def _compute_rewards(self, state, actions):
+        assert self.batch_size == 1
+        save_env_state = self._get_env_state()
+        self._state_to_env_state(state)
+        actions = self._preprocess_actions(actions)
+
+        red_pos, blue_pos = move_players(self.batch_size, actions, self.red_pos, self.blue_pos,
+                                         self.MOVES, self.grid_size)
+        reward, generate = compute_reward(self.batch_size, red_pos, blue_pos,
+                                          self.coin_pos, self.red_coin, self.asymmetric)
+
+        self._set_env_state(save_env_state)
+
+        if self.batch_size == 1 and not self.force_vectorized:
+            reward[0], reward[1] = reward[0][0], reward[1][0]
+
+        if self.reward_randomness != 0.0:
+            for player_i in range(self.NUM_AGENTS):
+                reward[player_i] += float(np.random.normal(loc=0, scale=self.reward_randomness,
+                                                           size=reward[player_i].shape))
+
+        reward = {
+            self.player_red_id: reward[0],
+            self.player_blue_id: reward[1],
+        }
+        return reward
+
+    def _state_to_env_state(self, state):
+        if self.flatten_obs:
+            assert state.shape[0] == 1
+            state = state[0, ...]
+            # Only working for 2 players
+            red_pos = np.nonzero(state[0::4])[0]
+            blue_pos = np.nonzero(state[1::4])[0]
+            red_coin_pos = np.nonzero(state[2::4])[0]
+            blue_coin_pos = np.nonzero(state[3::4])[0]
+            if len(red_coin_pos) == 1:
+                assert len(blue_coin_pos) == 0
+                self.red_coin = np.array([[1]])
+                self.coin_pos = np.array([[red_coin_pos[0] % self.grid_size, red_coin_pos[0] // self.grid_size]])
+            else:
+                assert len(blue_coin_pos) == 1
+                self.red_coin = np.array([[0]])
+                self.coin_pos = np.array([[blue_coin_pos[0] % self.grid_size, blue_coin_pos[0] // self.grid_size]])
+            self.red_pos = np.array([[red_pos[0] % self.grid_size, red_pos[0] // self.grid_size]])
+            self.blue_pos = np.array([[blue_pos[0] % self.grid_size, blue_pos[0] // self.grid_size]])
+
+        else:
+            raise NotImplementedError()
+
+    def _get_env_state(self):
+        env_state = {
+            "batch_size": self.batch_size, "red_pos": self.red_pos, "blue_pos": self.blue_pos,
+            "coin_pos": self.coin_pos, "red_coin": self.red_coin, "MOVES": self.MOVES,
+            "grid_size": self.grid_size, "asymmetric": self.asymmetric, "add_position_in_epi": self.add_position_in_epi,
+            "step_count": self.step_count, "max_steps": self.max_steps
+        }
+        return env_state
+
+    def _set_env_state(self, env_state):
+        for k, v in env_state.items():
+            self.__setattr__(k, v)
 
 
 class AsymCoinGame(CoinGame):
-
     NAME = "AsymCoinGame"
 
     def __init__(self, config={}):

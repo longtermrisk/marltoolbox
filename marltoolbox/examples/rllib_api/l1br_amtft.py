@@ -37,7 +37,7 @@ def get_config(hp, welfare_fn, amTFT_agents_idx, lvl1=False):
         }
 
         amTFT_config_update = merge_dicts(
-            amTFT.DEFAULT_CONFIG_UPDATE,
+            amTFT.DEFAULT_CONFIG,
             {
                 # Set to True to train the nested policies and to False to use them
                 "working_state": "train_coop",
@@ -57,7 +57,7 @@ def get_config(hp, welfare_fn, amTFT_agents_idx, lvl1=False):
             return torch.optim.SGD(policy.q_func_vars, lr=policy.cur_lr, momentum=config["sgd_momentum"])
 
         amTFT_config_update = merge_dicts(
-            amTFT.DEFAULT_CONFIG_UPDATE,
+            amTFT.DEFAULT_CONFIG,
             {
                 # Set to True to train the nested policies and to False to use them
                 "working_state": "train_coop",
@@ -110,7 +110,7 @@ def get_config(hp, welfare_fn, amTFT_agents_idx, lvl1=False):
             )
         else:
             policies[policy_id] = (
-                DQNTorchPolicy.with_updates(after_init=restore.after_init_load_checkpoint),
+                DQNTorchPolicy.with_updates(after_init=restore.after_init_load_policy_checkpoint),
                 hp["env"](env_config).OBSERVATION_SPACE,
                 hp["env"].ACTION_SPACE,
                 {}
@@ -335,18 +335,17 @@ def evaluate_same_and_cross_perf(trainer_config_update, results_list, hp, env_co
 # TODO check than no bug arise from the fact that there is 2 policies
 #  (one used to produce samples in the rolloutworker and one used to train the models)
 if __name__ == "__main__":
-    exp_name, _ = log.put_everything_in_one_dir("amTFT")
+    exp_name, _ = log.log_in_current_day_dir("amTFT")
     hparams = {
         "debug": True,
 
         "load_plot_data": None,
-        # "load_plot_data": "/home/maxime/ray_results/amTFT/2020_12_08/15_02_31/2020_12_08/15_04_50/SameAndCrossPlay_save.p",
 
         "exp_name": exp_name,
         "n_steps_per_epi": 20,
         "bs_epi_mul": 4,
         "welfare_functions": [preprocessing.WELFARE_UTILITARIAN], # preprocessing.WELFARE_INEQUITY_AVERSION,
-        "group_names": ["utilitarian"], # "inequality_aversion",
+        "group_names": ["utilitarian"], # "inequity_aversion",
 
         "n_seeds_lvl0": 8,
         "n_seeds_lvl1": 2,

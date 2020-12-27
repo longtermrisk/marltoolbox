@@ -1,17 +1,18 @@
 ##########
-# Code modified from: https://github.com/alshedivat/lola/tree/master/lola
+# Part of the code modified from: https://github.com/alshedivat/lola/tree/master/lola
 ##########
 
-from abc import ABC
 from collections import Iterable
 
 import numpy as np
+from abc import ABC
 from gym.spaces import Discrete
 from gym.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
 # Abstract class
+# TODO use env parent class provided by RLLib if it exists
 class MatrixSocialDilemma(MultiAgentEnv, ABC):
     """
     A two-agent base class environment for matrix games.
@@ -37,6 +38,7 @@ class MatrixSocialDilemma(MultiAgentEnv, ABC):
         self.player_row_id, self.player_col_id = self.players_ids
         self.max_steps = config.get("max_steps", 20)
         self.reward_randomness = config.get("reward_randomness", 0.0)
+        self.reward_randomness = 0.0 if self.reward_randomness is None else self.reward_randomness
         self.get_additional_info = config.get("get_additional_info", True)
         self.get_available_actions = config.get("get_available_actions", False)
 
@@ -45,12 +47,6 @@ class MatrixSocialDilemma(MultiAgentEnv, ABC):
         # To store info about the fraction of each states
         if self.get_additional_info:
             self._init_info()
-
-        # TODO available_actions
-        # self.available_actions = [
-        #     np.ones((batch_size, self.NUM_ACTIONS), dtype=int)
-        #     for _ in range(self.NUM_AGENTS)
-        # ]
 
     def seed(self, seed=None):
         """Seed the PRNG of this space. """
@@ -66,6 +62,10 @@ class MatrixSocialDilemma(MultiAgentEnv, ABC):
             self.player_col_id: self.NUM_STATES - 1
         }
 
+    def _compute_rewards(self, *actions):
+        return {player_id: self.PAYOUT_MATRIX[actions[0]][actions[1]][i]
+                for i, player_id in enumerate(self.players_ids)}
+
     def step(self, action):
         self.step_count += 1
         ac0, ac1 = action[self.player_row_id], action[self.player_col_id]
@@ -73,8 +73,7 @@ class MatrixSocialDilemma(MultiAgentEnv, ABC):
         # Store info
         if self.get_additional_info:
             self._accumulate_info(ac0, ac1)
-
-        rewards = {player_id: self.PAYOUT_MATRIX[ac0][ac1][i] for i, player_id in enumerate(self.players_ids)}
+        rewards = self._compute_rewards(ac0, ac1)
 
         if self.reward_randomness != 0.0:
             rewards = self._add_randomness_to_reward(rewards)
@@ -105,7 +104,7 @@ class MatrixSocialDilemma(MultiAgentEnv, ABC):
         }
         return observations, rewards, done, info
 
-    def _add_randomness_to_reward(self, rewards:dict)->dict:
+    def _add_randomness_to_reward(self, rewards: dict) -> dict:
         if not hasattr(self, "np_random"):
             self.seed()
         for key in rewards.keys():
@@ -123,6 +122,9 @@ class MatrixSocialDilemma(MultiAgentEnv, ABC):
 
     def _accumulate_info(self, ac0, ac1):
         raise NotImplementedError()
+
+    def __str__(self):
+        return self.NAME
 
 
 class TwoPlayersTwoActionsInfo:
@@ -182,7 +184,8 @@ class IteratedPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
                               [[+0, -3], [-2, -2]]])
     NAME = "IPD"
 
-class AsymIteratedPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+
+class IteratedAsymPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     """
     A two-agent environment for the Prisoner's Dilemma game.
     """
@@ -195,6 +198,7 @@ class AsymIteratedPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSocialDilemma
     PAYOUT_MATRIX = np.array([[[+0, -1], [-3, +0]],
                               [[+0, -3], [-2, -2]]])
     NAME = "IPD"
+
 
 class IteratedStagHunt(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     """
@@ -225,6 +229,7 @@ class IteratedChicken(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
                               [[+1, -1], [-10, -10]]])
     NAME = "IteratedChicken"
 
+
 class IteratedAsymChicken(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     """
     A two-agent environment for the Chicken game.
@@ -236,8 +241,9 @@ class IteratedAsymChicken(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array([[[+2.0, +0], [-1., +1.]],
-                              [[+3.0, -1], [-3, -3]]])
+                              [[+2.5, -1], [-10, -10]]])
     NAME = "AsymmetricIteratedChicken"
+
 
 class IteratedBoS(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     """
@@ -253,6 +259,45 @@ class IteratedBoS(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
                               [[+0.0, +0.0], [+2.0, +3.0]]])
     NAME = "IteratedBoS"
 
+
+class IteratedAsymBoS(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+    """
+    A two-agent environment for the BoS game.
+    """
+
+    NUM_AGENTS = 2
+    NUM_ACTIONS = 2
+    NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+    ACTION_SPACE = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    PAYOUT_MATRIX = np.array([[[+3.5, +1.0], [+0.0, +0.0]],
+                              [[+0.0, +0.0], [+1.0, +3.0]]])
+    NAME = "IteratedBoS"
+
+
+def define_greed_fear_matrix_game(greed, fear):
+    class GreedFearGame(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+        """
+        A two-agent environment for the BoS game.
+        """
+
+        NUM_AGENTS = 2
+        NUM_ACTIONS = 2
+        NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
+        ACTION_SPACE = Discrete(NUM_ACTIONS)
+        OBSERVATION_SPACE = Discrete(NUM_STATES)
+        R = 3
+        P = 1
+        T = R + greed
+        S = P - fear
+        PAYOUT_MATRIX = np.array([[[R, R], [S, T]],
+                                  [[T, S], [P, P]]])
+        NAME = "IteratedGreedFear"
+
+        def __str__(self):
+            return f"{self.NAME} with greed={greed} and fear={fear}"
+
+    return GreedFearGame
 
 
 class NPlayersDiscreteActionsInfo:

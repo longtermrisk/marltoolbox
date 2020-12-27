@@ -21,7 +21,7 @@ from marltoolbox.utils import preprocessing, log, miscellaneous, restore
 
 
 DEFAULT_CONFIG_UPDATE = merge_dicts(
-    hierarchical.HIERARCHICAL_DEFAULT_CONFIG_UPDATE,
+    hierarchical.DEFAULT_CONFIG,
     {
         # To configure
         "policy_checkpoints": [],
@@ -116,9 +116,9 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
 
     def _load_checkpoint(self):
         print("self.policy_checkpoints[self.active_checkpoint_idx]", self.policy_checkpoints[self.active_checkpoint_idx])
-        restore.load_one_checkpoint(policy_id=self.policy_id_to_load, policy=self.algorithms[0],
-                                    checkpoint_path=self.policy_checkpoints[self.active_checkpoint_idx],
-                                    using_Tune=hasattr(self.algorithms[0], "tune_config"))
+        restore.load_one_policy_checkpoint(policy_id=self.policy_id_to_load, policy=self.algorithms[0],
+                                           checkpoint_path=self.policy_checkpoints[self.active_checkpoint_idx],
+                                           using_Tune_class=hasattr(self.algorithms[0], "tune_config"))
 
     def get_weights(self):
         return self.algorithms[0].get_weights()

@@ -2,7 +2,7 @@
 
 Two components: 
 - [`RLLib 1.0.0` (Ray / Tune / RLLib)](https://docs.ray.io/en/master/rllib.html) 
-- This repository as a toolbox
+- A toolbox: this repository
 
 To explore `RLLib` please refer to the 
 [RLLib/Tune/Ray documentation](https://docs.ray.io/en/master/rllib-toc.html).
@@ -10,27 +10,34 @@ And also the [examples provided by RLLib](https://github.com/ray-project/ray/tre
 
 # Training models
 
-There is 3 possible ways to run some training:
+There is 3 ways with increasing functionalities to run experiments:
 
-**Tune function API**  
-The Tune function API where you only need to provide the training function. 
-Best if you simply want to run some code from an external repository.
+**<ins>Tune function API</ins>**  
+With the Tune function API, you only need to provide the training function.   
+Best used if you simply want to run some code from an external repository.
 [See Tune documentation](https://docs.ray.io/en/master/tune/key-concepts.html).  
-**Functionalities:** running several seeds in parallel and comparing their results, 
-easy plotting to Tensorboard, visualizing the plots in live, 
-saving configuration files / tracking your experiments, hyper-parameter search 
+**Functionalities:** Running several seeds in parallel and comparing their results. 
+Easily plot values to Tensorboard (visualizing the plots in live). 
+Tracking your experiments and hyperparameters. Hyperparameter search.  
 
-**The Tune class API**  
-You need to provide a Trainer class with at minimum a setup method and a train method (one
- iteration one). Best if you want to run some code from an external repository and you need checkpoints or you 
-want to evaluate (no training) it against other RLLib algorithms or with some experimentation tools in utils.
+**<ins>Tune class API</ins>**  
+You need to provide a Trainer class with at minimum a setup method and a 
+step(train) method.   
+Best used if you want to
+run some code from an external repository and you need checkpoints. 
+Helpers in this toolbox will allow you to evaluate it against other RLLib algorithms or with some experimentation
+ tools in utils.
 [See Tune documentation](https://docs.ray.io/en/master/tune/key-concepts.html).  
-**Additional functionalities:** Checkpoints.
+**Additional functionalities:** Checkpoints.  
+The trained agents can be converted to the RLLib format for evaluation only.
+This allows to use functionalities which rely on the RLLib API. 
 
-**RLLib Trainer class**  
-You need to use RLLib Trainer and Policy classes. 
-The RLLib Trainer class is the RLLib implementation for the Tune class API.
-Best if you are creating a new training/policy from scratch.  
+**<ins>RLLib Trainer class</ins>**  
+You need to use the RLLib Trainer and Policy classes APIs. 
+The RLLib Trainer class is the RLLib implementation of the Tune class API.  
+Best used if you are creating a new training/policy from scratch or 
+if you need to train agents using both algorithms from 
+RLLib and an external repository.  
 **Additional functionalities:** Using components from RLLib 
 (models, environments, algorithms, exploration, etc.)
 
@@ -38,8 +45,8 @@ Best if you are creating a new training/policy from scratch.
 # Content
 - envs
     - Matrix social dilemmas: `IteratedPrisonersDilemma`, `IteratedMatchingPennies`, 
-    `IteratedStagHunt`, `IteratedChicken`, `BOTS_PD`
-    - Coin games: `CoinGame`, `AsymCoinGame`
+    `IteratedStagHunt`, `IteratedChicken`, `BOTS_PD`, 
+    - Coin game and asymmetric coin game: `CoinGame`, `AsymCoinGame`
 - algos
     - Inequity aversion: `InequityAversionTrainer` PyTorch only
     - L-TFT: 

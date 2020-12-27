@@ -14,7 +14,7 @@ from ray.rllib.utils.typing import TensorType
 from typing import List, Union, Optional, Dict, Tuple
 
 from marltoolbox.algos import hierarchical
-from marltoolbox.utils import preprocessing, log, rollout, miscellaneous, restore
+from marltoolbox.utils import postprocessing, log, rollout, miscellaneous, restore
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +34,13 @@ OWN_SELFISH_POLICY_IDX = 1
 OPP_COOP_POLICY_IDX = 2
 OPP_SELFISH_POLICY_IDX = 3
 
-DEFAULT_CONFIG_UPDATE = merge_dicts(
-    hierarchical.HIERARCHICAL_DEFAULT_CONFIG_UPDATE,
+DEFAULT_CONFIG = merge_dicts(
+    hierarchical.DEFAULT_CONFIG,
     {
         # One of WORKING_STATES.
         "working_state": WORKING_STATES[0],
-        "debit_threshold": 4.0,
-        "punishment_multiplier": 3.0,
+        "debit_threshold": 2.0,
+        "punishment_multiplier": 6.0,
         "approximation_method": APPROXIMATION_METHOD_ROLLOUTS,
         "rollout_length": 40,
         "n_rollout_replicas": 20,
@@ -52,10 +52,11 @@ DEFAULT_CONFIG_UPDATE = merge_dicts(
         "own_policy_id": None,
         "opp_policy_id": None,
         "callbacks": None,
-        # One from marltoolbox.utils.preprocessing.WELFARES
+        # One from marltoolbox.utils.postprocessing.WELFARES
         "welfare": None,
 
         'nested_policies': [
+            # TODO refactor to use new postprocessing welfare
             # Here the trainer need to be a DQNTrainer to provide the config for the 3 DQNTorchPolicy
             {"Policy_class":
                  DQNTorchPolicy.with_updates(stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats)),
@@ -88,8 +89,8 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         self.working_state = config["working_state"]
         self.verbose = config["verbose"]
 
-        assert self.welfare in preprocessing.WELFARES, f"self.welfare: {self.welfare} must be in " \
-                                                       f"preprocessing.WELFARES: {preprocessing.WELFARES}"
+        assert self.welfare in postprocessing.WELFARES, f"self.welfare: {self.welfare} must be in " \
+                                                       f"postprocessing.WELFARES: {postprocessing.WELFARES}"
         self.approximation_method = config["approximation_method"]
         assert self.approximation_method in APPROXIMATION_METHODS
 
@@ -108,7 +109,7 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
             for algo in self.algorithms:
                 algo.model.eval()
 
-        restore.after_init_load_checkpoint(self)
+        restore.after_init_load_policy_checkpoint(self)
 
     def compute_actions(
             self,
@@ -132,37 +133,37 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
 
         # Select algo tu use
         if self.working_state == WORKING_STATES[0]:
-            self.last_used_algo = OWN_COOP_POLICY_IDX
+            self.active_algo_idx = OWN_COOP_POLICY_IDX
         elif self.working_state == WORKING_STATES[1]:
-            self.last_used_algo = OWN_SELFISH_POLICY_IDX
+            self.active_algo_idx = OWN_SELFISH_POLICY_IDX
         elif self.working_state == WORKING_STATES[2]:
             if not self.use_opponent_policies:
                 if self.n_steps_to_punish == 0:
-                    self.last_used_algo = OWN_COOP_POLICY_IDX
+                    self.active_algo_idx = OWN_COOP_POLICY_IDX
                 elif self.n_steps_to_punish > 0:
-                    self.last_used_algo = OWN_SELFISH_POLICY_IDX
+                    self.active_algo_idx = OWN_SELFISH_POLICY_IDX
                     self.n_steps_to_punish -= 1
                 else:
                     raise ValueError("self.n_steps_to_punish can't be below zero")
             else:
                 assert self.performing_rollouts
                 if self.n_steps_to_punish_opp == 0:
-                    self.last_used_algo = OPP_COOP_POLICY_IDX
+                    self.active_algo_idx = OPP_COOP_POLICY_IDX
                 elif self.n_steps_to_punish_opp > 0:
-                    self.last_used_algo = OPP_SELFISH_POLICY_IDX
+                    self.active_algo_idx = OPP_SELFISH_POLICY_IDX
                     self.n_steps_to_punish_opp -= 1
                 else:
                     raise ValueError("self.n_steps_to_punish_opp can't be below zero")
         elif self.working_state == WORKING_STATES[3]:
-            self.last_used_algo = OWN_SELFISH_POLICY_IDX
+            self.active_algo_idx = OWN_SELFISH_POLICY_IDX
         elif self.working_state == WORKING_STATES[4]:
-            self.last_used_algo = OWN_COOP_POLICY_IDX
+            self.active_algo_idx = OWN_COOP_POLICY_IDX
         else:
             raise ValueError(f'config["working_state"] must be one of {WORKING_STATES}')
 
         if self.verbose > 2:
-            print(f"self.last_used_algo {self.last_used_algo}")
-        actions, state_out, extra_fetches = self.algorithms[self.last_used_algo].compute_actions(obs_batch,
+            print(f"self.active_algo_idx {self.active_algo_idx}")
+        actions, state_out, extra_fetches = self.algorithms[self.active_algo_idx].compute_actions(obs_batch,
                                                                                                  state_batches,
                                                                                                  prev_action_batch,
                                                                                                  prev_reward_batch,
@@ -171,12 +172,11 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
                                                                                                  explore,
                                                                                                  timestep,
                                                                                                  **kwargs)
-        # print("actions", actions, type(actions))
-        # print("extra_fetches", extra_fetches)
         return actions, state_out, extra_fetches
 
     def learn_on_batch(self, samples: SampleBatch):
         learner_stats = {"learner_stats": {}}
+
 
         working_state_idx = WORKING_STATES.index(self.working_state)
 
@@ -187,11 +187,12 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
 
         samples_copy = samples.copy()
         algo_to_train = self.algorithms[working_state_idx]
-        if working_state_idx == OWN_COOP_POLICY_IDX:
-            # TODO use the RLLib batch format directly
-            samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[self.welfare])
-        # print("self.welfare",self.welfare)
-        # print("samples_copy[samples_copy.REWARDS]",samples_copy[samples_copy.REWARDS])
+
+        # if working_state_idx == OWN_COOP_POLICY_IDX:
+        #     # TODO use the RLLib batch format directly
+        #     samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[self.welfare])
+        # print("working_state_idx", working_state_idx)
+        # print("samples_copy[samples_copy.REWARDS]", samples_copy[samples_copy.REWARDS])
         # Log true lr
         # TODO Here it is only logging the LR for the 1st parameter
         for j, opt in enumerate(algo_to_train._optimizers):
@@ -217,25 +218,28 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
                 coop_opp_simulated_action, _, coop_extra_fetches = self.algorithms[
                     OWN_COOP_POLICY_IDX].compute_actions(
                     [opp_obs])
-                assert len(coop_extra_fetches["q_values"]) == 1, "batch size need to be 1"
                 coop_opp_simulated_action = coop_opp_simulated_action[0]  # Returned lists
                 # print("coop_extra_fetches", coop_extra_fetches)
                 # print("coop_opp_simulated_action != opp_action", coop_opp_simulated_action, opp_action)
                 if coop_opp_simulated_action != opp_action:
+                    if self.verbose > 0:
+                        print("coop_opp_simulated_action != opp_action:", coop_opp_simulated_action, opp_action)
                     debit, selfish_extra_fetches = self._compute_debit(opp_obs, last_obs, opp_action,
                                                                        coop_opp_simulated_action,
                                                                        worker, base_env, episode, env_index)
                 else:
+                    if self.verbose > 0:
+                        print("coop_opp_simulated_action == opp_action")
                     debit = 0
                 self.total_debit += debit
                 self.to_log['summed_debit'] = (
                     debit + self.to_log['summed_debit'] if 'summed_debit' in self.to_log else debit
                 )
-
-                # print("self.total_debit > self.debit_threshold", self.total_debit, self.debit_threshold)
-                # print("coop_extra_fetches[q_values]", coop_extra_fetches["q_values"])
-                # if coop_opp_simulated_action != opp_action:
-                #     print("selfish_extra_fetches[q_values]", selfish_extra_fetches["q_values"])
+                if self.verbose > 0:
+                    print(f"self.total_debit {self.total_debit}")
+            else:
+                if self.verbose > 0:
+                    print(f"punishing self.n_steps_to_punish: {self.n_steps_to_punish}")
             if self.total_debit > self.debit_threshold:
 
                 self.n_steps_to_punish = self._compute_punishment_duration(coop_extra_fetches["q_values"],
@@ -250,7 +254,7 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
                 )
 
             self.to_log['debit_threshold'] = self.debit_threshold
-
+            print('debit_threshold', self.debit_threshold)
 
     def _compute_debit(self, opp_obs, last_obs, opp_action, coop_opp_simulated_action,
                        worker, base_env, episode, env_index):
@@ -277,6 +281,8 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
                                      selfish_extra_fetches):
         # TODO this is only going to work for symmetrical environments and policies!
         #  (Since I use the agent Q-networks for the opponent)
+        assert len(selfish_extra_fetches["q_values"]) == 1, "batch size need to be 1"
+
         if not self.config["explore"]:
             logger.warning("simulation of opponent not going well since opp_simulated_action != opp_a: "
                            f"{opp_simulated_action}, {opp_action}")
@@ -489,27 +495,31 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
             self.total_debit = 0
             self.n_steps_to_punish = 0
 
-def two_steps_training(stop, config, name, do_not_load=[], **kwargs):
+def two_steps_training(stop, config, name, do_not_load=[], TrainerClass=DQNTrainer, **kwargs):
     for policy_id in config["multiagent"]["policies"].keys():
-        config["multiagent"]["policies"][policy_id][3]["working_state"] = "train_coop"
+        config["multiagent"]["policies"][policy_id][3]["working_state"] = "train_selfish"
 
-    results = ray.tune.run(amTFTTrainer, config=config,
+    results = ray.tune.run(TrainerClass, config=config,
                            stop=stop, name=name,
                            checkpoint_at_end=True,
                            metric="episode_reward_mean", mode="max",
                            **kwargs)
     checkpoints = miscellaneous.extract_checkpoints(results)
+    seeds = miscellaneous.extract_config_value(results, "seed")
+    seed_to_checkpoint = {}
+    for seed, checkpoint in zip(seeds, checkpoints):
+        seed_to_checkpoint[seed] = checkpoint
 
     # Train internal selfish policy
     for policy_id in config["multiagent"]["policies"].keys():
-        config["multiagent"]["policies"][policy_id][3]["working_state"] = "train_selfish"
+        config["multiagent"]["policies"][policy_id][3]["working_state"] = "train_coop"
         if policy_id not in do_not_load:
             config["multiagent"]["policies"][policy_id][3][restore.LOAD_FROM_CONFIG_KEY] = (
-                miscellaneous.use_seed_as_idx(checkpoints), policy_id
+                miscellaneous.seed_to_checkpoint(seed_to_checkpoint), policy_id
             )
 
     # amTFTTrainerTrainSelfish = restore.prepare_trainer_to_load_checkpoints(amTFTTrainer)
-    results = ray.tune.run(amTFTTrainer, config=config,
+    results = ray.tune.run(TrainerClass, config=config,
                            stop=stop, name=name,
                            checkpoint_at_end=True,
                            metric="episode_reward_mean", mode="max",
@@ -517,16 +527,10 @@ def two_steps_training(stop, config, name, do_not_load=[], **kwargs):
     return results
 
 
-# TODO do the same in preprocessing (closure)
-def get_amTFTCallBacks(add_utilitarian_welfare, add_inequity_aversion_welfare,
-                       inequity_aversion_alpha = 0.0, inequity_aversion_beta=1.0,
-                       inequity_aversion_gamma=0.9, inequity_aversion_lambda=0.9,
-                       additionnal_callbacks=[]):
+# TODO do the same in postprocessing (closure)
+def get_amTFTCallBacks(additionnal_callbacks=[], **kwargs):
 
-    WelfareAndPostprocessCallbacks = preprocessing.get_WelfareAndPostprocessCallbacks(
-        add_utilitarian_welfare=add_utilitarian_welfare, add_inequity_aversion_welfare=add_inequity_aversion_welfare,
-        inequity_aversion_alpha = inequity_aversion_alpha, inequity_aversion_beta=inequity_aversion_beta,
-        inequity_aversion_gamma=inequity_aversion_gamma, inequity_aversion_lambda=inequity_aversion_lambda)
+    # WelfareAndPostprocessCallbacks = postprocessing.get_WelfareAndPostprocessCallbacks(**kwargs)
 
     class amTFTCallBacksPart(DefaultCallbacks):
 
@@ -581,11 +585,11 @@ def get_amTFTCallBacks(add_utilitarian_welfare, add_inequity_aversion_welfare,
     if not isinstance(additionnal_callbacks, Iterable):
         additionnal_callbacks = [additionnal_callbacks]
 
-    amTFTCallBacks = miscellaneous.merge_callbacks(WelfareAndPostprocessCallbacks,
+    amTFTCallBacks = miscellaneous.merge_callbacks(#WelfareAndPostprocessCallbacks,
                                                    amTFTCallBacksPart,
                                                    *additionnal_callbacks)
 
     return amTFTCallBacks
 
 
-amTFTTrainer = DQNTrainer.with_updates()
+# amTFTTrainer = DQNTrainer.with_updates()
