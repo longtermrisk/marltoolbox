@@ -7,7 +7,7 @@ from ray import tune
 from marltoolbox.algos import population
 from marltoolbox.utils import miscellaneous
 
-# TODO is that useful?
+# TODO remove this function if this is not really useful
 def config_lvl0_population_training(n_seeds: int, lvl0_kwargs: dict):
     print("Training lvl0_population")
     seeds = list(range(n_seeds))
@@ -52,7 +52,7 @@ def prepare_config_for_lvl1_training(config: dict, lvl0_policy_id: str, lvl1_pol
         selected_checkpoints = [el for i, el in enumerate(lvl0_checkpoints) if i in idx_list]
         checkpoints_list.append(selected_checkpoints)
 
-    population.replace_opponent_by_population_of_opponents(
+    population.modify_config_to_use_population(
         config=config,
         opponent_policy_id=lvl0_policy_id,
         opponents_checkpoints=miscellaneous.seed_to_checkpoint(checkpoints_list))

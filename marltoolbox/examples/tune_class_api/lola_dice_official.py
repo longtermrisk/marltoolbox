@@ -4,7 +4,7 @@
 # conda install python=3.6
 # 2) A fork of LOLA https://github.com/Manuscrit/lola which adds the logging through Tune
 # git clone https://github.com/Manuscrit/lola
-# git checkout d9c6724ea0d6bca42c8cf9688b1ff8d6fefd7267
+# git checkout 181cb6dfa0ebf85807d42f1f770b0556a8f4f4d6
 # pip install -e .
 ##########
 

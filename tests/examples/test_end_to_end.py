@@ -16,3 +16,22 @@ def test_le_ipd():
 def test_amtft_various_env():
     from marltoolbox.examples.rllib_api.amtft_various_env import main
     main(debug=True)
+
+
+def test_inequity_aversion():
+    from marltoolbox.examples.rllib_api.inequity_aversion import main
+    main(debug=True)
+
+
+def test_l1br_amtft():
+    from marltoolbox.examples.rllib_api.l1br_amtft import main
+    main(debug=True)
+
+
+def test_lola_dice_tune_fn_api():
+    from marltoolbox.examples.tune_function_api.lola_dice_official import main
+    main(debug=True)
+
+def test_lola_pg_tune_fn_api():
+    from marltoolbox.examples.tune_function_api.lola_pg_official import main
+    main(debug=True)

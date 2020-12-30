@@ -1,5 +1,6 @@
-import inspect
 import copy
+
+import inspect
 import time
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
@@ -7,7 +8,8 @@ from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AgentID, PolicyID
-from typing import List, Dict
+from typing import Dict
+
 
 def sequence_of_fn_wt_same_args(*args, function_list, **kwargs) -> None:
     for fn in function_list:
@@ -37,6 +39,7 @@ def overwrite_config(dict_: dict, key, value):
             print(f'Adding (key, value): ({key},{value}) in dict.keys: {dict_.keys()}')
             dict_[k] = value
 
+
 def move_to_key(dict_, key):
     # TODO make this more simple
     assert isinstance(dict_, dict)
@@ -53,6 +56,7 @@ def move_to_key(dict_, key):
             found = False
     return dict_, k, current_value, found
 
+
 def extract_checkpoints(tune_experiment_analysis):
     all_best_checkpoints_per_trial = [
         tune_experiment_analysis.get_best_checkpoint(trial,
@@ -62,15 +66,17 @@ def extract_checkpoints(tune_experiment_analysis):
     ]
     return all_best_checkpoints_per_trial
 
+
 def extract_config_value(tune_experiment_analysis, key):
     values = []
-    for trial in tune_experiment_analysis.trials :
+    for trial in tune_experiment_analysis.trials:
         dict_, k, current_value, found = move_to_key(trial.config, key)
         if found:
             values.append(current_value)
         else:
             values.append(None)
     return values
+
 
 def merge_callbacks(*callbacks_list):
     """
@@ -90,10 +96,27 @@ def merge_callbacks(*callbacks_list):
                     for callbacks in callbacks_list:
                         function = callbacks.__getattribute__(name)
                         function(*args, **kwargs)
+
                 return newfunc
             else:
                 return super_attr
+
     return MergeCallBacks
+
+
+
+def merge_policy_postprocessing_fn(*postprocessing_fn_list):
+    """
+    Merge several callback class together. Executing them in the order provided.
+    :param postprocessing_fn_list:
+    :return: a function which calls all provided function in order
+    """
+    def merged_postprocessing_fn(policy, sample_batch, other_agent_batches, episode):
+        for postprocessing_fn in postprocessing_fn_list:
+            sample_batch = postprocessing_fn (policy, sample_batch, other_agent_batches, episode)
+        return sample_batch
+    return merged_postprocessing_fn
+
 
 
 def seed_to_checkpoint(dict_to_select_from):
@@ -104,11 +127,13 @@ def seed_to_checkpoint(dict_to_select_from):
         else:
             print('seed_to_checkpoint default to checkpoint 0. config["seed"]:', policy_config["seed"])
             return list(dict_to_select_from.values)[0]
+
     return get_value
 
 
 def check_using_tune_class(config):
     return config.get("TuneTrainerClass", None) is not None
+
 
 def set_config_for_evaluation(config: dict, policies_to_train=["None"]) -> dict:
     config_copy = copy.deepcopy(config)
@@ -137,7 +162,8 @@ def set_config_for_evaluation(config: dict, policies_to_train=["None"]) -> dict:
 
     return config_copy
 
-def filter_tune_results(tune_analysis, metric, metric_threshold:float, metric_mode="last-5-avg",
+
+def filter_tune_results(tune_analysis, metric, metric_threshold: float, metric_mode="last-5-avg",
                         threshold_mode="above"):
     assert threshold_mode in ("above", "equal", "below")
     assert metric_mode in ("avg", "min", "max", "last", "last-5-avg", "last-10-avg")
@@ -163,7 +189,6 @@ def get_random_seeds(n_seeds):
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(n_seeds))]
     return seeds
-
 
 
 class PolicyCallbacks(DefaultCallbacks):
@@ -192,7 +217,7 @@ class PolicyCallbacks(DefaultCallbacks):
                       **kwargs):
         self._call_method_from_policies(worker, "on_sample_end")
 
-    def _call_method_from_policies(self, worker, method:str):
+    def _call_method_from_policies(self, worker, method: str):
         for policy in worker.policy_map.values():
             if hasattr(policy, method) and callable(getattr(policy, method)):
                 getattr(policy, method)()

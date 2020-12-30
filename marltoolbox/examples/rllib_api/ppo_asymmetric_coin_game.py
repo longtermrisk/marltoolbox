@@ -76,5 +76,5 @@ def main(stop_iters, tf, debug):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    debug = True
-    main(args.stop_iters, args.tf, debug)
+    debug_mode = True
+    main(args.stop_iters, args.tf, debug_mode)

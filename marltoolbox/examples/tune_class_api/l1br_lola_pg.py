@@ -4,8 +4,7 @@
 # conda install python=3.6
 # 2) A fork of LOLA https://github.com/Manuscrit/lola which adds the logging through Tune
 # git clone https://github.com/Manuscrit/lola
-# TODO update commit number
-# git checkout d9c6724ea0d6bca42c8cf9688b1ff8d6fefd7267
+# git checkout 181cb6dfa0ebf85807d42f1f770b0556a8f4f4d6
 # pip install -e .
 ##########
 
@@ -269,7 +268,6 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
     lvl0_policy_idx = 1
     lvl1_policy_idx = 0
 
-
     if tune_hp["env"] == IteratedPrisonersDilemma:
         rllib_hp["n_epi"] = 10 if rllib_hp["debug"] else 400
         rllib_hp["base_lr"] = 0.04
@@ -280,17 +278,11 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
         rllib_hp["base_lr"] = 0.04
         rllib_hp["x_limits"] = ((-11.0, 4.0),)
         rllib_hp["y_limits"] = ((-11.0, 4.0),)
-    # elif hp["env"] in IteratedBoS:
-    #     rllib_hp["n_epi"] = 10 if rllib_hp["debug"] else 400
-    #     rllib_hp["base_lr"] = 0.04
-    #     rllib_hp["x_limits"] = ((-0.5, 3.5),)
-    #     rllib_hp["y_limits"] = ((-0.5, 3.5),)
     elif tune_hparams["env"] in (IteratedBoS, IteratedAsymBoS):
         rllib_hp["n_epi"] = 10 if rllib_hp["debug"] else 800
         rllib_hp["base_lr"] = 0.01
         rllib_hp["x_limits"] = ((-0.5, 4.5),)
         rllib_hp["y_limits"] = ((-0.5, 4.5),)
-        # hparams["hiddens"] = [256]
         rllib_hp["temperature_schedule"] = PiecewiseSchedule(
             endpoints=[
                 (0, 10.0),
@@ -338,9 +330,6 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
 
     return results
 
-# TODO update the unique rollout worker after every episode
-# TODO check than no bug arise from the fact that there is 2 policies
-#  (one used to produce samples in the rolloutworker and one used to train the models)
 if __name__ == "__main__":
     debug = False
     n_in_lvl0_population = 4 if debug else 40
@@ -491,6 +480,6 @@ if __name__ == "__main__":
 
         ray.shutdown()
     else:
-        log.print_saved_metrics(tune_hparams["load_data"],
-                                keywords_to_print=["policy_reward_mean", "speed.*mean", "own.*mean", "analysis",
+        log.pprint_saved_metrics(tune_hparams["load_data"],
+                                 keywords_to_print=["policy_reward_mean", "speed.*mean", "own.*mean", "analysis",
                                                    "^avg$", "last-10-avg"])

@@ -272,57 +272,6 @@ def stats_fn_wt_additionnal_logs(stats_function: Callable[[Policy, SampleBatch],
     return wt_additional_info
 
 
-# def exp_name(name: str, n_days_worth_of_exp_in_same_dir=0,
-#              base_dir="~/ray_results", create_symlinks=True) -> str:
-#     """
-#     Give back f'{name}/YEAR_MONTH_DAY' and
-#     add symlinks to see the logs a few days old in this dir
-#     (to prevent long load time in tensorboard)
-#     :param name:
-#     :param n_days_worth_of_exp_in_same_dir:
-#     :param base_dir:
-#     :param create_symlinks:
-#     :return:
-#     """
-#     import datetime
-#     import os
-#     base_dir = os.path.expanduser(base_dir)
-#     if not os.path.exists(base_dir):
-#         os.mkdir(base_dir)
-#
-#     intermediary_dir_path = os.path.join(base_dir, name)
-#     if not os.path.exists(intermediary_dir_path):
-#         os.mkdir(intermediary_dir_path)
-#
-#     now = datetime.datetime.now()
-#     date_str = now.strftime("%Y_%m_%d")
-#     new_dir_name = os.path.join(name, date_str)
-#     new_dir_path = os.path.join(base_dir, new_dir_name)
-#     if not os.path.exists(new_dir_path):
-#         os.mkdir(new_dir_path)
-#
-#     if create_symlinks:
-#         past_dirs = []
-#         for i in range(n_days_worth_of_exp_in_same_dir):
-#             now = now - datetime.timedelta(1)
-#             date_str = now.strftime("%Y_%m_%d")
-#             past_dirs.append(os.path.join(name, date_str))
-#
-#         for past_dir in past_dirs:
-#             path = os.path.join(base_dir, past_dir)
-#             if os.path.exists(path) and os.path.isdir(path):
-#                 # link to child to prevent a chain of symlinks
-#                 childs = [f.path for f in os.scandir(path) if f.is_dir()]
-#                 for child_path in childs:
-#                     # child_path = os.path.join(path, child)
-#                     child_tail, child_head = os.path.split(child_path)
-#                     sym_link_path = os.path.join(new_dir_path, child_head)
-#                     if not os.path.exists(sym_link_path):
-#                         print("Create sym_link src:", child_path, "dst:", sym_link_path)
-#                         os.symlink(src=child_path, dst=sym_link_path)
-#
-#     return new_dir_name
-
 
 def log_in_current_day_dir(exp_name):
     now = datetime.datetime.now()
@@ -377,7 +326,7 @@ def filter_nested(dict_or_list, keywords_to_keep):
     return dict_or_list
 
 
-def print_saved_metrics(file_path, keywords_to_print=None):
+def pprint_saved_metrics(file_path, keywords_to_print=None):
     pp = pprint.PrettyPrinter(depth=4)
     with open(file_path, "rb") as f:
         metrics = pickle.load(f)

@@ -15,6 +15,6 @@ setup(
     long_description=read('README.md'),
     license='MIT',
     install_requires=[
-        'ray[rllib]==1.0.0', 'gym', 'torch', 'tensorboard', 'numba'
+        'ray[rllib]==1.0.0', 'gym', 'torch', 'tensorboard', 'numba', 'matplotlib'
     ],
 )

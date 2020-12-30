@@ -1,18 +1,17 @@
 import copy
 from collections import Iterable
 
+import json
 import logging
-# TODO add matplotlib in setup in full install version
+import matplotlib.colors
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pickle
 import random
-from typing import Callable, Optional, Tuple
-import json
+from typing import Tuple
 
 plt.style.use('seaborn-whitegrid')
-import matplotlib.colors
 
 import ray
 from ray import tune
@@ -23,24 +22,17 @@ from marltoolbox.utils import restore, log, miscellaneous
 logger = logging.getLogger(__name__)
 
 
-
-
 class SameAndCrossPlayEvaluation:
     """
     Does support using RLLib policies only or
     RLLib Policies which use internally a TuneTrainerCLass
     """
     # TODO add function to list all available metrics
-    # TODO make this work with multiprocesses?
-    # TODO parallelize it with Ray/Tune?
     # TODO docstring
-    # TODO test it
-    # TODO add capability to load and replot (save data) and call plot with custom args
     SELF_PLAY_MODE = "same-play"
     CROSS_PLAY_MODE = "cross-play"
     MODES = [CROSS_PLAY_MODE, SELF_PLAY_MODE]
 
-    # TODO warning must give policy which allow checkpoint loading!!
     def __init__(self, evaluation_config: dict, stop_config: dict, exp_name: str,
                  TuneTrainerClass=None,
                  TrainerClass=None,
@@ -51,7 +43,7 @@ class SameAndCrossPlayEvaluation:
                  policies_to_load_from_checkpoint: list = ["All"],
                  ):
         """
-        Works for a unique pair of RLLib policies
+        Work for a unique pair of RLLib policies
         """
 
         self.mix_policy_order = mix_policy_order
@@ -77,7 +69,8 @@ class SameAndCrossPlayEvaluation:
         self.save_path = os.path.join(self.exp_parent_dir, self.results_file_name)
 
         self.policies_ids_sorted = sorted(list(self.evaluation_config["multiagent"]["policies"].keys()))
-        self.policies_to_load_from_checkpoint = [policy_id for policy_id in self.policies_ids_sorted
+        self.policies_to_load_from_checkpoint = [policy_id
+                                                 for policy_id in self.policies_ids_sorted
                                                  if self._check_policy_to_load(policy_id)]
 
     def _init_info_about_checkpoints(self, checkpoint_list, extract_checkpoints_from_results,
@@ -123,7 +116,6 @@ class SameAndCrossPlayEvaluation:
 
         master_config, all_metadata = self._prepare_master_config(n_cross_play_per_checkpoint,
                                                                   n_same_play_per_checkpoint)
-        # TODO same_cross_play => same_cross_perf_evaluation
         results = ray.tune.run(self.TrainerClass, config=master_config,
                                stop=self.stop_config, name=os.path.join(self.exp_name, "same_cross_play"),
                                checkpoint_freq=0, checkpoint_at_end=False)
@@ -135,25 +127,22 @@ class SameAndCrossPlayEvaluation:
         return analysis_metrics_per_mode
 
     def _prepare_master_config(self, n_cross_play_per_checkpoint, n_same_play_per_checkpoint):
-        opponents_list = [self._select_opponents(checkpoint_i, n_cross_play_per_checkpoint)
+        opponents_list = [self._select_opp_randomly(checkpoint_i, n_cross_play_per_checkpoint)
                           for checkpoint_i in range(self.n_checkpoints)]
-        same_play = [self._config_for_one_same_play(checkpoint_i)
+        same_play = [self._get_config_for_one_same_play(checkpoint_i)
                      for checkpoint_i in range(self.n_checkpoints)
                      for same_play_n in range(n_same_play_per_checkpoint)]
-        cross_play = [self._config_for_one_cross_play(checkpoint_i, opponents_list[checkpoint_i][cross_play_n])
+        cross_play = [self._get_config_for_one_cross_play(checkpoint_i, opponents_list[checkpoint_i][cross_play_n])
                       for checkpoint_i in range(self.n_checkpoints)
                       for cross_play_n in range(n_cross_play_per_checkpoint)]
         all_play = same_play + cross_play
         all_metadata = [play[0] for play in all_play]
         all_config = [play[1] for play in all_play]
         master_config = all_config[0]
-        # all_multiagent = [play["multiagent"] for play in all_config]
-        # master_config["multiagent"] = tune.grid_search(all_multiagent)
         all_multiagent_policies = [play["multiagent"]["policies"] for play in all_config]
         master_config["multiagent"]["policies"] = tune.grid_search(all_multiagent_policies)
 
         return master_config, all_metadata
-
 
     def save_results(self, all_results):
         pickle.dump(all_results, open(self.save_path, "wb"))
@@ -166,8 +155,7 @@ class SameAndCrossPlayEvaluation:
         self.exp_parent_dir = tail
         return all_results
 
-
-    def _config_for_one_same_play(self, checkpoint_i):
+    def _get_config_for_one_same_play(self, checkpoint_i):
         metadata = {"mode": self.SELF_PLAY_MODE}
         config_copy = copy.deepcopy(self.evaluation_config)
 
@@ -181,7 +169,7 @@ class SameAndCrossPlayEvaluation:
             config_copy["multiagent"]["policies"][policy_id][3]["TuneTrainerClass"] = self.TuneTrainerClass
         return metadata, config_copy
 
-    def _config_for_one_cross_play(self, own_checkpoint_i, opponent_i):
+    def _get_config_for_one_cross_play(self, own_checkpoint_i, opponent_i):
         metadata = {"mode": self.CROSS_PLAY_MODE}
         config_copy = copy.deepcopy(self.evaluation_config)
 
@@ -206,35 +194,32 @@ class SameAndCrossPlayEvaluation:
             config_copy["multiagent"]["policies"][policy_id][3]["TuneTrainerClass"] = self.TuneTrainerClass
         return metadata, config_copy
 
-    def _select_opponents(self, checkpoint_i, n_cross_play_per_checkpoint):
+    def _select_opp_randomly(self, checkpoint_i, n_cross_play_per_checkpoint):
         checkpoint_list_minus_i = list(range(len(self.checkpoint_list)))
         checkpoint_list_minus_i.pop(checkpoint_i)
         opponents = random.sample(checkpoint_list_minus_i, n_cross_play_per_checkpoint)
         return opponents
 
-    def _group_results(self, all_results):
+    def _split_results_per_mode_and_pair_id(self, all_results):
         analysis_per_mode = []
+        # Split per modes
         for mode in self.MODES:
             reports_in_mode = [report for report in all_results if report["mode"] == mode]
             analysis_list = [report["results"] for report in reports_in_mode]
             analysis_groups_ids = [self._get_group_pair_id(report) for report in reports_in_mode]
             analysis_groups_names = [self._get_group_pair_names(report) for report in reports_in_mode]
             group_pair_ids = set(analysis_groups_ids)
+            # Split per group_pair id (filter per id inside mode)
             for group_pair_id in list(group_pair_ids):
-                # TODO make this simpler/nicer
-                filtered_analysis_list = []
-                filtered_ids = []
-                filtered_names = []
+                filtered_names, filtered_ids, filtered_analysis_list = [], [], []
                 for analysis, id, names in zip(analysis_list, analysis_groups_ids, analysis_groups_names):
                     if id == group_pair_id:
                         filtered_analysis_list.append(analysis)
                         filtered_ids.append(id)
                         filtered_names.append(names)
-
                 analysis_per_mode.append((mode, filtered_analysis_list, filtered_ids[0], filtered_names[0]))
         return analysis_per_mode
 
-    # TODO make a helper function (already started somewhere in examples)
     def _extract_all_metrics(self, analysis_per_mode):
         analysis_metrics_per_mode = []
         for mode_i, mode_data in enumerate(analysis_per_mode):
@@ -248,7 +233,7 @@ class SameAndCrossPlayEvaluation:
         return analysis_metrics_per_mode
 
     def _prepare_to_plot(self, all_results):
-        analysis_per_mode = self._group_results(all_results)
+        analysis_per_mode = self._split_results_per_mode_and_pair_id(all_results)
         analysis_metrics_per_mode = self._extract_all_metrics(analysis_per_mode)
         return analysis_metrics_per_mode
 
@@ -258,7 +243,7 @@ class SameAndCrossPlayEvaluation:
                      scale_multipliers: Iterable = None, show=False, save_fig=True,
                      figsize=(6, 6), markersize=5, jitter=None, title_sufix="",
                      save_matrix=True, xlabel=None, ylabel=None, add_title=True, frameon=None,
-                     show_groups = True, plot_max_n_points=None):
+                     show_groups=True, plot_max_n_points=None):
 
         colors = list(matplotlib.colors.BASE_COLORS.keys()) if colors is None else colors
         if self.checkpoint_list_group_idx is not None and len(set(self.checkpoint_list_group_idx)) > 1:
@@ -312,11 +297,11 @@ class SameAndCrossPlayEvaluation:
                     if plot_max_n_points is not None and counter >= plot_max_n_points:
                         break
                 if save_matrix:
-                    x_means.append(sum(x)/len(x))
-                    x_se.append(np.array(x).std()/np.sqrt(len(x)))
+                    x_means.append(sum(x) / len(x))
+                    x_se.append(np.array(x).std() / np.sqrt(len(x)))
                     x_labels.append(f"Metric:{metric_x}, Metric mode:{metric_mode}")
-                    y_means.append(sum(y)/len(y))
-                    y_se.append(np.array(y).std()/np.sqrt(len(y)))
+                    y_means.append(sum(y) / len(y))
+                    y_se.append(np.array(y).std() / np.sqrt(len(y)))
                     y_labels.append(f"Metric:{metric_y}, Metric mode:{metric_mode}")
                     matrix_label.append(label)
                     x_raw.append(x)

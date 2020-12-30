@@ -13,11 +13,11 @@ from marltoolbox.utils.restore import  LOAD_FROM_CONFIG_KEY
 #TODO add something to not load and create everything when only evaluating with RLLib
 def get_tune_policy_class(PolicyClass):
 
-    class FreezedPolicyFromTuneTrainer(PolicyClass):
+    class FrozenPolicyFromTuneTrainer(PolicyClass):
 
         def __init__(self, observation_space: gym.spaces.Space,
                      action_space: gym.spaces.Space, config: TrainerConfigDict):
-            print("__init__ FreezedPolicyFromTuneTrainer")
+            print("__init__ FrozenPolicyFromTuneTrainer")
 
             self.tune_config = config["tune_config"]
             # self.tune_config["is_training"] = False
@@ -45,7 +45,7 @@ def get_tune_policy_class(PolicyClass):
             return actions, state_out, extra_fetches
 
         def learn_on_batch(self, samples):
-            raise NotImplementedError("FreezedPolicyFromTuneTrainer policy can't be trained")
+            raise NotImplementedError("FrozenPolicyFromTuneTrainer policy can't be trained")
 
         def get_weights(self):
             return {"checkpoint_path": self.checkpoint_path,
@@ -61,7 +61,7 @@ def get_tune_policy_class(PolicyClass):
             if self.checkpoint_path is not None:
                 self.tune_trainer.load_checkpoint(self.checkpoint_path)
 
-    return FreezedPolicyFromTuneTrainer
+    return FrozenPolicyFromTuneTrainer
 
 import torch
 from ray.rllib.agents.a3c.a3c_torch_policy import A3CTorchPolicy, ValueNetworkMixin

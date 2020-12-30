@@ -4,22 +4,20 @@
 # conda install python=3.6
 # 2) A fork of LOLA https://github.com/Manuscrit/lola which adds the logging through Tune
 # git clone https://github.com/Manuscrit/lola
-# git checkout d9c6724ea0d6bca42c8cf9688b1ff8d6fefd7267
+# git checkout 181cb6dfa0ebf85807d42f1f770b0556a8f4f4d6
 # pip install -e .
 ##########
 
+import os
 import ray
 from ray import tune
 
-# TODO only used envs from lola_dice
 import lola.envs
 import lola_dice.envs
 from lola import train_cg, train_exact, train_pg
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 from marltoolbox.utils import log
 
-
-# from lola_unchanged import train_cg, train_exact, train_pg
 
 def main(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
          lr, lr_correction, batch_size, bs_mul, simple_net, hidden, reg,
@@ -117,7 +115,7 @@ def lola_training(config):
     main(**config)
 
 
-def dynamically_change_config(full_config: dict) -> dict:
+def get_tune_config(full_config: dict) -> dict:
     # Sanity
     assert full_config['exp_name'] in {"CoinGame", "IPD", "IMP", "AsymCoinGame"}
     if full_config['exact']:
@@ -148,20 +146,22 @@ def dynamically_change_config(full_config: dict) -> dict:
     return full_config
 
 
-if __name__ == "__main__":
-    debug = True
+def main(debug):
+    exp_name, _ = log.log_in_current_day_dir(f"LOLA_PG")
 
-    full_config = {
+    tune_hparams = {
+        "exp_name": exp_name,
+
         # Dynamically set
         "num_episodes": None,
-        "trace_length": 150 if debug else None,
+        "trace_length": 6 if debug else None,
         "lr": None,
         # "lr": 0.0005,  # None,
         "gamma": None,
         # "gamma": 0.5,
         # !!! To use the default batch size with coin game, you need 35Go of memory per seed run in parallel !!!
         # "batch_size": None, # To use the defaults values from the official repository.
-        "batch_size": 64 if debug else None,
+        "batch_size": 12 if debug else None,
 
         # "exp_name": "IPD",
         # "exp_name": "IMP",
@@ -186,7 +186,6 @@ if __name__ == "__main__":
 
         "warmup": 1,  # False,
 
-        "run_n_seed_in_parallel": 1,
         "seed": tune.grid_search([1]),
 
         "changed_config": False,
@@ -207,19 +206,17 @@ if __name__ == "__main__":
         # "entropy_coeff": 0.0,
         "entropy_coeff": 0.1,
 
-        # "weigth_decay": 0.0,  # 0.001 working well
-        "weigth_decay": 0.001,  # 0.001 working well
+        # "weigth_decay": 0.0,
+        "weigth_decay": 0.001,
     }
 
-    full_config = dynamically_change_config(full_config)
+    tune_config = get_tune_config(tune_hparams)
 
-    ray.init(num_cpus=full_config["run_n_seed_in_parallel"], num_gpus=0)
-    name = f"LOLA_{'exact' if full_config['exact'] else 'PG'}_{full_config['exp_name']}"
-    analysis = tune.run(lola_training, name=log.exp_name(name), config=full_config)
-
-    # If needed, get a dataframe for analyzing trial results.
-    df = analysis.results_df
+    ray.init(num_cpus=os.cpu_count(), num_gpus=0)
+    tune_analysis = tune.run(lola_training, name=tune_hparams["exp_name"], config=tune_config)
     ray.shutdown()
 
 
-# TODO not using critic: critic loss *0.0 + remove valku in correction + remove UpdateModel in main
+if __name__ == "__main__":
+    debug_mode = True
+    main(debug_mode)

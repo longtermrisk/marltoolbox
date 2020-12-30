@@ -1,3 +1,8 @@
+#############################################
+# Code modified from ray.rllib.rollout.py
+# Code modified from ray.rllib.agent.trainer.py
+#############################################
+
 import copy
 
 import collections
@@ -5,44 +10,19 @@ from gym import wrappers as gym_wrappers
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.rollout import DefaultMapping, default_policy_agent_mapping, RolloutSaver #, keep_going
+from ray.rllib.rollout import DefaultMapping, default_policy_agent_mapping, RolloutSaver  # , keep_going
 from ray.rllib.utils.framework import TensorStructType
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.typing import EnvInfoDict, PolicyID
 from typing import List
 
 
-def keep_going(steps, num_steps, episodes, num_episodes):
-    """Determine whether we've collected enough data"""
-    if num_episodes and num_steps:
-        return episodes < num_episodes and steps < num_steps
-    # if num_episodes is set, this overrides num_steps
-    if num_episodes:
-        return episodes < num_episodes
-    # if num_steps is set, continue until we reach the limit
-    if num_steps:
-        return steps < num_steps
-    # otherwise keep going forever
-    return True
-
 class RolloutManager(RolloutSaver):
-    """Utility class for storing rollouts.
-
-    Currently supports two behaviours: the original, which
-    simply dumps everything to a pickle file once complete,
-    and a mode which stores each rollout as an entry in a Python
-    shelf db file. The latter mode is more robust to memory problems
-    or crashes part-way through the rollout generation. Each rollout
-    is stored with a key based on the episode number (0-indexed),
-    and the number of episodes is stored with the key "num_episodes",
-    so to load the shelf file, use something like:
-
-    with shelve.open('rollouts.pkl') as rollouts:
-       for episode_index in range(rollouts["num_episodes"]):
-          rollout = rollouts[str(episode_index)]
-
-    If outfile is None, this class does nothing.
     """
+    Modified version of the utility class for storing rollouts
+    even if no output file is provided.
+    """
+
     def end_rollout(self):
         if self._use_shelve:
             # Save this episode as a new entry in the shelf database,
@@ -68,7 +48,6 @@ class RolloutManager(RolloutSaver):
         self._total_steps += 1
 
 
-# Modified from ray.rllib.rollout.py
 def internal_rollout(worker,
                      num_steps,
                      policy_map=None,
@@ -81,13 +60,35 @@ def internal_rollout(worker,
                      video_dir=None,
                      seed=None
                      ):
+    """
+    Can perform rollouts on the environment from inside a worker_rollout or from a policy.
+    Can perform rollouts during the evaluation rollouts ran from an RLLib Trainer.
+
+    :param worker: worker from an RLLib Trainer.
+    The interal rollouts will be run inside this worker, using its policies.
+    :param num_steps: number of maximum steps to perform in total
+    :param policy_map: (optional) by default the policy_map of the provided worker will be used
+    :param policy_agent_mapping: (optional) by default the policy_mapping_fn
+    of the provided worker will be used
+    :param reset_env_before: (optional) reset the environment from the worker before first using it
+    :param num_episodes: (optional) number of maximum episodes to perform
+    :param last_obs: (optional) if reset_env_before is False then you must
+    provide the last observation
+    :param saver: (optional) an instance of a RolloutManager
+    :param no_render: (optional) option to call env.render()
+    :param video_dir: (optional)
+    :param seed: (optional) random seed to set for the environment by calling env.seed(seed)
+    :return: an instance of a RolloutManager, which contains the data about the rollouts performed
+    """
+
     assert num_steps is not None or num_episodes is not None
+    assert reset_env_before or last_obs is not None
 
     if saver is None:
         saver = RolloutManager()
 
     env = copy.deepcopy(worker.env)
-    if hasattr(env, "seed"):
+    if hasattr(env, "seed") and callable(env.seed):
         env.seed(seed)
 
     multiagent = isinstance(env, MultiAgentEnv)
@@ -122,7 +123,7 @@ def internal_rollout(worker,
 
     steps = 0
     episodes = 0
-    while keep_going(steps, num_steps, episodes, num_episodes):
+    while _keep_going(steps, num_steps, episodes, num_episodes):
         mapping_cache = {}  # in case policy_agent_mapping is stochastic
         saver.begin_rollout()
         if reset_env_before or episodes > 0:
@@ -130,14 +131,14 @@ def internal_rollout(worker,
         else:
             obs = last_obs
         agent_states = DefaultMapping(
-            lambda agent_id: state_init[mapping_cache[agent_id]])
+            lambda agent_id_: state_init[mapping_cache[agent_id_]])
         prev_actions = DefaultMapping(
-            lambda agent_id: action_init[mapping_cache[agent_id]])
+            lambda agent_id_: action_init[mapping_cache[agent_id_]])
         prev_rewards = collections.defaultdict(lambda: 0.)
         done = False
         reward_total = 0.0
-        while not done and keep_going(steps, num_steps, episodes,
-                                      num_episodes):
+        while not done and _keep_going(steps, num_steps, episodes,
+                                       num_episodes):
             multi_obs = obs if multiagent else {_DUMMY_AGENT_ID: obs}
             action_dict = {}
             virtual_global_timestep += 1
@@ -147,25 +148,24 @@ def internal_rollout(worker,
                         agent_id, policy_agent_mapping(agent_id))
                     p_use_lstm = use_lstm[policy_id]
                     if p_use_lstm:
-                        a_action, p_state, _ = worker_compute_action(worker,
-                                                                     timestep=virtual_global_timestep,
-                                                                     observation=a_obs,
-                                                                     state=agent_states[agent_id],
-                                                                     prev_action=prev_actions[agent_id],
-                                                                     prev_reward=prev_rewards[agent_id],
-                                                                     policy_id=policy_id)
+                        a_action, p_state, _ = _worker_compute_action(worker,
+                                                                      timestep=virtual_global_timestep,
+                                                                      observation=a_obs,
+                                                                      state=agent_states[agent_id],
+                                                                      prev_action=prev_actions[agent_id],
+                                                                      prev_reward=prev_rewards[agent_id],
+                                                                      policy_id=policy_id)
                         agent_states[agent_id] = p_state
                     else:
-                        a_action = worker_compute_action(worker, virtual_global_timestep,
-                                                         observation=a_obs,
-                                                         prev_action=prev_actions[agent_id],
-                                                         prev_reward=prev_rewards[agent_id],
-                                                         policy_id=policy_id)
+                        a_action = _worker_compute_action(worker, virtual_global_timestep,
+                                                          observation=a_obs,
+                                                          prev_action=prev_actions[agent_id],
+                                                          prev_reward=prev_rewards[agent_id],
+                                                          policy_id=policy_id)
                     a_action = flatten_to_single_ndarray(a_action)
                     action_dict[agent_id] = a_action
                     prev_actions[agent_id] = a_action
 
-                    # print(policy_id, a_action)
             action = action_dict
 
             action = action if multiagent else action[_DUMMY_AGENT_ID]
@@ -188,49 +188,36 @@ def internal_rollout(worker,
             steps += 1
             obs = next_obs
         saver.end_rollout()
-        # print("Episode #{}: reward: {}".format(episodes, reward_total))
         if done:
             episodes += 1
     return saver
 
 
-# Modified from ray.rllib.agent.trainer.py
-def worker_compute_action(worker, timestep,
-                          observation: TensorStructType,
-                          state: List[TensorStructType] = None,
-                          prev_action: TensorStructType = None,
-                          prev_reward: float = None,
-                          info: EnvInfoDict = None,
-                          policy_id: PolicyID = DEFAULT_POLICY_ID,
-                          full_fetch: bool = False,
-                          explore: bool = None) -> TensorStructType:
-    """Computes an action for the specified policy on the local Worker.
+def _keep_going(steps, num_steps, episodes, num_episodes):
+    """Modified version.
+    Determine whether we've collected enough data"""
+    if num_episodes and num_steps:
+        return episodes < num_episodes and steps < num_steps
+    # if num_episodes is set, this overrides num_steps
+    if num_episodes:
+        return episodes < num_episodes
+    # if num_steps is set, continue until we reach the limit
+    if num_steps:
+        return steps < num_steps
+    # otherwise keep going forever
+    return True
 
-    Note that you can also access the policy object through
-    self.get_policy(policy_id) and call compute_actions() on it directly.
 
-    Arguments:
-        observation (TensorStructType): observation from the environment.
-        state (List[TensorStructType]): RNN hidden state, if any. If state
-            is not None, then all of compute_single_action(...) is returned
-            (computed action, rnn state(s), logits dictionary).
-            Otherwise compute_single_action(...)[0] is returned
-            (computed action).
-        prev_action (TensorStructType): Previous action value, if any.
-        prev_reward (float): Previous reward, if any.
-        info (EnvInfoDict): info object, if any
-        policy_id (PolicyID): Policy to query (only applies to
-            multi-agent).
-        full_fetch (bool): Whether to return extra action fetch results.
-            This is always set to True if RNN state is specified.
-        explore (bool): Whether to pick an exploitation or exploration
-            action (default: None -> use self.config["explore"]).
-
-    Returns:
-        any: The computed action if full_fetch=False, or
-        tuple: The full output of policy.compute_actions() if
-            full_fetch=True or we have an RNN-based Policy.
-    """
+def _worker_compute_action(worker, timestep,
+                           observation: TensorStructType,
+                           state: List[TensorStructType] = None,
+                           prev_action: TensorStructType = None,
+                           prev_reward: float = None,
+                           info: EnvInfoDict = None,
+                           policy_id: PolicyID = DEFAULT_POLICY_ID,
+                           full_fetch: bool = False,
+                           explore: bool = None) -> TensorStructType:
+    "Modified version of the Trainer compute_action method"
     if state is None:
         state = []
     preprocessed = worker.preprocessors[

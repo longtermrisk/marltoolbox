@@ -90,16 +90,16 @@ def get_env_config(hp):
     return env_config
 
 
-def get_nested_policy_class(hp, NestedPolicyClass, welfare_fn):
+def get_nested_policy_class(hp, welfare_fn):
     NestedPolicyClass = hp["NestedPolicyClass"]
 
     if NestedPolicyClass == dqn.DQNTorchPolicy:
-        additional_fn = [postprocess_nstep_and_prio]
+        additional_fn = postprocess_nstep_and_prio
         stats_fn = build_q_stats
         get_vars = lambda policy: policy.q_func_vars
 
     elif NestedPolicyClass == policy.A2CTorchPolicy:
-        additional_fn = [a3c.a3c_torch_policy.add_advantages]
+        additional_fn = a3c.a3c_torch_policy.add_advantages
         stats_fn = a3c_torch_policy.loss_and_entropy_stats
         hp["base_lr"] = hp["base_lr"] * hp["a2c_lr_multiplier"]
         get_vars = lambda policy: policy.model.parameters()
@@ -116,12 +116,14 @@ def get_nested_policy_class(hp, NestedPolicyClass, welfare_fn):
         NestedPolicyClass = NestedPolicyClass.with_updates(stats_fn=log.stats_fn_wt_additionnal_logs(stats_fn))
 
     CoopNestedPolicyClass = NestedPolicyClass.with_updates(
-        postprocess_fn=postprocessing.get_postprocessing_welfare_function(
-            add_utilitarian_welfare=welfare_fn == postprocessing.WELFARE_UTILITARIAN,
-            add_inequity_aversion_welfare=welfare_fn == postprocessing.WELFARE_INEQUITY_AVERSION,
-            inequity_aversion_alpha=hp["alpha"], inequity_aversion_beta=hp["beta"],
-            inequity_aversion_gamma=hp["gamma"], inequity_aversion_lambda=hp["lambda"],
-            additional_fn=additional_fn,
+        postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
+            postprocessing.get_postprocessing_welfare_function(
+                add_utilitarian_welfare=welfare_fn == postprocessing.WELFARE_UTILITARIAN,
+                add_inequity_aversion_welfare=welfare_fn == postprocessing.WELFARE_INEQUITY_AVERSION,
+                inequity_aversion_alpha=hp["alpha"], inequity_aversion_beta=hp["beta"],
+                inequity_aversion_gamma=hp["gamma"], inequity_aversion_lambda=hp["lambda"],
+            ),
+            additional_fn
         )
     )
     return NestedPolicyClass, CoopNestedPolicyClass
@@ -355,28 +357,37 @@ def get_rllib_config(hp, welfare_fn):
 
     return stop, env_config, trainer_config_update
 
+def preprocess_utilitarian_config(hp):
+    hp_copy = copy.deepcopy(hp)
+    hp_copy['train_n_replicates'] = hp_copy['train_n_replicates'] * hp_copy["n_times_more_utilitarians_seeds"]
+    return hp_copy
+
+def postprocess_utilitarian_results(results, env_config, hp):
+    results = miscellaneous.filter_tune_results(
+        results,
+        metric=f"policy_reward_mean/{env_config['players_ids'][0]}",
+        metric_threshold=3.2 * hp["n_steps_per_epi"],
+        metric_mode="last-5-avg", threshold_mode="above")
+    if len(results.trials) > hp['train_n_replicates']:
+        results.trials = results.trials[:hp['train_n_replicates']]
+    elif len(results.trials) < hp['train_n_replicates']:
+        print("WARNING: not enough Utilitarian trials above threshold!!!")
+    return results
+
 
 def train(hp):
     results_list = []
     for welfare_fn in hp['welfare_functions']:
+
         if welfare_fn == postprocessing.WELFARE_UTILITARIAN:
-            hp['train_n_replicates'] = hp['train_n_replicates'] * hp["n_times_more_utilitarians_seeds"]
+            hp = preprocess_utilitarian_config(hp)
         stop, env_config, trainer_config_update = get_rllib_config(hp, welfare_fn)
         results = amTFT.two_steps_training(stop=stop,
                                            config=trainer_config_update,
                                            name=hp["exp_name"],
                                            TrainerClass=hp["TrainerClass"])
         if welfare_fn == postprocessing.WELFARE_UTILITARIAN:
-            hp['train_n_replicates'] = hp['train_n_replicates'] // hp["n_times_more_utilitarians_seeds"]
-            results = miscellaneous.filter_tune_results(
-                results,
-                metric=f"policy_reward_mean/{env_config['players_ids'][0]}",
-                metric_threshold=3.2 * hp["n_steps_per_epi"],
-                metric_mode="last-5-avg", threshold_mode="above")
-            if len(results.trials) > hp['train_n_replicates']:
-                results.trials = results.trials[:hp['train_n_replicates']]
-            elif len(results.trials) < hp['train_n_replicates']:
-                print("WARNING: not enough Utilitarian trials above threshold!!!")
+            results = postprocess_utilitarian_results(results, env_config, hp)
         results_list.append(results)
     return results_list
 
@@ -531,5 +542,5 @@ def main(debug):
 
 
 if __name__ == "__main__":
-    debug = True
-    main(debug)
+    debug_mode = True
+    main(debug_mode)
