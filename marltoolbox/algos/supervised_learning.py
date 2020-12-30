@@ -1,14 +1,13 @@
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy import Policy
 from ray.rllib.policy import build_torch_policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_torch
-from typing import Dict, List, Type, Union
 from ray.rllib.policy.torch_policy import LearningRateSchedule
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+from typing import Dict, List, Type, Union
 
 torch, _ = try_import_torch()
 
@@ -22,6 +21,7 @@ SPL_DEFAULT_CONFIG = with_common_config({
         reduce=None,
         reduction='mean')
 })
+
 
 def spl_torch_loss(
         policy: Policy, model: ModelV2,
@@ -52,7 +52,6 @@ def spl_torch_loss(
     assert len(targets) > 0
     targets = torch.cat(targets, dim=0)
 
-
     # Save the loss in the policy object for the spl_stats below.
     policy.spl_loss = policy.config["loss_fn"](predictions.dist.probs, targets)
     policy.entropy = predictions.dist.entropy().mean()
@@ -61,7 +60,7 @@ def spl_torch_loss(
 
 
 def spl_stats(policy: Policy,
-                   train_batch: SampleBatch) -> Dict[str, TensorType]:
+              train_batch: SampleBatch) -> Dict[str, TensorType]:
     """Returns the calculated loss in a stats dict.
 
     Args:
@@ -78,10 +77,12 @@ def spl_stats(policy: Policy,
         "err_policy_spl_loss": policy.spl_loss.item(),
     }
 
+
 def adam_optimizer(policy: Policy,
                    config: TrainerConfigDict) -> "torch.optim.Optimizer":
     return torch.optim.SGD(
         policy.model.parameters(), lr=policy.cur_lr, eps=config["adam_epsilon"])
+
 
 def setup_early_mixins(policy: Policy, obs_space, action_space,
                        config: TrainerConfigDict) -> None:

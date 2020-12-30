@@ -1,17 +1,15 @@
 import copy
-import numpy as np
-from typing import List, Union, Optional, Dict, Tuple
 
+import numpy as np
 from ray import rllib
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import TensorType
+from typing import List, Union, Optional, Dict, Tuple
+
 torch, nn = try_import_torch()
-
-from marltoolbox.utils import miscellaneous
-
 
 DEFAULT_CONFIG = {
     'nested_policies': [
@@ -21,9 +19,8 @@ DEFAULT_CONFIG = {
     ],
 }
 
-# TODO make a parent class for nested/hierarchical algo?
-class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
 
+class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
     INITIALLY_ACTIVE_ALGO = 0
 
     def __init__(self, observation_space, action_space, config, after_init_nested=None, **kwargs):
@@ -41,7 +38,7 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
                                  f'in config["nested_config"]["Policy_class"] '
                                  f'current value is {nested_config["Policy_class"]}')
             Policy = nested_config["Policy_class"]
-            print("Spawn nested algo with config:",updated_config)
+            print("Spawn nested algo with config:", updated_config)
             policy = Policy(observation_space, action_space, updated_config, **kwargs)
             if after_init_nested is not None:
                 after_init_nested(policy)
@@ -143,7 +140,7 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
 
         # TODO find a clean solution to update the LR when using a LearningRateSchedule
         for algo in self.algorithms:
-            if hasattr(algo,"cur_lr"):
+            if hasattr(algo, "cur_lr"):
                 for opt in algo._optimizers:
                     for p in opt.param_groups:
                         p["lr"] = algo.cur_lr
@@ -162,6 +159,6 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         return SampleBatch({k: np.array(v, copy=copy_data)[filter] for (k, v) in samples.data.items()})
 
     def postprocess_trajectory(self, sample_batch,
-                                   other_agent_batches=None,
-                                   episode=None):
+                               other_agent_batches=None,
+                               episode=None):
         return self.algorithms[self.active_algo_idx].postprocess_trajectory(sample_batch, other_agent_batches, episode)

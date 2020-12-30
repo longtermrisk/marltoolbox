@@ -122,7 +122,7 @@ RLLib and an external repository.
 - algos
     - amTFT [(approximate  Markov tit-for-tat)](https://arxiv.org/abs/1707.01068)
     - L-TFT (Learning Tit-for-tat or Learning Equilibrium, **simplified version**)
-    - LOLA-DICE (unofficial, **WIP: not working properly**)  
+    - LOLA-DICE (unofficial, in the `experimental` branch, **WIP: not working properly**)  
     - supervised learning
     - hierarchical
         - Base Policy class which allow to use nested algorithms 
@@ -166,7 +166,7 @@ RLLib and an external repository.
         - L-TFT (Learning Tit-for-tat or Learning Equilibrium) 
         - amTFT
         - L1BR amTFT
-        - LOLA-DICE (unofficial, **WIP: Not working properly**)
+        - LOLA-DICE (unofficial, in the `experimental` branch, **WIP: Not working properly**)
 
 
 # Some usages:

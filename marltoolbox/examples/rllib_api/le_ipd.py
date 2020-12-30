@@ -1,6 +1,6 @@
 import copy
-import os
 
+import os
 import ray
 from ray import tune
 from ray.rllib.agents.dqn import DQNTrainer
@@ -29,8 +29,7 @@ def sgd_optimizer_spl(policy: Policy, config: TrainerConfigDict) -> "torch.optim
         policy.model.parameters(), lr=policy.cur_lr, momentum=config["sgd_momentum"])
 
 
-def get_rllib_config(hp:dict):
-
+def get_rllib_config(hp: dict):
     stop = {
         "episodes_total": hp["n_epi"],  # 4000 steps in 200 epi
     }
@@ -220,7 +219,7 @@ def main(debug):
         "n_steps_per_epi": 20,
         "bs_epi_mul": 4,
         "base_lr": 0.04,
-        "spl_lr_mul":  10.0,
+        "spl_lr_mul": 10.0,
         "seeds": seeds,
         "debug": debug,
     }
@@ -229,10 +228,8 @@ def main(debug):
     ray.init(num_cpus=os.cpu_count(), num_gpus=0)
     print("\n========== Training LE in self-play ==========\n")
     results = ray.tune.run(DQNTrainer, config=rllib_config,
-                           verbose=1, checkpoint_freq = 0, stop=stop,
-                           checkpoint_at_end = True, name = exp_name)
-
-
+                           verbose=1, checkpoint_freq=0, stop=stop,
+                           checkpoint_at_end=True, name=exp_name)
 
     print("\n========== Training LE against a naive opponent ==========\n")
     # Set player_col to use a naive policy
@@ -243,10 +240,11 @@ def main(debug):
         {}
     )
     results = ray.tune.run(DQNTrainer, config=rllib_config,
-                           verbose=1, checkpoint_freq = 0, stop=stop,
-                           checkpoint_at_end = True, name = exp_name)
+                           verbose=1, checkpoint_freq=0, stop=stop,
+                           checkpoint_at_end=True, name=exp_name)
 
     ray.shutdown()
+
 
 if __name__ == "__main__":
     debug = False

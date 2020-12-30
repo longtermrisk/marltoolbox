@@ -17,7 +17,6 @@ from ray.rllib.agents.callbacks import DefaultCallbacks
 from marltoolbox.algos import hierarchical
 from marltoolbox.utils import miscellaneous, restore
 
-
 DEFAULT_CONFIG_UPDATE = merge_dicts(
     hierarchical.DEFAULT_CONFIG,
     {

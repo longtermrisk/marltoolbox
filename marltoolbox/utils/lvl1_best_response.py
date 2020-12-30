@@ -1,11 +1,9 @@
-import copy
-import copy
-
 import random
 from ray import tune
 
 from marltoolbox.algos import population
 from marltoolbox.utils import miscellaneous
+
 
 # TODO remove this function if this is not really useful
 def config_lvl0_population_training(n_seeds: int, lvl0_kwargs: dict):

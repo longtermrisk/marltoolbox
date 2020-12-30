@@ -67,7 +67,6 @@ if __name__ == "__main__":
         "action_flip_prob": 0,
         "n_players": 2,
 
-
         # "env": "FearGreedMatrix",
         # "lr" : 0.01,
         # "gamma" : 0.9,
@@ -76,11 +75,11 @@ if __name__ == "__main__":
         # "use_simple_agents": True,
         # "n_episodes": 10 if debug else 4000,
         # "max_reward_strength": 3,
-        "weight_decay":0.0,
+        "weight_decay": 0.0,
 
         "env": "CoinGame",
-        "lr" : 0.01,
-        "gamma" : 0.5,
+        "lr": 0.01,
+        "gamma": 0.5,
         "n_steps_per_epi": 20,
         "n_units": 8,
         "use_simple_agents": False,

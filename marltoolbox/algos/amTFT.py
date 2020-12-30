@@ -1,7 +1,7 @@
-import logging
-import numpy as np
 from collections import Iterable
 
+import logging
+import numpy as np
 import ray
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
@@ -47,7 +47,6 @@ DEFAULT_CONFIG = merge_dicts(
         # TODO use log level of RLLib instead of mine
         "verbose": 1,
 
-
         # To configure
         "own_policy_id": None,
         "opp_policy_id": None,
@@ -90,7 +89,7 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         self.verbose = config["verbose"]
 
         assert self.welfare in postprocessing.WELFARES, f"self.welfare: {self.welfare} must be in " \
-                                                       f"postprocessing.WELFARES: {postprocessing.WELFARES}"
+                                                        f"postprocessing.WELFARES: {postprocessing.WELFARES}"
         self.approximation_method = config["approximation_method"]
         assert self.approximation_method in APPROXIMATION_METHODS
 
@@ -164,19 +163,18 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         if self.verbose > 2:
             print(f"self.active_algo_idx {self.active_algo_idx}")
         actions, state_out, extra_fetches = self.algorithms[self.active_algo_idx].compute_actions(obs_batch,
-                                                                                                 state_batches,
-                                                                                                 prev_action_batch,
-                                                                                                 prev_reward_batch,
-                                                                                                 info_batch,
-                                                                                                 episodes,
-                                                                                                 explore,
-                                                                                                 timestep,
-                                                                                                 **kwargs)
+                                                                                                  state_batches,
+                                                                                                  prev_action_batch,
+                                                                                                  prev_reward_batch,
+                                                                                                  info_batch,
+                                                                                                  episodes,
+                                                                                                  explore,
+                                                                                                  timestep,
+                                                                                                  **kwargs)
         return actions, state_out, extra_fetches
 
     def learn_on_batch(self, samples: SampleBatch):
         learner_stats = {"learner_stats": {}}
-
 
         working_state_idx = WORKING_STATES.index(self.working_state)
 
@@ -241,7 +239,6 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
                 if self.verbose > 0:
                     print(f"punishing self.n_steps_to_punish: {self.n_steps_to_punish}")
             if self.total_debit > self.debit_threshold:
-
                 self.n_steps_to_punish = self._compute_punishment_duration(coop_extra_fetches["q_values"],
                                                                            selfish_extra_fetches["q_values"],
                                                                            opp_action,
@@ -317,12 +314,12 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
                 assert len(self.overwrite_action) == 0
                 self.overwrite_action = [(np.array([opp_action]), [], {}), ]
             coop_rollout = rollout.internal_rollout(worker,
-                                                          num_steps=self.rollout_length,
-                                                          policy_map=policy_map,
-                                                          last_obs=last_obs,
-                                                          policy_agent_mapping=policy_agent_mapping,
-                                                          reset_env_before=False,
-                                                          num_episodes=1)
+                                                    num_steps=self.rollout_length,
+                                                    policy_map=policy_map,
+                                                    last_obs=last_obs,
+                                                    policy_agent_mapping=policy_agent_mapping,
+                                                    reset_env_before=False,
+                                                    num_episodes=1)
             assert coop_rollout._num_episodes == 1, f"coop_rollout._num_episodes {coop_rollout._num_episodes}"
             epi = coop_rollout._current_rollout
             rewards = [step[3][self.opp_policy_id] for step in epi]
@@ -334,7 +331,7 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         self.n_steps_to_punish = 0
         self.n_steps_to_punish_opp = 0
         n_steps_played = len(epi)
-        mean_total_reward = sum(total_rewards)/len(total_rewards)
+        mean_total_reward = sum(total_rewards) / len(total_rewards)
         return mean_total_reward, n_steps_played
 
     def _compute_debit_from_rollouts(self, last_obs, opp_action, coop_opp_simulated_action,
@@ -350,11 +347,14 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
 
         # Cooperative rollouts
         coop_mean_total_reward, _ = self._compute_opp_mean_total_reward(worker, policy_map, policy_agent_mapping,
-                                            partially_coop=False, opp_action=None, last_obs=last_obs)
+                                                                        partially_coop=False, opp_action=None,
+                                                                        last_obs=last_obs)
         # Cooperative rollouts with first action as the real one
         partially_coop_mean_total_reward, _ = self._compute_opp_mean_total_reward(worker, policy_map,
-                                                                                policy_agent_mapping,
-                                            partially_coop=True, opp_action=opp_action, last_obs=last_obs)
+                                                                                  policy_agent_mapping,
+                                                                                  partially_coop=True,
+                                                                                  opp_action=opp_action,
+                                                                                  last_obs=last_obs)
 
         print("partially_coop_mean_total_reward", partially_coop_mean_total_reward)
         print("coop_mean_total_reward", coop_mean_total_reward)
@@ -398,16 +398,17 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         # Cooperative rollouts
         # print("start Cooperative rollouts")
         coop_mean_total_reward, n_steps_played = self._compute_opp_mean_total_reward(worker, policy_map,
-                                                                                policy_agent_mapping,
-                                                                     partially_coop=False, opp_action=None,
-                                                                     last_obs=last_obs)
+                                                                                     policy_agent_mapping,
+                                                                                     partially_coop=False,
+                                                                                     opp_action=None,
+                                                                                     last_obs=last_obs)
         # Cooperative rollouts with first action as the real one
         # print("start Partially cooperative rollouts")
         partially_coop_mean_total_reward, _ = self._compute_opp_mean_total_reward(worker, policy_map,
-                                                                               policy_agent_mapping,
-                                                                               partially_coop=False,
-                                                                               opp_action=None, last_obs=last_obs,
-                                                                                  k_to_explore = k_to_explore)
+                                                                                  policy_agent_mapping,
+                                                                                  partially_coop=False,
+                                                                                  opp_action=None, last_obs=last_obs,
+                                                                                  k_to_explore=k_to_explore)
 
         opp_total_reward_loss = coop_mean_total_reward - partially_coop_mean_total_reward
 
@@ -438,31 +439,33 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
             if k_to_explore <= 0:
                 k_opp_loss[k_to_explore] = -999
             elif k_to_explore not in k_opp_loss.keys():
-                opp_total_reward_loss, n_steps_played = self._compute_opp_total_reward_loss(k_to_explore, worker, policy_map,
-                                                                          policy_agent_mapping, last_obs=last_obs)
+                opp_total_reward_loss, n_steps_played = self._compute_opp_total_reward_loss(k_to_explore, worker,
+                                                                                            policy_map,
+                                                                                            policy_agent_mapping,
+                                                                                            last_obs=last_obs)
                 k_opp_loss[k_to_explore] = opp_total_reward_loss
                 if self.verbose > 0:
                     print(f"k_to_explore {k_to_explore}: {opp_total_reward_loss}")
 
             # Compute for (k - 1)
             if (k_to_explore - 1) <= 0:
-                k_opp_loss[k_to_explore-1] = -999
+                k_opp_loss[k_to_explore - 1] = -999
             elif (k_to_explore - 1) not in k_opp_loss.keys():
-                opp_total_reward_loss, _ = self._compute_opp_total_reward_loss(k_to_explore-1, worker, policy_map,
-                                                                            policy_agent_mapping, last_obs=last_obs)
-                k_opp_loss[k_to_explore-1] = opp_total_reward_loss
+                opp_total_reward_loss, _ = self._compute_opp_total_reward_loss(k_to_explore - 1, worker, policy_map,
+                                                                               policy_agent_mapping, last_obs=last_obs)
+                k_opp_loss[k_to_explore - 1] = opp_total_reward_loss
                 if self.verbose > 0:
-                    print(f"k_to_explore-1 {k_to_explore-1}: {opp_total_reward_loss}")
+                    print(f"k_to_explore-1 {k_to_explore - 1}: {opp_total_reward_loss}")
 
             found_k = (k_opp_loss[k_to_explore] >= debit_threshold and
-                                    k_opp_loss[k_to_explore - 1] <= debit_threshold)
+                       k_opp_loss[k_to_explore - 1] <= debit_threshold)
             continue_to_search_k = not found_k
 
             if not continue_to_search_k:
                 break
 
             # If all the smallest k are already explored
-            if (k_opp_loss[k_to_explore-1] > debit_threshold and (k_to_explore-1) <= 1) :
+            if (k_opp_loss[k_to_explore - 1] > debit_threshold and (k_to_explore - 1) <= 1):
                 k_to_explore = 1
                 break
 
@@ -479,7 +482,6 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
                 elif k_opp_loss[k_to_explore] < debit_threshold:
                     k_to_explore = max(k_opp_loss.keys()) + 1
 
-
         self.performing_rollouts = False
         self.use_opponent_policies = False
         # Useless since it will be overwritten
@@ -494,6 +496,7 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         if self.working_state == WORKING_STATES[2]:
             self.total_debit = 0
             self.n_steps_to_punish = 0
+
 
 def two_steps_training(stop, config, name, do_not_load=[], TrainerClass=DQNTrainer, **kwargs):
     for policy_id in config["multiagent"]["policies"].keys():
@@ -529,7 +532,6 @@ def two_steps_training(stop, config, name, do_not_load=[], TrainerClass=DQNTrain
 
 # TODO do the same in postprocessing (closure)
 def get_amTFTCallBacks(additionnal_callbacks=[], **kwargs):
-
     # WelfareAndPostprocessCallbacks = postprocessing.get_WelfareAndPostprocessCallbacks(**kwargs)
 
     class amTFTCallBacksPart(DefaultCallbacks):
@@ -585,11 +587,10 @@ def get_amTFTCallBacks(additionnal_callbacks=[], **kwargs):
     if not isinstance(additionnal_callbacks, Iterable):
         additionnal_callbacks = [additionnal_callbacks]
 
-    amTFTCallBacks = miscellaneous.merge_callbacks(#WelfareAndPostprocessCallbacks,
-                                                   amTFTCallBacksPart,
-                                                   *additionnal_callbacks)
+    amTFTCallBacks = miscellaneous.merge_callbacks(  # WelfareAndPostprocessCallbacks,
+        amTFTCallBacksPart,
+        *additionnal_callbacks)
 
     return amTFTCallBacks
-
 
 # amTFTTrainer = DQNTrainer.with_updates()

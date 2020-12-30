@@ -4,7 +4,6 @@
 
 import copy
 from collections import deque
-import logging
 
 import numpy as np
 import torch
@@ -40,7 +39,6 @@ LE_DEFAULT_CONFIG_UPDATE = merge_dicts(
 )
 
 
-# TODO make a parent class for nested/hierarchical algo?
 class LE(hierarchical.HierarchicalTorchPolicy):
     """
     Learning Tit-for-tat (Learning Equilibrium(LE))

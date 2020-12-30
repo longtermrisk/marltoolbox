@@ -9,19 +9,17 @@
 ##########
 
 import copy
+
 import os
-import time
 import ray
+import time
 from ray import tune
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 
 from lola_dice.train_tune_class_API import LOLADICE
-from lola.train_pg_tune_class_API import LOLAPGMatrice
-
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
-from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma, IteratedBoS, IteratedMatchingPennies, IteratedAsymBoS
+from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma, IteratedMatchingPennies, IteratedAsymBoS
 from marltoolbox.utils import policy, log, same_and_cross_perf
-
 
 
 def get_tune_config(hp: dict) -> dict:
@@ -52,10 +50,10 @@ def get_tune_config(hp: dict) -> dict:
     elif config["env"] in ("CoinGame", "AsymCoinGame"):
         config["trace_length"] = 150 if config["trace_length"] is None else config["trace_length"]
         config["epochs"] *= 10
-        config["make_optimizer"] = ("make_adam_optimizer", {"hidden_sizes":[16, 32]})
+        config["make_optimizer"] = ("make_adam_optimizer", {"hidden_sizes": [16, 32]})
         config["save_dir"] = "dice_results_coin_game"
         config["gamma"] = 0.96 if config["gamma"] is None else config["gamma"]
-        config["make_policy"] = ("make_conv_policy",{})
+        config["make_policy"] = ("make_conv_policy", {})
         config["base_lr"] = 0.005
 
         env_config = {
@@ -80,14 +78,12 @@ def get_tune_config(hp: dict) -> dict:
 
 
 def train(hp):
-
     tune_config, stop, _ = get_tune_config(hp)
     # Train with the Tune Class API (not RLLib Class)
     training_results = tune.run(LOLADICE, name=hp["exp_name"], config=tune_config,
                                 checkpoint_at_end=True,
                                 stop=stop, metric=hp["metric"], mode="max")
     return training_results
-
 
 
 def evaluate(training_results, hp):
@@ -135,7 +131,6 @@ def evaluate(training_results, hp):
     else:
         raise NotImplementedError()
 
-
     rllib_config = {
         "env": hp_eval["env"],
         "env_config": env_config,
@@ -164,7 +159,6 @@ def evaluate(training_results, hp):
 
 
 def evaluate_same_and_cross_perf(training_results, rllib_config, stop, env_config, hp, plot_config):
-
     policies_to_load = copy.deepcopy(env_config["players_ids"])
 
     evaluator = same_and_cross_perf.SameAndCrossPlayEvaluation(TuneTrainerClass=LOLADICE,

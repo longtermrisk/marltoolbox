@@ -104,19 +104,19 @@ def merge_callbacks(*callbacks_list):
     return MergeCallBacks
 
 
-
 def merge_policy_postprocessing_fn(*postprocessing_fn_list):
     """
     Merge several callback class together. Executing them in the order provided.
     :param postprocessing_fn_list:
     :return: a function which calls all provided function in order
     """
+
     def merged_postprocessing_fn(policy, sample_batch, other_agent_batches, episode):
         for postprocessing_fn in postprocessing_fn_list:
-            sample_batch = postprocessing_fn (policy, sample_batch, other_agent_batches, episode)
+            sample_batch = postprocessing_fn(policy, sample_batch, other_agent_batches, episode)
         return sample_batch
-    return merged_postprocessing_fn
 
+    return merged_postprocessing_fn
 
 
 def seed_to_checkpoint(dict_to_select_from):

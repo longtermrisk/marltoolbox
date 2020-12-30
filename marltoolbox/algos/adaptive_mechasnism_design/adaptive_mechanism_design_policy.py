@@ -2,11 +2,9 @@
 # Code from: https://github.com/tobiasbaumann1/Adaptive_Mechanism_Design
 ##########
 
-import tensorflow as tf
-import numpy as np
 import logging
-logging.basicConfig(filename='Planning_Agent.log',level=logging.DEBUG,filemode='w')
-from marltoolbox.algos.adaptive_mechasnism_design.agent import Agent, convert_from_rllib_env_format
+
+logging.basicConfig(filename='Planning_Agent.log', level=logging.DEBUG, filemode='w')
 
 # RANDOM_SEED = 5
 # np.random.seed(RANDOM_SEED)

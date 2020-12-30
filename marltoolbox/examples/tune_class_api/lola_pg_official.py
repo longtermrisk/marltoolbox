@@ -9,17 +9,16 @@
 ##########
 
 import copy
+
 import os
-import time
 import ray
+import time
 from ray import tune
 from ray.rllib.agents.dqn import DQNTorchPolicy
 
 from lola.train_cg_tune_class_API import LOLAPGCG
 from lola.train_pg_tune_class_API import LOLAPGMatrice
-
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
-from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma, IteratedBoS
 from marltoolbox.utils import policy, log, same_and_cross_perf
 
 
@@ -76,7 +75,6 @@ def get_config(tune_hparams: dict) -> dict:
 
 
 def train(tune_config, stop, tune_hp):
-
     print("full_config['env']", tune_config['env'])
     if tune_config['env'] in (CoinGame, AsymCoinGame):
         trainable_class = LOLAPGCG
@@ -92,7 +90,6 @@ def train(tune_config, stop, tune_hp):
 
 
 def evaluate_same_and_cross_perf(training_results, rllib_config, stop, env_config, rllib_hp):
-
     eval_rllib_config_update = {
         "env": rllib_hp["env"],
         "env_config": env_config,
@@ -136,7 +133,7 @@ def evaluate_same_and_cross_perf(training_results, rllib_config, stop, env_confi
 
     if rllib_hp["load_plot_data"] is None:
         analysis_metrics_per_mode = evaluator.perf_analysis(n_same_play_per_checkpoint=1,
-                                                            n_cross_play_per_checkpoint=min(5, train_n_replicates-1),
+                                                            n_cross_play_per_checkpoint=min(5, train_n_replicates - 1),
                                                             extract_checkpoints_from_results=[training_results],
                                                             )
     else:
@@ -153,9 +150,8 @@ def evaluate_same_and_cross_perf(training_results, rllib_config, stop, env_confi
                            jitter=rllib_hp["jitter"],
                            colors=["red", "blue"],
                            xlabel="player 1 payoffs", ylabel="player 2 payoffs", add_title=False, frameon=True,
-                           show_groups=False,  plot_max_n_points=train_n_replicates
+                           show_groups=False, plot_max_n_points=train_n_replicates
                            )
-
 
 
 if __name__ == "__main__":
@@ -168,7 +164,6 @@ if __name__ == "__main__":
 
     tune_hparams = {
         "exp_name": exp_name,
-
 
         # Print metrics
         "load_plot_data": None,

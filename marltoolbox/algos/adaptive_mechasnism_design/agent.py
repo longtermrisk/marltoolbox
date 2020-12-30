@@ -2,9 +2,9 @@
 # Code from: https://github.com/tobiasbaumann1/Adaptive_Mechanism_Design
 ##########
 
+import logging
 import numpy as np
 import tensorflow as tf
-import logging
 from tensorflow.python.ops import math_ops
 
 logging.basicConfig(filename='Agents.log', level=logging.DEBUG)
@@ -16,7 +16,7 @@ logging.basicConfig(filename='Agents.log', level=logging.DEBUG)
 from enum import Enum, auto
 
 
-def convert_from_rllib_env_format(data, player_ids, state:bool=False, n_states:int=None, coin_game=False):
+def convert_from_rllib_env_format(data, player_ids, state: bool = False, n_states: int = None, coin_game=False):
     # for Done
     if "__all__" in data.keys():
         return data["__all__"]
@@ -50,17 +50,19 @@ def convert_to_rllib_env_format(data, player_ids, coin_game=False):
             formated_data[player_id] = data_element
     return formated_data
 
+
 def var_shape(x):
-   out = x.get_shape().as_list()
-   return out
+    out = x.get_shape().as_list()
+    return out
 
 
 def intprod(x):
-   return int(np.prod(x))
+    return int(np.prod(x))
 
 
 def numel(x):
-   return intprod(var_shape(x))
+    return intprod(var_shape(x))
+
 
 class Critic_Variant(Enum):
     INDEPENDENT = auto()
@@ -133,7 +135,8 @@ class Actor_Critic_Agent(Agent):
         return [self.actor.w_l1, self.actor.b_l1, self.actor.w_pi1, self.actor.b_pi1]
 
     def calc_g_log_pi(self, s, a):
-        return self.actor.calc_g_log_pi(self.sess,  s, a)
+        return self.actor.calc_g_log_pi(self.sess, s, a)
+
 
 class Actor(object):
     def __init__(self, env, n_units=20, learning_rate=0.001, agent_idx=0, weight_decay=0.0):
@@ -177,6 +180,7 @@ class Actor(object):
 
     def calc_g_log_pi(self, sess, s, a):
         return sess.run(self.g_log_pi, feed_dict={self.s: s, self.a: a})
+
 
 class Critic(object):
     def __init__(self, env, n_units, learning_rate, gamma, agent_idx,

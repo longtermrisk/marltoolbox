@@ -105,7 +105,7 @@ def get_tune_config(tune_hp: dict) -> dict:
         tune_config["save_dir"] = "dice_results_imp"
     elif tune_config["env_name"] in ("CoinGame", "AsymCoinGame"):
         tune_config["trace_length"] = 150 if tune_config["trace_length"] is None else tune_config["trace_length"]
-        tune_config["epochs"] = int(tune_config["epochs"]*10)
+        tune_config["epochs"] = int(tune_config["epochs"] * 10)
         tune_config["make_optim"] = make_adam_optimizer
         tune_config["save_dir"] = "dice_results_coin_game"
         tune_config["gamma"] = 0.96 if tune_config["gamma"] is None else tune_config["gamma"]

@@ -19,6 +19,7 @@ OPPONENT_NEGATIVE_REWARD = "opponent_negative_reward"
 DISCOUNTED_RETURNS = "discounted_returns"
 REWARDS_UNDER_DEFECTION = "rewards_under_defection"
 
+
 def get_postprocessing_welfare_function(
         add_utilitarian_welfare=False,
         add_egalitarian_welfare=False, add_nash_welfare=False,
@@ -26,22 +27,21 @@ def get_postprocessing_welfare_function(
         add_inequity_aversion_welfare=False,
         inequity_aversion_alpha=0.0, inequity_aversion_beta=1.0,
         inequity_aversion_gamma=0.9, inequity_aversion_lambda=0.9,
-        additional_fn:list=[]):
-
+        additional_fn: list = []):
     def postprocess_fn(policy, sample_batch, other_agent_batches, episode):
 
         if add_utilitarian_welfare:
-            opp_batches = [v[1] for v in  other_agent_batches.values()]
+            opp_batches = [v[1] for v in other_agent_batches.values()]
             sample_batch = _add_utilitarian_welfare_to_batch(sample_batch, opp_batches)
         if add_inequity_aversion_welfare:
             assert len(other_agent_batches) == 1
             opp_batch = other_agent_batches[list(other_agent_batches.keys())[0]][1]
             sample_batch = _add_inequity_aversion_welfare_to_batch(
                 sample_batch, opp_batch,
-               alpha=inequity_aversion_alpha,
-               beta=inequity_aversion_beta,
-               gamma=inequity_aversion_gamma,
-               lambda_=inequity_aversion_lambda)
+                alpha=inequity_aversion_alpha,
+                beta=inequity_aversion_beta,
+                gamma=inequity_aversion_gamma,
+                lambda_=inequity_aversion_lambda)
         if add_nash_welfare:
             assert len(other_agent_batches) == 1
             opp_batch = other_agent_batches[list(other_agent_batches.keys())[0]][1]
@@ -66,20 +66,25 @@ def get_postprocessing_welfare_function(
 
     return postprocess_fn
 
+
 def _add_utilitarian_welfare_to_batch(sample_batch: SampleBatch,
                                       opp_ag_batchs: List[SampleBatch]) -> SampleBatch:
     all_batchs_rewards = ([sample_batch[sample_batch.REWARDS]] +
                           [opp_batch[opp_batch.REWARDS] for opp_batch in opp_ag_batchs])
-    sample_batch.data[WELFARE_UTILITARIAN] = np.array([sum(reward_points) for reward_points in zip(*all_batchs_rewards)])
+    sample_batch.data[WELFARE_UTILITARIAN] = np.array(
+        [sum(reward_points) for reward_points in zip(*all_batchs_rewards)])
     return sample_batch
+
 
 def _add_opponent_action_to_batch(sample_batch: SampleBatch, opp_ag_batch: SampleBatch) -> SampleBatch:
     sample_batch.data[OPPONENT_ACTIONS] = opp_ag_batch[opp_ag_batch.ACTIONS]
     return sample_batch
 
+
 def _add_opponent_neg_reward_to_batch(sample_batch: SampleBatch, opp_ag_batch: SampleBatch) -> SampleBatch:
     sample_batch.data[OPPONENT_NEGATIVE_REWARD] = np.array([- opp_r for opp_r in opp_ag_batch[opp_ag_batch.REWARDS]])
     return sample_batch
+
 
 # TODO maybe should not apply gamma (only lambda)
 def _add_inequity_aversion_welfare_to_batch(sample_batch: SampleBatch, opp_ag_batch: SampleBatch,
@@ -113,6 +118,7 @@ def _add_inequity_aversion_welfare_to_batch(sample_batch: SampleBatch, opp_ag_ba
     # print("inequity aversion welfare", welfare)
     return sample_batch
 
+
 def _add_nash_welfare_to_batch(sample_batch: SampleBatch, opp_ag_batch: SampleBatch) -> SampleBatch:
     # TODO verify than this batches are only one full episode
     own_rewards = np.array(opp_ag_batch[opp_ag_batch.REWARDS])
@@ -128,6 +134,7 @@ def _add_nash_welfare_to_batch(sample_batch: SampleBatch, opp_ag_batch: SampleBa
     sample_batch.data[WELFARE_NASH] = ([0.0] * (len(sample_batch[sample_batch.REWARDS]) - 1)) + [nash_welfare]
     return sample_batch
 
+
 def _add_egalitarian_welfare_to_batch(sample_batch: SampleBatch, opp_ag_batch: SampleBatch) -> SampleBatch:
     # TODO verify than this batches are only one full episode
     own_rewards = np.array(opp_ag_batch[opp_ag_batch.REWARDS])
@@ -140,8 +147,10 @@ def _add_egalitarian_welfare_to_batch(sample_batch: SampleBatch, opp_ag_batch: S
 
     egalitarian_welfare = min(own_delta, opp_delta)
 
-    sample_batch.data[WELFARE_EGALITARIAN] = ([0.0] * (len(sample_batch[sample_batch.REWARDS]) - 1)) + [egalitarian_welfare]
+    sample_batch.data[WELFARE_EGALITARIAN] = ([0.0] * (len(sample_batch[sample_batch.REWARDS]) - 1)) + [
+        egalitarian_welfare]
     return sample_batch
+
 
 class OverwriteRewardWtWelfareCallback(DefaultCallbacks):
 
@@ -151,7 +160,7 @@ class OverwriteRewardWtWelfareCallback(DefaultCallbacks):
             policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
             original_batches: Dict[AgentID, SampleBatch], **kwargs):
 
-        assert sum([ k in WELFARES for k in postprocessed_batch.data.keys()]) <= 1, "only one welfare must be available"
+        assert sum([k in WELFARES for k in postprocessed_batch.data.keys()]) <= 1, "only one welfare must be available"
 
         for welfare_key in WELFARES:
             if welfare_key in postprocessed_batch.data.keys():
@@ -159,5 +168,3 @@ class OverwriteRewardWtWelfareCallback(DefaultCallbacks):
                 break
 
         return postprocessed_batch
-
-

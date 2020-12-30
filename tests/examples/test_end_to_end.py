@@ -32,6 +32,7 @@ def test_lola_dice_tune_fn_api():
     from marltoolbox.examples.tune_function_api.lola_dice_official import main
     main(debug=True)
 
+
 def test_lola_pg_tune_fn_api():
     from marltoolbox.examples.tune_function_api.lola_pg_official import main
     main(debug=True)

@@ -322,7 +322,7 @@ def test_logged_info__both_pick_red_all_the_time():
         overwrite_pos(batch_size, env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
 
         print(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
-                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos)
+              p_red_pos, p_blue_pos, c_red_pos, c_blue_pos)
         assert_info(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=1.0, blue_speed=1.0, red_own=1.0, blue_own=0.0)

@@ -1,10 +1,10 @@
 import copy
-from functools import partial
+
 import os
 import ray
 from ray import tune
 from ray.rllib.agents import dqn
-from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy, after_init
+from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
@@ -13,7 +13,7 @@ torch, nn = try_import_torch()
 
 from marltoolbox.envs import matrix_SSD, coin_game
 from marltoolbox.algos import amTFT, population
-from marltoolbox.utils import same_and_cross_perf, restore, exploration, log, \
+from marltoolbox.utils import same_and_cross_perf, exploration, log, \
     postprocessing, lvl1_best_response, miscellaneous
 from marltoolbox.examples.rllib_api import amtft_various_env
 
@@ -50,6 +50,7 @@ def modify_hp_for_selected_env(hp):
     )
 
     return hp
+
 
 def get_policies(hp, welfare_fn, env_config, amTFT_agents_idx):
     PolicyClass = amTFT.amTFTTorchPolicy
@@ -100,7 +101,7 @@ def get_policies(hp, welfare_fn, env_config, amTFT_agents_idx):
             #                            restore.after_init_load_policy_checkpoint]
             #         ))
             policies[policy_id] = (
-                DQNTorchPolicy, #.with_updates(after_init=after_init_fn),
+                DQNTorchPolicy,  # .with_updates(after_init=after_init_fn),
                 hp["env"](env_config).OBSERVATION_SPACE,
                 hp["env"].ACTION_SPACE,
                 {}
@@ -244,8 +245,8 @@ def train_lvl1_agents(hp, results_list_lvl0):
     lvl0_policy_idx = 1
     lvl1_policy_idx = 0
     stop, env_config, rllib_config = get_rllib_config(hp, hp['welfare_functions'][0],
-                                                               amTFT_agents_idx=[lvl0_policy_idx],
-                                                               lvl1=True)
+                                                      amTFT_agents_idx=[lvl0_policy_idx],
+                                                      lvl1=True)
     lvl0_checkpoints = miscellaneous.extract_checkpoints(results_list_lvl0)
     lvl0_policy_id = env_config["players_ids"][lvl0_policy_idx]
     lvl1_policy_id = env_config["players_ids"][lvl1_policy_idx]
@@ -307,7 +308,6 @@ def evaluate_same_and_cross_perf(trainer_config_update, results_list, hp, env_co
                            markersize=5,
                            alpha=1.0
                            )
-
 
 
 def main(debug):

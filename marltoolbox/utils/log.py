@@ -1,4 +1,3 @@
-import datetime
 import copy
 from collections import Iterable
 
@@ -270,7 +269,6 @@ def stats_fn_wt_additionnal_logs(stats_function: Callable[[Policy, SampleBatch],
         return to_log
 
     return wt_additional_info
-
 
 
 def log_in_current_day_dir(exp_name):

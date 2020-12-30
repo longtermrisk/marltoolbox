@@ -18,9 +18,7 @@ from marltoolbox.utils import same_and_cross_perf, exploration, log, \
     postprocessing, policy, miscellaneous
 
 
-
 def modify_hp_for_selected_env(hp):
-
     if hp["env"] == matrix_SSD.IteratedPrisonersDilemma:
         hp["n_epi"] = 10 if hp["debug"] else 400
         hp["base_lr"] = 0.01
@@ -67,6 +65,7 @@ def modify_hp_for_selected_env(hp):
     )
 
     return hp
+
 
 def get_env_config(hp):
     if hp["env"] in (matrix_SSD.IteratedPrisonersDilemma, matrix_SSD.IteratedBoSAndPD,
@@ -357,10 +356,12 @@ def get_rllib_config(hp, welfare_fn):
 
     return stop, env_config, trainer_config_update
 
+
 def preprocess_utilitarian_config(hp):
     hp_copy = copy.deepcopy(hp)
     hp_copy['train_n_replicates'] = hp_copy['train_n_replicates'] * hp_copy["n_times_more_utilitarians_seeds"]
     return hp_copy
+
 
 def postprocess_utilitarian_results(results, env_config, hp):
     results = miscellaneous.filter_tune_results(
@@ -424,7 +425,7 @@ def evaluate_same_and_cross_perf(config_eval, results_list, hp, env_config, stop
     evaluator.plot_results(
         analysis_metrics_per_mode, title_sufix=": " + hp['env'].NAME,
         metrics=((f"policy_reward_mean/{env_config['players_ids'][0]}",
-                 f"policy_reward_mean/{env_config['players_ids'][1]}"),),
+                  f"policy_reward_mean/{env_config['players_ids'][1]}"),),
         x_limits=hp["x_limits"], y_limits=hp["y_limits"],
         scale_multipliers=hp["scale_multipliers"], markersize=5, alpha=1.0, jitter=hp["jitter"],
         xlabel="player 1 payoffs", ylabel="player 2 payoffs", add_title=False, frameon=True,
@@ -512,7 +513,6 @@ def main(debug):
     }
 
     hparams = modify_hp_for_selected_env(hparams)
-
 
     if hparams["load_plot_data"] is None:
         ray.init(num_cpus=os.cpu_count(), num_gpus=0)

@@ -1,9 +1,10 @@
-import pickle
 import logging
+import pickle
 
 logger = logging.getLogger(__name__)
 
 LOAD_FROM_CONFIG_KEY = "checkpoint_to_load_from"
+
 
 # TODO use logger
 def after_init_load_policy_checkpoint(policy, observation_space=None, action_space=None, trainer_config=None):
@@ -26,7 +27,8 @@ def after_init_load_policy_checkpoint(policy, observation_space=None, action_spa
         load_one_policy_checkpoint(policy_id, policy, checkpoint_path)
     else:
         print(f"RLLib loading: no checkpoint found for policy_id: {policy_id} "
-                       f"by looking for config key: {LOAD_FROM_CONFIG_KEY}")
+              f"by looking for config key: {LOAD_FROM_CONFIG_KEY}")
+
 
 # TODO use logger
 def load_one_policy_checkpoint(policy_id, policy, checkpoint_path, using_Tune_class=False):

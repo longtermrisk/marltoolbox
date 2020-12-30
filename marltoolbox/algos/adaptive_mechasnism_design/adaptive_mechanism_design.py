@@ -1,17 +1,14 @@
 ##########
 # Code from: https://github.com/tobiasbaumann1/Adaptive_Mechanism_Design
 ##########
-import random
-
-import json
-
+import logging
+import math
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-import logging
-import math
-
+import random
 from ray import tune
+
 logging.basicConfig(filename='main.log', level=logging.DEBUG, filemode='w')
 
 from marltoolbox.algos.adaptive_mechasnism_design.agent import Actor_Critic_Agent, Critic_Variant, Simple_Agent, \
@@ -25,8 +22,6 @@ from marltoolbox.envs.coin_game import CoinGame
 #     for episode in range(N_EPISODES):
 #
 #     return env.get_avg_rewards_per_round(), np.asarray(avg_planning_rewards_per_round)
-
-
 
 
 def create_population(env, n_agents, n_units, use_simple_agents=False,
@@ -53,7 +48,6 @@ def create_population(env, n_agents, n_units, use_simple_agents=False,
     return l
 
 
-
 class AdaptiveMechanismDesign(tune.Trainable):
 
     def _init_algo(self, fear, greed, n_players, use_simple_agents, action_flip_prob,
@@ -61,7 +55,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
                    n_planning_eps, env_config, n_units, n_episodes, env, lr, gamma, weight_decay,
                    **kwargs):
 
-        print("args not used:",kwargs)
+        print("args not used:", kwargs)
 
         if env == "FearGreedMatrix":
             env = define_greed_fear_matrix_game(fear=fear, greed=greed)(env_config)
@@ -87,10 +81,10 @@ class AdaptiveMechanismDesign(tune.Trainable):
         self.n_players = n_players
         self.n_episodes = n_episodes
         self.max_reward_strength = max_reward_strength
-        self.cost_param=cost_param
-        self.value_fn_variant=value_fn_variant
-        self.fear=fear
-        self.greed=greed
+        self.cost_param = cost_param
+        self.value_fn_variant = value_fn_variant
+        self.fear = fear
+        self.greed = greed
 
         # env.reset_ep_ctr()
         self.avg_planning_rewards_per_round = []
@@ -105,7 +99,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
         self.epi_n += 1
         s_rllib_format = self.env.reset()
         last_s = convert_from_rllib_env_format(s_rllib_format, self.player_ids, state=True,
-                                          n_states=self.env.NUM_STATES, coin_game=self.env.NAME == "CoinGame")
+                                               n_states=self.env.NUM_STATES, coin_game=self.env.NAME == "CoinGame")
 
         flag = isinstance(last_s, list)
 
@@ -123,7 +117,8 @@ class AdaptiveMechanismDesign(tune.Trainable):
             s_rllib_format, rewards_rllib_format, done_rllib_format, info_rllib_format = self.env.step(
                 actions_rllib_format)
             current_s = convert_from_rllib_env_format(s_rllib_format, self.player_ids, state=True,
-                                               n_states=self.env.NUM_STATES, coin_game=self.env.NAME == "CoinGame")
+                                                      n_states=self.env.NUM_STATES,
+                                                      coin_game=self.env.NAME == "CoinGame")
             rewards = convert_from_rllib_env_format(rewards_rllib_format, self.player_ids)
             done = convert_from_rllib_env_format(done_rllib_format, self.player_ids)
             self.episode_reward.append(rewards)
@@ -136,7 +131,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
                 if np.random.binomial(1, self.action_flip_prob):
                     perturbed_a = a
                     while perturbed_a == a:
-                        perturbed_a = random.randint(0, self.env.NUM_STATES-1)
+                        perturbed_a = random.randint(0, self.env.NUM_STATES - 1)
                         print("perturbed_a == a", perturbed_a, a, perturbed_a == a)
                 else:
                     perturbed_actions.append(a)
@@ -153,7 +148,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
                 cum_planning_rs = [sum(r) for r in zip(cum_planning_rs, planning_rs)]
                 # Training planning agent
                 # TODO using the past rewards is not working since I perturbate the actions
-                self.planning_agent.learn(last_s, perturbed_actions, coin_game=self.env.NAME == "CoinGame"#)
+                self.planning_agent.learn(last_s, perturbed_actions, coin_game=self.env.NAME == "CoinGame"  # )
                                           , env_rewards=env_rewards)
             print('Actions:' + str(actions))
             print('State after:' + str(current_s))
@@ -184,7 +179,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
             print('Episode {} finished.'.format(self.epi_n + 1))
 
         if self.epi_n == self.n_episodes:
-            get_avg_rewards_per_round= np.array(self.training_epi_avg_reward)
+            get_avg_rewards_per_round = np.array(self.training_epi_avg_reward)
             self.plot(get_avg_rewards_per_round, np.asarray(self.avg_planning_rewards_per_round))
 
         to_report = {"episodes_total": self.epi_n}
@@ -192,15 +187,15 @@ class AdaptiveMechanismDesign(tune.Trainable):
             to_report[f"act_{k}"] = v
         to_report.update(info_rllib_format)
         to_report["mean_reward"] = np.mean(epi_rewards, axis=0)
-        to_report["planning_reward_red"]= planning_rs[0]
-        to_report["planning_reward_blue"]= planning_rs[1]
+        to_report["planning_reward_red"] = planning_rs[0]
+        to_report["planning_reward_blue"] = planning_rs[1]
         return to_report
 
     def plot(self, avg_rewards_per_round, avg_planning_rewards_per_round):
         path = './Results/' + self.env.__str__() + '/with' + ('' if self.with_redistribution else 'out') + \
                '_redistribution'
         path += '/' + 'max_reward_strength_' + (str(self.max_reward_strength) if self.max_reward_strength is not None
-            else 'inf')
+                                                else 'inf')
         path += '/' + 'cost_parameter_' + str(self.cost_param)
         path += '/' + self.value_fn_variant + '_value_function'
         if self.n_planning_eps < math.inf:
@@ -210,17 +205,18 @@ class AdaptiveMechanismDesign(tune.Trainable):
 
         self.plot_results(avg_rewards_per_round, [str(agent) for agent in self.players], path, 'average_rewards',
                           exp_factor=0.05)
-        self.plot_results(avg_planning_rewards_per_round, [str(agent) for agent in self.players], path, 'planning_rewards',
-                     exp_factor=0.05)
+        self.plot_results(avg_planning_rewards_per_round, [str(agent) for agent in self.players], path,
+                          'planning_rewards',
+                          exp_factor=0.05)
         actor_a_prob_each_round = np.transpose(np.array([agent.log for agent in self.players]))
         self.plot_results(actor_a_prob_each_round, [str(agent) for agent in self.players], path, \
-                         'player_action_probabilities',  ylabel='P(Cooperation)')
+                          'player_action_probabilities', ylabel='P(Cooperation)')
         planning_a_prob_each_round = np.array(self.planning_agent.get_log())
         fear_and_greed_each_round = self.calc_fear_and_greed(planning_a_prob_each_round, self.fear, self.greed)
         self.plot_results(planning_a_prob_each_round, ['(D,D)', '(D,C)', '(C,D)', '(C,C)'], path, 'planning_action',
-                     ylabel='a_p')
+                          ylabel='a_p')
         self.plot_results(fear_and_greed_each_round, ['Fear', 'Greed'], path, 'modified_fear_and_greed',
-                      ylabel='Fear/Greed')
+                          ylabel='Fear/Greed')
 
     @staticmethod
     def calc_fear_and_greed(data, base_fear, base_greed):
@@ -249,7 +245,6 @@ class AdaptiveMechanismDesign(tune.Trainable):
             os.makedirs(path)
         plt.savefig(path + '/' + title)
         # plt.show()
-
 
     def save_checkpoint(self, checkpoint_dir):
         raise NotImplementedError()
@@ -321,7 +316,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
     def _post_process_action(self, action):
         return action[None, ...]  # add batch dim
 
-    def compute_actions(self, policy_id:str, obs_batch:list):
+    def compute_actions(self, policy_id: str, obs_batch: list):
 
         for single_obs in obs_batch:
             raise NotImplementedError()
@@ -333,4 +328,3 @@ class AdaptiveMechanismDesign(tune.Trainable):
 
     def reset_compute_actions_state(self):
         raise NotImplementedError()
-

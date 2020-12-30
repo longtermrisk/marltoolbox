@@ -11,6 +11,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--tf", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 
+
 def main(stop_iters, tf, debug):
     train_n_replicates = 1 if debug else 1
     seeds = miscellaneous.get_random_seeds(train_n_replicates)

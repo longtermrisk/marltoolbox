@@ -9,28 +9,26 @@
 ##########
 
 import copy
-import os
-import time
-import ray
-import torch
-import functools
-import pickle
 
+import functools
+import os
+import ray
+import time
+import torch
 from ray import tune
-from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy, build_q_stats, after_init
 from ray.rllib.agents.dqn import DQNTrainer
-from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
+from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy, build_q_stats, after_init
 from ray.rllib.utils.schedules import PiecewiseSchedule
 
 from lola.train_cg_tune_class_API import LOLAPGCG
 from lola.train_pg_tune_class_API import LOLAPGMatrice
-
 from marltoolbox.algos import population
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma, IteratedBoS, IteratedAsymChicken, IteratedAsymBoS
-from marltoolbox.utils import policy, log, same_and_cross_perf, miscellaneous, L1BR, exploration, restore
+from marltoolbox.utils import policy, log, miscellaneous, L1BR, exploration, restore
 
-#TODO make it work for all env (not only ACG and CG)? or only for them
+
+# TODO make it work for all env (not only ACG and CG)? or only for them
 
 def get_tune_config(hp: dict) -> dict:
     tune_config = copy.deepcopy(hp)
@@ -82,7 +80,7 @@ def get_tune_config(hp: dict) -> dict:
     return tune_config, stop, env_config
 
 
-def get_rllib_config(hp: dict, lvl1_idx:list, lvl1_training:bool):
+def get_rllib_config(hp: dict, lvl1_idx: list, lvl1_training: bool):
     assert lvl1_training
 
     tune_config, _, _ = get_tune_config(hp=hp)
@@ -160,7 +158,7 @@ def get_rllib_config(hp: dict, lvl1_idx:list, lvl1_training:bool):
         # === Replay buffer ===
         # Size of the replay buffer. Note that if async_updates is set, then
         # each worker will have a replay buffer of this size.
-        "buffer_size": int(hp["n_steps_per_epi"] * hp["n_epi"])//4,
+        "buffer_size": int(hp["n_steps_per_epi"] * hp["n_epi"]) // 4,
         # Whether to use dueling dqn
         "dueling": False,
         # Dense-layer setup for each the advantage branch and the value branch
@@ -257,12 +255,12 @@ def get_rllib_config(hp: dict, lvl1_idx:list, lvl1_training:bool):
     return stop, env_config, rllib_config
 
 
-
 def train_lvl0_population(tune_hp):
     # Train with the Tune Class API (not RLLib Class)
     tune_config, stop, env_config = get_tune_config(tune_hp)
     return tune.run(tune_hp["tune_class"], name=tune_hp["exp_name"], config=tune_config,
                     checkpoint_at_end=True, stop=stop, metric=tune_config["metric"], mode="max")
+
 
 def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
     lvl0_policy_idx = 1
@@ -330,6 +328,7 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
 
     return results
 
+
 if __name__ == "__main__":
     debug = False
     n_in_lvl0_population = 4 if debug else 40
@@ -342,7 +341,6 @@ if __name__ == "__main__":
 
     tune_hparams = {
         "exp_name": exp_name,
-
 
         # Print metrics
         "load_data": None,
@@ -463,7 +461,6 @@ if __name__ == "__main__":
         "temperature_schedule": False,
     }
 
-
     if tune_hparams["load_data"] is None:
         ray.init(num_cpus=os.cpu_count(), num_gpus=0)
 
@@ -482,4 +479,4 @@ if __name__ == "__main__":
     else:
         log.pprint_saved_metrics(tune_hparams["load_data"],
                                  keywords_to_print=["policy_reward_mean", "speed.*mean", "own.*mean", "analysis",
-                                                   "^avg$", "last-10-avg"])
+                                                    "^avg$", "last-10-avg"])
