@@ -153,7 +153,7 @@ RLLib and an external repository.
 - examples
     - Tune function API
         - LOLA-PG (official with slight modifications, 
-        **WIP: hyperparameters not well tunes**)
+        **WIP: hyperparameters not well tuned**)
         - LOLA-DICE (official with slight modifications, 
         **WIP: not working properly**)
     - Tune class API

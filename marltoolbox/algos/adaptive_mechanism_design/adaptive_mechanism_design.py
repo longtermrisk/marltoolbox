@@ -11,9 +11,9 @@ from ray import tune
 
 logging.basicConfig(filename='main.log', level=logging.DEBUG, filemode='w')
 
-from marltoolbox.algos.adaptive_mechasnism_design.agent import Actor_Critic_Agent, Critic_Variant, Simple_Agent, \
+from marltoolbox.algos.adaptive_mechanism_design.agent import Actor_Critic_Agent, Critic_Variant, Simple_Agent, \
     convert_from_rllib_env_format, convert_to_rllib_env_format
-from marltoolbox.algos.adaptive_mechasnism_design.planning_agent import Planning_Agent
+from marltoolbox.algos.adaptive_mechanism_design.planning_agent import Planning_Agent
 from marltoolbox.envs.matrix_SSD import define_greed_fear_matrix_game
 from marltoolbox.envs.coin_game import CoinGame
 
@@ -53,7 +53,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
     def _init_algo(self, fear, greed, n_players, use_simple_agents, action_flip_prob,
                    max_reward_strength, value_fn_variant, cost_param, with_redistribution,
                    n_planning_eps, env_config, n_units, n_episodes, env, lr, gamma, weight_decay,
-                   **kwargs):
+                   convert_a_to_one_hot, **kwargs):
 
         print("args not used:", kwargs)
 
@@ -69,7 +69,8 @@ class AdaptiveMechanismDesign(tune.Trainable):
                                         cost_param=cost_param,
                                         with_redistribution=with_redistribution,
                                         value_fn_variant=value_fn_variant,
-                                        n_units=n_units, weight_decay=weight_decay)
+                                        n_units=n_units, weight_decay=weight_decay,
+                                        convert_a_to_one_hot=convert_a_to_one_hot)
         self.epi_n = 0
         self.players = agents
         self.env = env
@@ -180,7 +181,8 @@ class AdaptiveMechanismDesign(tune.Trainable):
 
         if self.epi_n == self.n_episodes:
             get_avg_rewards_per_round = np.array(self.training_epi_avg_reward)
-            self.plot(get_avg_rewards_per_round, np.asarray(self.avg_planning_rewards_per_round))
+            self.plot(get_avg_rewards_per_round, np.asarray(self.avg_planning_rewards_per_round)
+                      , coin_game="CoinGame" in self.env.NAME)
 
         to_report = {"episodes_total": self.epi_n}
         for k, v in actions_rllib_format.items():
@@ -191,7 +193,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
         to_report["planning_reward_blue"] = planning_rs[1]
         return to_report
 
-    def plot(self, avg_rewards_per_round, avg_planning_rewards_per_round):
+    def plot(self, avg_rewards_per_round, avg_planning_rewards_per_round, coin_game=False):
         path = './Results/' + self.env.__str__() + '/with' + ('' if self.with_redistribution else 'out') + \
                '_redistribution'
         path += '/' + 'max_reward_strength_' + (str(self.max_reward_strength) if self.max_reward_strength is not None
@@ -211,12 +213,13 @@ class AdaptiveMechanismDesign(tune.Trainable):
         actor_a_prob_each_round = np.transpose(np.array([agent.log for agent in self.players]))
         self.plot_results(actor_a_prob_each_round, [str(agent) for agent in self.players], path, \
                           'player_action_probabilities', ylabel='P(Cooperation)')
-        planning_a_prob_each_round = np.array(self.planning_agent.get_log())
-        fear_and_greed_each_round = self.calc_fear_and_greed(planning_a_prob_each_round, self.fear, self.greed)
-        self.plot_results(planning_a_prob_each_round, ['(D,D)', '(D,C)', '(C,D)', '(C,C)'], path, 'planning_action',
-                          ylabel='a_p')
-        self.plot_results(fear_and_greed_each_round, ['Fear', 'Greed'], path, 'modified_fear_and_greed',
-                          ylabel='Fear/Greed')
+        if not coin_game:
+            planning_a_prob_each_round = np.array(self.planning_agent.get_log())
+            fear_and_greed_each_round = self.calc_fear_and_greed(planning_a_prob_each_round, self.fear, self.greed)
+            self.plot_results(planning_a_prob_each_round, ['(D,D)', '(D,C)', '(C,D)', '(C,C)'], path, 'planning_action',
+                              ylabel='a_p')
+            self.plot_results(fear_and_greed_each_round, ['Fear', 'Greed'], path, 'modified_fear_and_greed',
+                              ylabel='Fear/Greed')
 
     @staticmethod
     def calc_fear_and_greed(data, base_fear, base_greed):

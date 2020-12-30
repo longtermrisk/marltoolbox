@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 
 logging.basicConfig(filename='Planning_Agent.log', level=logging.DEBUG, filemode='w')
-from marltoolbox.algos.adaptive_mechasnism_design.agent import Agent, convert_from_rllib_env_format
+from marltoolbox.algos.adaptive_mechanism_design.agent import Agent, convert_from_rllib_env_format
 from tensorflow.python.ops import math_ops
 
 RANDOM_SEED = 5
@@ -31,7 +31,7 @@ def numel(x):
 class Planning_Agent(Agent):
     def __init__(self, env, underlying_agents, learning_rate=0.01,
                  gamma=0.95, max_reward_strength=None, cost_param=0, with_redistribution=False,
-                 value_fn_variant='exact', n_units=None, weight_decay=0.0):
+                 value_fn_variant='exact', n_units=None, weight_decay=0.0, convert_a_to_one_hot=False):
         super().__init__(env, learning_rate, gamma)
         self.underlying_agents = underlying_agents
         self.log = []
@@ -39,20 +39,28 @@ class Planning_Agent(Agent):
         n_players = len(underlying_agents)
         self.with_redistribution = with_redistribution
         self.value_fn_variant = value_fn_variant
+        self.convert_a_to_one_hot = convert_a_to_one_hot
+        self.env_name = env.NAME
+        self.env = env
 
         self.s = tf.placeholder(tf.float32, [1, env.NUM_STATES], "state")
-        # self.a_players = tf.placeholder(tf.float32, [1, n_players], "player_actions")
-        self.a_players = tf.placeholder(tf.float32, [1, n_players, env.NUM_ACTIONS], "player_actions")
+        if self.env_name == "CoinGame":
+            self.a_players = tf.placeholder(tf.float32, [1, n_players, env.NUM_ACTIONS], "player_actions")
+        else:
+            self.a_players = tf.placeholder(tf.float32, [1, n_players], "player_actions")
+
         if value_fn_variant == 'exact':
             self.p_players = tf.placeholder(tf.float32, [1, n_players], "player_action_probs")
             self.a_plan = tf.placeholder(tf.float32, [2, 2],
                                          "conditional_planning_actions")  # works only for matrix games
         self.r_players = tf.placeholder(tf.float32, [1, n_players], "player_rewards")
-        # self.inputs = tf.concat([self.s,self.a_players],1)
-        self.inputs = tf.concat([self.s, tf.reshape(self.a_players, (1, -1))], 1)
+        if self.env_name == "CoinGame":
+            self.inputs = tf.concat([self.s, tf.reshape(self.a_players, (1, -1))], 1)
+        else:
+            self.inputs = tf.concat([self.s,self.a_players],1)
 
         with tf.variable_scope('Policy_p'):
-            if env.NAME == "CoinGame":
+            if self.env_name == "CoinGame":
                 print("USE PLANNER NEW NETWORK")
                 self.w_l0 = tf.Variable(tf.random_normal([env.NUM_STATES + 2 * env.NUM_ACTIONS,
                                                           n_units], stddev=0.1))
@@ -106,9 +114,10 @@ class Planning_Agent(Agent):
                 self.v = tf.reduce_sum(self.r_players)
         with tf.variable_scope('cost_function'):
             if value_fn_variant == 'estimated':
-                # self.g_log_pi = tf.placeholder(tf.float32, [1, n_players], "player_gradients")
-                # self.g_log_pi = tf.placeholder(tf.float32, [1, n_players * env.NUM_STATES], "player_gradients")
-                self.g_log_pi = tf.placeholder(tf.float32, [env.NUM_STATES, n_players], "player_gradients")
+                if self.env_name == "CoinGame":
+                    self.g_log_pi = tf.placeholder(tf.float32, [env.NUM_STATES, n_players], "player_gradients")
+                else:
+                    self.g_log_pi = tf.placeholder(tf.float32, [1, n_players], "player_gradients")
             cost_list = []
             for underlying_agent in underlying_agents:
                 # policy gradient theorem
@@ -116,14 +125,16 @@ class Planning_Agent(Agent):
                 if value_fn_variant == 'estimated':
                     g_log_pi_opt = tf.print("self.g_log_pi", tf.shape(self.g_log_pi))
                     with tf.control_dependencies([g_log_pi_opt]):
-                        # self.g_Vp = self.g_log_pi[0,idx] * self.vp[0,idx]
-                        # self.g_V = self.g_log_pi[0,idx] * (self.v[0,idx]
-                        #                                    if value_fn_variant == 'proxy'
-                        #                                    else self.v)
-                        self.g_Vp = self.g_log_pi[:, idx] * self.vp[:, idx]
-                        self.g_V = self.g_log_pi[:, idx] * (self.v[:, idx]
+                        if self.env_name == "CoinGame":
+                            self.g_Vp = self.g_log_pi[:, idx] * self.vp[:, idx]
+                            self.g_V = self.g_log_pi[:, idx] * (self.v[:, idx]
                                                             if value_fn_variant == 'proxy'
                                                             else self.v)
+                        else:
+                            self.g_Vp = self.g_log_pi[0,idx] * self.vp[0,idx]
+                            self.g_V = self.g_log_pi[0,idx] * (self.v[0,idx]
+                                                               if value_fn_variant == 'proxy'
+                                                               else self.v)
                 if value_fn_variant == 'exact':
                     self.g_p = self.p_players[0, idx] * (1 - self.p_players[0, idx])
                     self.p_opp = self.p_players[0, 1 - idx]
@@ -142,7 +153,10 @@ class Planning_Agent(Agent):
             extra_loss_opt = tf.print("extra_loss", extra_loss)
             cost_list_opt = tf.print("cost_list", cost_list)
             with tf.control_dependencies([extra_loss_opt, cost_list_opt]):
-                self.loss = tf.reduce_sum(tf.stack(cost_list)) + extra_loss + weight_decay * self.weigths_norm
+                if self.env_name == "CoinGame":
+                    self.loss = tf.reduce_sum(tf.stack(cost_list)) + extra_loss + weight_decay * self.weigths_norm
+                else:
+                    self.loss = tf.reduce_sum(tf.stack(cost_list)) + extra_loss
 
         with tf.variable_scope('trainPlanningAgent'):
             self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(self.loss,
@@ -167,20 +181,23 @@ class Planning_Agent(Agent):
             r_players = env_rewards
         a_players = np.asarray(a_players)
 
-        a_players = np.zeros((len(a_players), 4))
-        for idx, act in enumerate(a_players.tolist()):
-            a_players[idx, act] = 1
+        if self.convert_a_to_one_hot:
+            a_players_one_hot = self.action_to_one_hot(a_players)
 
-        feed_dict = {self.s: s, self.a_players: a_players[np.newaxis, ...],
+        feed_dict = {self.s: s, self.a_players: a_players_one_hot[np.newaxis, ...],
                      self.r_players: r_players[np.newaxis, :]}
         if self.value_fn_variant == 'estimated':
             g_log_pi_list = []
             for underlying_agent in self.underlying_agents:
                 idx = underlying_agent.agent_idx
-                # g_log_pi_list.append(underlying_agent.calc_g_log_pi(s,a_players[idx]))
-                g_log_pi_list.append(underlying_agent.calc_g_log_pi(s, a_players[idx])[0][0, ...])
-            # g_log_pi_arr = np.reshape(np.asarray(g_log_pi_list),[1,-1])
-            g_log_pi_arr = np.stack(g_log_pi_list, axis=1)
+                if self.env_name == "CoinGame":
+                    g_log_pi_list.append(underlying_agent.calc_g_log_pi(s, a_players[idx])[0][0, ...])
+                else:
+                    g_log_pi_list.append(underlying_agent.calc_g_log_pi(s,a_players[idx]))
+            if self.env_name == "CoinGame":
+                g_log_pi_arr = np.stack(g_log_pi_list, axis=1)
+            else:
+                g_log_pi_arr = np.reshape(np.asarray(g_log_pi_list),[1,-1])
             feed_dict[self.g_log_pi] = g_log_pi_arr
         if self.value_fn_variant == 'exact':
             p_players_list = []
@@ -189,7 +206,8 @@ class Planning_Agent(Agent):
                 p_players_list.append(underlying_agent.calc_action_probs(s)[0, -1])
             p_players_arr = np.reshape(np.asarray(p_players_list), [1, -1])
             feed_dict[self.p_players] = p_players_arr
-            # feed_dict[self.a_plan] = self.calc_conditional_planning_actions(s)
+            if "CoinGame" not in self.env_name:
+                feed_dict[self.a_plan] = self.calc_conditional_planning_actions(s)
         self.sess.run([self.train_op], feed_dict)
 
         action, loss, g_Vp, g_V = self.sess.run([self.action_layer, self.loss,
@@ -209,44 +227,51 @@ class Planning_Agent(Agent):
     def get_log(self):
         return self.log
 
+    def action_to_one_hot(self, a_players):
+        print("a_players", a_players)
+        a_players_one_hot = np.zeros((len(a_players), self.env.NUM_ACTIONS))
+        for idx, act in enumerate(a_players.tolist()):
+            print("idx,act", idx, act)
+            a_players_one_hot[idx, act] = 1
+        return a_players_one_hot
+
     def choose_action(self, s, a_players):
         print('Player actions: ' + str(a_players))
         s = s[np.newaxis, :]
         a_players = np.asarray(a_players)
 
-        a_players = np.zeros((len(a_players), 4))
-        for idx, act in enumerate(a_players.tolist()):
-            print("idx,act", idx, act)
-            a_players[idx, act] = 1
+        if self.convert_a_to_one_hot:
+            a_players = self.action_to_one_hot(a_players)
 
         # a_plan = self.sess.run(self.action_layer, {self.s: s, self.a_players: a_players[np.newaxis,:]})[0,:]
         a_plan = self.sess.run(self.vp, {self.s: s, self.a_players: a_players[np.newaxis, ...]})[0, :]
         # if self.max_reward_strength is not None:
         #     a_plan = 2 * self.max_reward_strength * (a_plan - 0.5)
         print('Planning action: ' + str(a_plan))
-        # self.log.append(self.calc_conditional_planning_actions(s))
+        if "CoinGame" not in self.env_name:
+            self.log.append(self.calc_conditional_planning_actions(s))
         return a_plan
 
-    # def calc_conditional_planning_actions(self,s):
-    #     # TODO correct that
-    #     # Planning actions in each of the 4 cases: DD, CD, DC, CC
-    #     if self.env.NAME == "CoinGame":
-    #         print("USE PLANNER NEW PLANNING")
-    #
-    #     else:
-    #         a_plan_DD = self.sess.run(self.action_layer, {self.s: s, self.a_players: np.array([0,0])[np.newaxis,:]})
-    #         a_plan_CD = self.sess.run(self.action_layer, {self.s: s, self.a_players: np.array([1,0])[np.newaxis,:]})
-    #         a_plan_DC = self.sess.run(self.action_layer, {self.s: s, self.a_players: np.array([0,1])[np.newaxis,:]})
-    #         a_plan_CC = self.sess.run(self.action_layer, {self.s: s, self.a_players: np.array([1,1])[np.newaxis,:]})
-    #     l_temp = [a_plan_DD,a_plan_CD,a_plan_DC,a_plan_CC]
-    #     if self.max_reward_strength is not None:
-    #         l = [2 * self.max_reward_strength * (a_plan_X[0,0]-0.5) for a_plan_X in l_temp]
-    #     else:
-    #         l = [a_plan_X[0,0] for a_plan_X in l_temp]
-    #     if self.with_redistribution:
-    #         if self.max_reward_strength is not None:
-    #             l2 = [2 * self.max_reward_strength * (a_plan_X[0,1]-0.5) for a_plan_X in l_temp]
-    #         else:
-    #             l2 = [a_plan_X[0,1] for a_plan_X in l_temp]
-    #         l = [0.5 * (elt[0]-elt[1]) for elt in zip(l,l2)]
-    #     return np.transpose(np.reshape(np.asarray(l),[2,2]))
+    def calc_conditional_planning_actions(self,s):
+        assert "CoinGame" not in self.env_name
+        # Planning actions in each of the 4 cases: DD, CD, DC, CC
+        if self.env.NAME == "CoinGame":
+            print("USE PLANNER NEW PLANNING")
+
+        else:
+            a_plan_DD = self.sess.run(self.action_layer, {self.s: s, self.a_players: np.array([0,0])[np.newaxis,:]})
+            a_plan_CD = self.sess.run(self.action_layer, {self.s: s, self.a_players: np.array([1,0])[np.newaxis,:]})
+            a_plan_DC = self.sess.run(self.action_layer, {self.s: s, self.a_players: np.array([0,1])[np.newaxis,:]})
+            a_plan_CC = self.sess.run(self.action_layer, {self.s: s, self.a_players: np.array([1,1])[np.newaxis,:]})
+        l_temp = [a_plan_DD,a_plan_CD,a_plan_DC,a_plan_CC]
+        if self.max_reward_strength is not None:
+            l = [2 * self.max_reward_strength * (a_plan_X[0,0]-0.5) for a_plan_X in l_temp]
+        else:
+            l = [a_plan_X[0,0] for a_plan_X in l_temp]
+        if self.with_redistribution:
+            if self.max_reward_strength is not None:
+                l2 = [2 * self.max_reward_strength * (a_plan_X[0,1]-0.5) for a_plan_X in l_temp]
+            else:
+                l2 = [a_plan_X[0,1] for a_plan_X in l_temp]
+            l = [0.5 * (elt[0]-elt[1]) for elt in zip(l,l2)]
+        return np.transpose(np.reshape(np.asarray(l),[2,2]))

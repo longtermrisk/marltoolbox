@@ -36,3 +36,24 @@ def test_lola_dice_tune_fn_api():
 def test_lola_pg_tune_fn_api():
     from marltoolbox.examples.tune_function_api.lola_pg_official import main
     main(debug=True)
+
+
+def test_lola_pg_tune_class_api():
+    from marltoolbox.examples.tune_class_api.lola_pg_official import main
+    main(debug=True)
+
+def test_lola_exact_tune_class_api():
+    from marltoolbox.examples.tune_class_api.lola_exact_official import main
+    main(debug=True)
+
+def test_lola_dice_tune_class_api():
+    from marltoolbox.examples.tune_class_api.lola_dice_official import main
+    main(debug=True)
+
+def test_l1br_lola_pg_tune_class_api():
+    from marltoolbox.examples.tune_class_api.l1br_lola_pg import main
+    main(debug=True)
+
+def test_adaptive_mechanism_design_tune_class_api():
+    from marltoolbox.examples.tune_class_api.adaptive_mechanism_design import main
+    main(debug=True)

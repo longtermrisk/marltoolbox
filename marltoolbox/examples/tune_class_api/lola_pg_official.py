@@ -22,11 +22,9 @@ from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 from marltoolbox.utils import policy, log, same_and_cross_perf
 
 
-def get_config(tune_hparams: dict) -> dict:
+def get_tune_config(tune_hparams: dict) -> dict:
     tune_config = copy.deepcopy(tune_hparams)
 
-    # Sanity
-    # assert full_config['env'] in {"CoinGame", "AsymCoinGame"}
     assert not tune_config['exact']
 
     # Resolve default parameters
@@ -133,7 +131,7 @@ def evaluate_same_and_cross_perf(training_results, rllib_config, stop, env_confi
 
     if rllib_hp["load_plot_data"] is None:
         analysis_metrics_per_mode = evaluator.perf_analysis(n_same_play_per_checkpoint=1,
-                                                            n_cross_play_per_checkpoint=min(5, train_n_replicates - 1),
+                                                            n_cross_play_per_checkpoint=min(5, rllib_hp["train_n_replicates"] - 1),
                                                             extract_checkpoints_from_results=[training_results],
                                                             )
     else:
@@ -150,13 +148,12 @@ def evaluate_same_and_cross_perf(training_results, rllib_config, stop, env_confi
                            jitter=rllib_hp["jitter"],
                            colors=["red", "blue"],
                            xlabel="player 1 payoffs", ylabel="player 2 payoffs", add_title=False, frameon=True,
-                           show_groups=False, plot_max_n_points=train_n_replicates
+                           show_groups=False, plot_max_n_points=rllib_hp["train_n_replicates"]
                            )
 
 
-if __name__ == "__main__":
-    debug = False
-    train_n_replicates = 4 if debug else 40
+def main(debug):
+    train_n_replicates = 1 if debug else 40
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
 
@@ -164,42 +161,19 @@ if __name__ == "__main__":
 
     tune_hparams = {
         "exp_name": exp_name,
+        "train_n_replicates": train_n_replicates,
 
         # Print metrics
         "load_plot_data": None,
         # CG 40 seeds
-        "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/LOLA_PG/2020_12_21/07_11_03/2020_12_21/09_53_39/SameAndCrossPlay_save.p",
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/LOLA_PG/2020_12_21/10_20_34/2020_12_21/13_03_51/SameAndCrossPlay_save.p",
-        # ACG 40 seeds
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-20-cpu-2-memory-x2/LOLA_PG/2020_12_21/06_56_48/2020_12_21/12_18_50/SameAndCrossPlay_save.p",
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/LOLA_PG/2020_12_21/10_20_34/2020_12_21/13_03_51/SameAndCrossPlay_save.p",
-
-        # CG
-        # Population of 5
-        # "load_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-3/LOLA_PG/2020_12_15/20_55_11/lvl1_results.p",
-        # Population of 40
-        # "load_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-20-cpu-1-memory-x2/L1BR_LOLA_PG/2020_12_18/09_00_30/lvl1_results.p",
-        # ACG
-        # "load_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-3/LOLA_PG/2020_12_15/20_56_24/lvl1_results.p",
-        # Population of 40
-        # "load_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-20-cpu-2-memory-x2/L1BR_LOLA_PG/2020_12_18"
-        #              "/09_03_13/lvl1_results.p",
+        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/LOLA_PG/2020_12_21/07_11_03/2020_12_21/09_53_39/SameAndCrossPlay_save.p",
 
         # Dynamically set
         "num_episodes": 5 if debug else 2000,
         "trace_length": 5 if debug else 20,
-        # "trace_length": 5 if debug else None,
-        # "trace_length": tune.grid_search([150, 75]),
         "lr": None,
-        # "lr": 0.005 / 10,  # None,
-        # "gamma": 0.5 if debug else None,
         "gamma": 0.5,
-        # "gamma": tune.grid_search([0.5, 0.96]),
-        # !!! To use the default batch size with coin game, you need 35Go of memory per seed run in parallel !!!
-        # "batch_size": None, # To use the defaults values from the official repository.
         "batch_size": 5 if debug else 512,
-        # "batch_size": 20 if debug else None, #1024,
-        # "batch_size": tune.grid_search([512, 256]),
 
         # "env": IteratedPrisonersDilemma,
         # "env": IteratedBoS,
@@ -213,72 +187,53 @@ if __name__ == "__main__":
         "opp_model": False,
         "mem_efficient": True,
         "lr_correction": 1,
-        # "bs_mul": 1,
         "bs_mul": 1 / 10,
-        # "bs_mul": tune.grid_search([1/10, 1/30]),
         "simple_net": True,
         "hidden": 32,
         "reg": 0,
         "set_zero": 0,
 
-        # "exact": True,
         "exact": False,
 
-        "warmup": 1,  # False,
+        "warmup": 1,
 
         "seed": tune.grid_search(seeds),
 
         "changed_config": False,
         "ac_lr": 1.0,
-        # "ac_lr": 0.005,
         "summary_len": 1,
         "use_MAE": False,
-        # "use_MAE": True,
 
-        # "use_toolbox_env": False,
         "use_toolbox_env": True,
 
         "clip_loss_norm": False,
-        # "clip_loss_norm": 10.0,
         "clip_lola_update_norm": False,
-        # "clip_lola_update_norm": 0.5,
         "clip_lola_correction_norm": 3.0,
-        # "clip_lola_correction_norm": tune.grid_search([10.0, 3.0]),
         "clip_lola_actor_norm": 10.0,
-        # "clip_lola_actor_norm": tune.grid_search([10.0, 3.0]),
 
         "entropy_coeff": 0.001,
-        # "entropy_coeff": tune.grid_search([0.0, 0.0003, 0.001, 0.003, 0.01]),
-        # "entropy_coeff": tune.grid_search(s[0.0, 0.001, 0.01]),
 
-        # "weigth_decay": 0.0,  # 0.001 working well
-        "weigth_decay": 0.03,  # 0.001 working well
-        # "weigth_decay": tune.grid_search([0.03, 0.1]),  # 0.001 working well
+        "weigth_decay": 0.03,
 
         "lola_correction_multiplier": 1,
-        # "lola_correction_multiplier": tune.grid_search([1, 1/3, 1/10]),
 
         "lr_decay": True,
 
         "correction_reward_baseline_per_step": False,
-        # "correction_reward_baseline_per_step": tune.grid_search([False, True]),
 
         "use_critic": False,
-        # "use_critic": tune.grid_search([False, True]),
-
     }
 
     if tune_hparams["load_plot_data"] is None:
         ray.init(num_cpus=os.cpu_count(), num_gpus=0)
 
-        full_config, stop, env_config = get_config(tune_hparams)
+        full_config, stop, env_config = get_tune_config(tune_hparams)
         training_results = train(full_config, stop, tune_hp=tune_hparams)
 
         rllib_hparams = copy.deepcopy(tune_hparams)
         rllib_hparams["seed"] = 2020
-        # rllib_hparams["batch_size"] = 1
         rllib_hparams["num_episodes"] = 100
-        eval_tune_config, stop, env_config = get_config(rllib_hparams)
+        eval_tune_config, stop, env_config = get_tune_config(rllib_hparams)
         env_config["batch_size"] = 1
         eval_tune_config['TuneTrainerClass'] = LOLAPGCG
         evaluate_same_and_cross_perf(training_results, eval_tune_config, stop, env_config, rllib_hparams)
@@ -287,11 +242,14 @@ if __name__ == "__main__":
     else:
         rllib_hparams = copy.deepcopy(tune_hparams)
         rllib_hparams["seed"] = 2020
-        # rllib_hparams["batch_size"] = 1
         rllib_hparams["num_episodes"] = 100
-        eval_tune_config, stop, env_config = get_config(rllib_hparams)
+        eval_tune_config, stop, env_config = get_tune_config(rllib_hparams)
         env_config["batch_size"] = 1
         eval_tune_config['TuneTrainerClass'] = LOLAPGCG
         evaluate_same_and_cross_perf(None, eval_tune_config, stop, env_config, rllib_hparams)
 
         ray.shutdown()
+
+if __name__ == "__main__":
+    debug_mode = True
+    main(debug_mode)

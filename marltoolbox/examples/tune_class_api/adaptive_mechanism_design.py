@@ -11,11 +11,10 @@ import time
 from ray import tune
 
 logging.basicConfig(filename='main.log', level=logging.DEBUG, filemode='w')
-from marltoolbox.algos.adaptive_mechasnism_design.adaptive_mechanism_design import AdaptiveMechanismDesign
+from marltoolbox.algos.adaptive_mechanism_design.adaptive_mechanism_design import AdaptiveMechanismDesign
 from marltoolbox.utils import log
 
 
-# TODO could have more of the setup stuff in the algo
 def train(tune_hp):
     tune_config = copy.deepcopy(tune_hp)
 
@@ -44,8 +43,37 @@ def train(tune_hp):
     return training_results
 
 
-if __name__ == "__main__":
-    debug = False
+def get_env_hp(hp):
+    if hp["env"] == "FearGreedMatrix":
+        hp.update({
+            "lr" : 0.01,
+            "gamma" : 0.9,
+            "n_steps_per_epi": 1,
+            "n_units": 10,
+            "use_simple_agents": True,
+            "n_episodes": 10 if hp["debug"] else 4000,
+            "max_reward_strength": 3,
+            "weight_decay": 0.0,
+            "convert_a_to_one_hot": False,
+        })
+
+    if hp["env"] == "CoinGame":
+        hp.update({
+            "lr": 0.01,
+            "gamma": 0.5,
+            "n_steps_per_epi": 20,
+            "n_units": 8,
+            "use_simple_agents": False,
+            "n_episodes": 10 if hp["debug"] else 4000,
+            "max_reward_strength": 1.0,
+            "weight_decay": 0.003,
+            "convert_a_to_one_hot": True,
+        })
+
+    return hp
+
+def main(debug):
+
     train_n_replicates = 1 if debug else 1
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
@@ -55,6 +83,7 @@ if __name__ == "__main__":
     hyperparameters = {
         "exp_name": exp_name,
         "seed": tune.grid_search(seeds),
+        "debug": debug,
 
         "fear": 1,
         "greed": -1,
@@ -68,24 +97,15 @@ if __name__ == "__main__":
         "n_players": 2,
 
         # "env": "FearGreedMatrix",
-        # "lr" : 0.01,
-        # "gamma" : 0.9,
-        # "n_steps_per_epi": 1,
-        # "n_units": 10,
-        # "use_simple_agents": True,
-        # "n_episodes": 10 if debug else 4000,
-        # "max_reward_strength": 3,
-        "weight_decay": 0.0,
-
         "env": "CoinGame",
-        "lr": 0.01,
-        "gamma": 0.5,
-        "n_steps_per_epi": 20,
-        "n_units": 8,
-        "use_simple_agents": False,
-        "n_episodes": 10 if debug else 4000,
-        "max_reward_strength": 1.0,
-        "weight_decay": 0.003,
+
     }
 
+    hyperparameters = get_env_hp(hyperparameters)
+
     train(hyperparameters)
+
+
+if __name__ == "__main__":
+    debug_mode = True
+    main(debug_mode)

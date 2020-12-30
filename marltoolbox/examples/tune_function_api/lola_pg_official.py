@@ -19,7 +19,7 @@ from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 from marltoolbox.utils import log
 
 
-def main(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
+def trainer_fn(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
          lr, lr_correction, batch_size, bs_mul, simple_net, hidden, reg,
          gamma, lola_update, opp_model, mem_efficient, seed, set_zero,
          warmup, changed_config, ac_lr, summary_len, use_MAE,
@@ -112,7 +112,7 @@ def main(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
 
 
 def lola_training(config):
-    main(**config)
+    trainer_fn(**config)
 
 
 def get_tune_config(full_config: dict) -> dict:
@@ -153,14 +153,10 @@ def main(debug):
         "exp_name": exp_name,
 
         # Dynamically set
-        "num_episodes": None,
+        "num_episodes": 3 if debug else None,
         "trace_length": 6 if debug else None,
         "lr": None,
-        # "lr": 0.0005,  # None,
         "gamma": None,
-        # "gamma": 0.5,
-        # !!! To use the default batch size with coin game, you need 35Go of memory per seed run in parallel !!!
-        # "batch_size": None, # To use the defaults values from the official repository.
         "batch_size": 12 if debug else None,
 
         # "exp_name": "IPD",
@@ -168,48 +164,80 @@ def main(debug):
         "exp_name": "CoinGame",
         # "exp_name": "AsymCoinGame",
 
+    #     "pseudo": False,
+    #     "grid_size": 3,
+    #     "lola_update": False,
+    #     "opp_model": False,
+    #     "mem_efficient": True,
+    #     "lr_correction": 1,
+    #     "bs_mul": 1,
+    #     "simple_net": True,
+    #     "hidden": 32,
+    #     "reg": 0,
+    #     "set_zero": 0,
+    #
+    #     "exact": False,
+    #
+    #     "warmup": 1,
+    #
+    #     "seed": tune.grid_search([1]),
+    #
+    #     "changed_config": False,
+    #     "ac_lr": 0.005,
+    #     "summary_len": 1,
+    #     "use_MAE": False,
+    #
+    #     "use_toolbox_env": True,
+    #
+    #     "clip_lola_update_norm": False,
+    #     "clip_loss_norm": False,
+    #
+    #     "entropy_coeff": 0.1,
+    #
+    #     "weigth_decay": 0.001,
+    #
+    #     "lola_correction_multiplier": 1,
+    #
+    #     "lr_decay": False,
+    #
+    #     "correction_reward_baseline_per_step": False,
+    #
+    #     "use_critic": False,
+    # }
         "pseudo": False,
         "grid_size": 3,
-        # "lola_update": True,
-        "lola_update": False,
+        "lola_update": True,
         "opp_model": False,
         "mem_efficient": True,
         "lr_correction": 1,
-        "bs_mul": 1,
+        "bs_mul": 1 / 10,
         "simple_net": True,
         "hidden": 32,
         "reg": 0,
         "set_zero": 0,
 
-        # "exact": True,
         "exact": False,
 
-        "warmup": 1,  # False,
+        "warmup": 1,
 
-        "seed": tune.grid_search([1]),
+        "seed": 1,
 
         "changed_config": False,
-        # "ac_lr": 1.0,
-        "ac_lr": 0.005,
+        "ac_lr": 1.0,
         "summary_len": 1,
         "use_MAE": False,
-        # "use_MAE": True,
 
-        # "use_toolbox_env": False,
         "use_toolbox_env": True,
 
-        "clip_lola_update_norm": False,
         "clip_loss_norm": False,
-        # "clip_lola_update_norm": 0.5,
-        # "clip_loss_norm": 10.0,
+        "clip_lola_update_norm": False,
+        "clip_lola_correction_norm": 3.0,
+        "clip_lola_actor_norm": 10.0,
 
-        # "entropy_coeff": 0.0,
-        "entropy_coeff": 0.1,
+        "entropy_coeff": 0.001,
 
-        # "weigth_decay": 0.0,
-        "weigth_decay": 0.001,
+        "weigth_decay": 0.03,
     }
-
     tune_config = get_tune_config(tune_hparams)
 
     ray.init(num_cpus=os.cpu_count(), num_gpus=0)

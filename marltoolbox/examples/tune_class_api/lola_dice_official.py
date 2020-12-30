@@ -39,7 +39,6 @@ def get_tune_config(hp: dict) -> dict:
             "max_steps": config["trace_length"],
             "get_additional_info": True,
         }
-        # config['metric'] = "ag_0_returns_player_1"
 
     if config["env"] in ("IPD", "BoS", "AsymBoS"):
         config["gamma"] = 0.96 if config["gamma"] is None else config["gamma"]
@@ -63,10 +62,7 @@ def get_tune_config(hp: dict) -> dict:
             "get_additional_info": True,
             "grid_size": config["grid_size"],
         }
-        # config['metric'] = "ag_0_returns_player_1"
 
-    # hp["make_optim_source"] = inspect.getsource(hp["make_optim"])
-    # hp["policy_maker_source"] = inspect.getsource(hp["policy_maker"])
     config["lr_inner"] = config["lr_inner"] * config["base_lr"]
     config["lr_outer"] = config["lr_outer"] * config["base_lr"]
     config["lr_value"] = config["lr_value"] * config["base_lr"]
@@ -110,10 +106,6 @@ def evaluate(training_results, hp):
         hp_eval["env"] = IteratedMatchingPennies
         plot_config["x_limits"] = ((-1.0, 1.0),)
         plot_config["y_limits"] = ((-1.0, 1.0),)
-    # elif hp_eval["env"] == "BoS":
-    #     hp_eval["env"] = IteratedBoS
-    #     plot_config["x_limits"] = ((-0.5, 3.5),)
-    #     plot_config["y_limits"] = ((-0.5, 3.5),)
     elif hp_eval["env"] == "AsymBoS":
         hp_eval["env"] = IteratedAsymBoS
         plot_config["x_limits"] = ((-0.5, 4.0),)
@@ -170,13 +162,13 @@ def evaluate_same_and_cross_perf(training_results, rllib_config, stop, env_confi
                                                                policies_to_load_from_checkpoint=policies_to_load,
                                                                )
 
-    if hparams["load_plot_data"] is None:
+    if hp["load_plot_data"] is None:
         analysis_metrics_per_mode = evaluator.perf_analysis(n_same_play_per_checkpoint=1,
                                                             n_cross_play_per_checkpoint=1,
                                                             extract_checkpoints_from_results=[training_results],
                                                             )
     else:
-        analysis_metrics_per_mode = evaluator.load_results(to_load_path=hparams["load_plot_data"])
+        analysis_metrics_per_mode = evaluator.load_results(to_load_path=hp["load_plot_data"])
 
     evaluator.plot_results(analysis_metrics_per_mode,
                            title_sufix=": " + hp['env'].NAME,
@@ -189,12 +181,10 @@ def evaluate_same_and_cross_perf(training_results, rllib_config, stop, env_confi
                            jitter=plot_config["jitter"],
                            colors=["red", "blue"],
                            xlabel="player 1 payoffs", ylabel="player 2 payoffs", add_title=False, frameon=True,
-                           show_groups=False, plot_max_n_points=train_n_replicates
+                           show_groups=False, plot_max_n_points=hp["train_n_replicates"]
                            )
 
-
-if __name__ == "__main__":
-    debug = False
+def main(debug):
     train_n_replicates = 2 if debug else 40
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
@@ -205,15 +195,10 @@ if __name__ == "__main__":
 
         "load_plot_data": None,
         # IPD
-        # 5 seeds
         # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-2/LOLA_DICE/2020_12_15/11_44_21/2020_12_15/12_07_42/SameAndCrossPlay_save.p",
-        # 40 seeds
-        "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-4/LOLA_DICE/21_10_16/2020_12_16/22_52_00/SameAndCrossPlay_save.p",
-        # BOS
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-3/LOLA_DICE/2020_12_15/12_04_40/2020_12_15/12_28_37/SameAndCrossPlay_save.p",
 
         "exp_name": exp_name,
-
+        "train_n_replicates": train_n_replicates,
         "env": "IPD",
         # "env": "IMP",
         # "env": "AsymBoS",
@@ -253,3 +238,8 @@ if __name__ == "__main__":
 
     evaluate(training_results, hparams)
     ray.shutdown()
+
+if __name__ == "__main__":
+    debug_mode = True
+    main(debug_mode)
+

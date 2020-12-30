@@ -44,3 +44,4 @@ pip-delete-this-directory.txt
 
 
 rllib_bugs/
+*.log
