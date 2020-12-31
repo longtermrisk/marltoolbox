@@ -257,21 +257,25 @@ class Critic(object):
 
 class Simple_Agent(Agent):  # plays games with 2 actions, using a single parameter
     def __init__(self, env, learning_rate=0.001, n_units_critic=20, gamma=0.95, agent_idx=0,
-                 critic_variant=Critic_Variant.INDEPENDENT):
+                 critic_variant=Critic_Variant.INDEPENDENT, mean_theta=-2.0, std_theta=0.5):
         super().__init__(env, learning_rate, gamma, agent_idx)
         self.s = tf.placeholder(tf.float32, [1, env.NUM_STATES], "state")  # dummy variable
         self.a = tf.placeholder(tf.int32, None, "act")
         self.td_error = tf.placeholder(tf.float32, None, "td_error")  # TD_error
 
         with tf.variable_scope('Actor'):
-            self.theta = tf.Variable(tf.random_normal([1], mean=-2, stddev=0.5))
+            self.theta = tf.Variable(tf.random_normal([1], mean=mean_theta, stddev=std_theta))
+            # self.theta = tf.Variable(tf.random_normal([1], mean=0, stddev=0.5))
             self.actions_prob = tf.expand_dims(tf.concat([1 - tf.sigmoid(self.theta), tf.sigmoid(self.theta)], 0), 0)
             # self.theta = tf.Variable(tf.random_normal([env.NUM_ACTIONS], mean=-2, stddev=0.5))
             # self.actions_prob = tf.expand_dims(tf.nn.softmax(self.theta), 0)
 
         with tf.variable_scope('exp_v'):
             self.log_prob = tf.log(self.actions_prob[0, self.a])
-            self.g_log_pi = tf.gradients(self.log_prob, self.theta)
+            log_prob_opt_val = tf.print("self.log_prob", self.log_prob)
+            actions_prob_opt_val = tf.print("self.actions_prob", self.actions_prob)
+            with tf.control_dependencies([log_prob_opt_val, actions_prob_opt_val]):
+                self.g_log_pi = tf.gradients(self.log_prob, self.theta)
             self.exp_v = tf.reduce_mean(self.log_prob * self.td_error)
 
         with tf.variable_scope('trainActor'):

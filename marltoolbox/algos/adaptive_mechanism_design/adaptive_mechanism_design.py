@@ -25,14 +25,17 @@ from marltoolbox.envs.coin_game import CoinGame
 
 
 def create_population(env, n_agents, n_units, use_simple_agents=False,
-                      lr=0.01, gamma=0.9, weight_decay=0.0):
+                      lr=0.01, gamma=0.9, weight_decay=0.0, mean_theta=-2.0, std_theta=0.5):
     critic_variant = Critic_Variant.CENTRALIZED
     if use_simple_agents:
         l = [Simple_Agent(env,
                           learning_rate=lr,
                           gamma=gamma,
                           agent_idx=i,
-                          critic_variant=critic_variant) for i in range(n_agents)]
+                          critic_variant=critic_variant,
+                          mean_theta=mean_theta,
+                          std_theta=std_theta) for i in range(n_agents)
+                          ]
     else:
         l = [Actor_Critic_Agent(env,
                                 learning_rate=lr,
@@ -53,7 +56,8 @@ class AdaptiveMechanismDesign(tune.Trainable):
     def _init_algo(self, fear, greed, n_players, use_simple_agents, action_flip_prob,
                    max_reward_strength, value_fn_variant, cost_param, with_redistribution,
                    n_planning_eps, env_config, n_units, n_episodes, env, lr, gamma, weight_decay,
-                   convert_a_to_one_hot, **kwargs):
+                   convert_a_to_one_hot, loss_mul_planner, mean_theta, with_planner, std_theta,
+                   **kwargs):
 
         print("args not used:", kwargs)
 
@@ -63,14 +67,20 @@ class AdaptiveMechanismDesign(tune.Trainable):
             env = CoinGame(env_config)
         agents = create_population(env, n_players,
                                    use_simple_agents=use_simple_agents, n_units=n_units,
-                                   lr=lr, gamma=gamma, weight_decay=weight_decay)
-        planning_agent = Planning_Agent(env, agents,
-                                        max_reward_strength=max_reward_strength,
-                                        cost_param=cost_param,
-                                        with_redistribution=with_redistribution,
-                                        value_fn_variant=value_fn_variant,
-                                        n_units=n_units, weight_decay=weight_decay,
-                                        convert_a_to_one_hot=convert_a_to_one_hot)
+                                   lr=lr, gamma=gamma, weight_decay=weight_decay,
+                                   mean_theta=mean_theta, std_theta=std_theta)
+        if with_planner:
+            planning_agent = Planning_Agent(env, agents,
+                                            max_reward_strength=max_reward_strength,
+                                            cost_param=cost_param,
+                                            with_redistribution=with_redistribution,
+                                            value_fn_variant=value_fn_variant,
+                                            n_units=n_units, weight_decay=weight_decay,
+                                            convert_a_to_one_hot=convert_a_to_one_hot,
+                                            loss_mul_planner=loss_mul_planner)
+        else:
+            planning_agent = None
+
         self.epi_n = 0
         self.players = agents
         self.env = env
@@ -170,7 +180,8 @@ class AdaptiveMechanismDesign(tune.Trainable):
                 for player in self.players:
                     player.learn_at_episode_end()
                 break
-        self.avg_planning_rewards_per_round.append([r / self.env.step_count for r in cum_planning_rs])
+        if self.planning_agent is not None and self.epi_n < self.n_planning_eps:
+            self.avg_planning_rewards_per_round.append([r / self.env.step_count for r in cum_planning_rs])
         epi_rewards = np.array(self.episode_reward)
         self.training_epi_avg_reward.append(np.mean(epi_rewards, axis=0))
         self.episode_reward.clear()
@@ -189,8 +200,9 @@ class AdaptiveMechanismDesign(tune.Trainable):
             to_report[f"act_{k}"] = v
         to_report.update(info_rllib_format)
         to_report["mean_reward"] = np.mean(epi_rewards, axis=0)
-        to_report["planning_reward_red"] = planning_rs[0]
-        to_report["planning_reward_blue"] = planning_rs[1]
+        if self.planning_agent is not None and self.epi_n < self.n_planning_eps:
+            to_report["planning_reward_red"] = planning_rs[0]
+            to_report["planning_reward_blue"] = planning_rs[1]
         return to_report
 
     def plot(self, avg_rewards_per_round, avg_planning_rewards_per_round, coin_game=False):
@@ -207,7 +219,8 @@ class AdaptiveMechanismDesign(tune.Trainable):
 
         self.plot_results(avg_rewards_per_round, [str(agent) for agent in self.players], path, 'average_rewards',
                           exp_factor=0.05)
-        self.plot_results(avg_planning_rewards_per_round, [str(agent) for agent in self.players], path,
+        if self.planning_agent is not None:
+            self.plot_results(avg_planning_rewards_per_round, [str(agent) for agent in self.players], path,
                           'planning_rewards',
                           exp_factor=0.05)
         actor_a_prob_each_round = np.transpose(np.array([agent.log for agent in self.players]))

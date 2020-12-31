@@ -43,11 +43,11 @@ def train(tune_hp):
     return training_results
 
 
-def get_env_hp(hp):
+def add_env_hp(hp):
     if hp["env"] == "FearGreedMatrix":
         hp.update({
-            "lr" : 0.01,
-            "gamma" : 0.9,
+            "lr": 0.01,
+            "gamma": 0.9,
             "n_steps_per_epi": 1,
             "n_units": 10,
             "use_simple_agents": True,
@@ -55,7 +55,13 @@ def get_env_hp(hp):
             "max_reward_strength": 3,
             "weight_decay": 0.0,
             "convert_a_to_one_hot": False,
+            "loss_mul_planner": 1.0,
+            "mean_theta": -2.0,
+            "std_theta": 0.05,
         })
+
+        if hp["value_fn_variant"] == 'estimated':
+            hp["mean_theta"] = -0.5
 
     if hp["env"] == "CoinGame":
         hp.update({
@@ -68,12 +74,14 @@ def get_env_hp(hp):
             "max_reward_strength": 1.0,
             "weight_decay": 0.003,
             "convert_a_to_one_hot": True,
+            "loss_mul_planner": 1.0,
+            "mean_theta": 0.0,
         })
 
     return hp
 
-def main(debug):
 
+def main(debug):
     train_n_replicates = 1 if debug else 1
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
@@ -88,24 +96,25 @@ def main(debug):
         "fear": 1,
         "greed": -1,
         "with_redistribution": False,
-        "max_reward_strength": None,
         "cost_param": 0,
         "n_planning_eps": math.inf,
         # "value_fn_variant": 'exact',
-        "value_fn_variant": 'estimated',
+        # "value_fn_variant": 'estimated',
+        "value_fn_variant": tune.grid_search(['exact', 'estimated']),
         "action_flip_prob": 0,
         "n_players": 2,
+        "with_planner": tune.grid_search([True, False]),
 
-        # "env": "FearGreedMatrix",
-        "env": "CoinGame",
+        "env": "FearGreedMatrix",
+        # "env": "CoinGame",
 
     }
 
-    hyperparameters = get_env_hp(hyperparameters)
+    hyperparameters = add_env_hp(hyperparameters)
 
     train(hyperparameters)
 
 
 if __name__ == "__main__":
-    debug_mode = True
+    debug_mode = False
     main(debug_mode)
