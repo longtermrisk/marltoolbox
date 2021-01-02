@@ -121,6 +121,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
                 actions = [player.choose_action(last_s[idx]) for idx, player in enumerate(self.players)]
             else:
                 actions = [player.choose_action(last_s) for player in self.players]
+            print("actions", actions)
             actions_rllib_format = convert_to_rllib_env_format(actions, self.player_ids,
                                                                coin_game=self.env.NAME == "CoinGame")
 
@@ -146,6 +147,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
                         print("perturbed_a == a", perturbed_a, a, perturbed_a == a)
                 else:
                     perturbed_actions.append(a)
+            print("perturbed_actions", perturbed_actions)
 
             env_rewards = rewards
 
@@ -201,8 +203,8 @@ class AdaptiveMechanismDesign(tune.Trainable):
         to_report.update(info_rllib_format)
         to_report["mean_reward"] = np.mean(epi_rewards, axis=0)
         if self.planning_agent is not None and self.epi_n < self.n_planning_eps:
-            to_report["planning_reward_red"] = planning_rs[0]
-            to_report["planning_reward_blue"] = planning_rs[1]
+            to_report["planning_reward_player1"] = planning_rs[0]
+            to_report["planning_reward_player2"] = planning_rs[1]
         return to_report
 
     def plot(self, avg_rewards_per_round, avg_planning_rewards_per_round, coin_game=False):

@@ -37,7 +37,7 @@ def train(tune_hp):
             "flatten_obs": True,
         }
 
-    ray.init(num_cpus=os.cpu_count(), num_gpus=0)
+    ray.init(num_cpus=1, num_gpus=1)
     training_results = tune.run(AdaptiveMechanismDesign, name=tune_hp["exp_name"], config=tune_config, stop=stop)
     ray.shutdown()
     return training_results
@@ -57,25 +57,29 @@ def add_env_hp(hp):
             "convert_a_to_one_hot": False,
             "loss_mul_planner": 1.0,
             "mean_theta": -2.0,
-            "std_theta": 0.05,
+            "std_theta": 0.5,
         })
 
         if hp["value_fn_variant"] == 'estimated':
-            hp["mean_theta"] = -0.5
+            hp["mean_theta"] = -1.5
+            hp["std_theta"] = 0.05
 
     if hp["env"] == "CoinGame":
         hp.update({
-            "lr": 0.01,
+            "lr": 0.01/3.0,
             "gamma": 0.5,
             "n_steps_per_epi": 20,
-            "n_units": 8,
+            # "n_units": 8,
+            # "n_units": [16, 32],
+            "n_units": tune.grid_search([8, [16, 32]]),
             "use_simple_agents": False,
-            "n_episodes": 10 if hp["debug"] else 4000,
+            "n_episodes": 10 if hp["debug"] else 16000,
             "max_reward_strength": 1.0,
             "weight_decay": 0.003,
             "convert_a_to_one_hot": True,
             "loss_mul_planner": 1.0,
-            "mean_theta": 0.0,
+            "mean_theta": None,
+            "std_theta": None,
         })
 
     return hp
@@ -94,19 +98,27 @@ def main(debug):
         "debug": debug,
 
         "fear": 1,
+
         "greed": -1,
+        # "greed": 1,
+
         "with_redistribution": False,
-        "cost_param": 0,
+        "cost_param": 0.0002,
         "n_planning_eps": math.inf,
-        # "value_fn_variant": 'exact',
+
+        "value_fn_variant": 'exact',
         # "value_fn_variant": 'estimated',
-        "value_fn_variant": tune.grid_search(['exact', 'estimated']),
+        # "value_fn_variant": tune.grid_search(['exact', 'estimated']),
+
         "action_flip_prob": 0,
         "n_players": 2,
-        "with_planner": tune.grid_search([True, False]),
 
-        "env": "FearGreedMatrix",
-        # "env": "CoinGame",
+        "with_planner": True,
+        # "with_planner": False,
+        # "with_planner": tune.grid_search([True, False]),
+
+        # "env": "FearGreedMatrix",
+        "env": "CoinGame",
 
     }
 

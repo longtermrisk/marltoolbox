@@ -9,10 +9,6 @@ from tensorflow.python.ops import math_ops
 
 logging.basicConfig(filename='Agents.log', level=logging.DEBUG)
 
-# RANDOM_SEED = 8
-# np.random.seed(RANDOM_SEED)
-# tf.set_random_seed(RANDOM_SEED)
-
 from enum import Enum, auto
 
 
@@ -83,6 +79,8 @@ class Agent(object):
 
     def choose_action(self, s):
         action_probs = self.calc_action_probs(s)
+        print("action_probs.shape[1]", action_probs.shape[1])
+        print("action_probs", action_probs)
         action = np.random.choice(range(action_probs.shape[1]),
                                   p=action_probs.ravel())  # select action w.r.t the actions prob
         self.log.append(action_probs[0, 1])
@@ -139,38 +137,81 @@ class Actor_Critic_Agent(Agent):
 
 
 class Actor(object):
-    def __init__(self, env, n_units=20, learning_rate=0.001, agent_idx=0, weight_decay=0.0):
-        self.s = tf.placeholder(tf.float32, [1, env.NUM_STATES], "state")
+    def __init__(self, env, n_units=20, learning_rate=0.001, agent_idx=0, weight_decay=0.0, training=True):
+        self.s = tf.placeholder(tf.float32, [1, env.NUM_STATES], "state_ag")
         self.a = tf.placeholder(tf.int32, None, "act")
         # self.a = tf.placeholder(tf.int32, [None, env.NUM_ACTIONS], "act")
         self.td_error = tf.placeholder(tf.float32, None, "td_error")  # TD_error
-        with tf.variable_scope('Actor'):
-            self.w_l1 = tf.Variable(tf.random_normal([env.NUM_STATES, n_units], stddev=0.1))
-            self.b_l1 = tf.Variable(tf.random_normal([n_units], stddev=0.1))
+        self.env_name = env.NAME
+        with tf.variable_scope(f'Actor_{agent_idx}'):
+            # n_units = n_units[0]
+            # self.w_l1 = tf.Variable(tf.random_normal([env.NUM_STATES, n_units], stddev=0.1))
+            # self.b_l1 = tf.Variable(tf.random_normal([n_units], stddev=0.1))
+            # self.l1 = tf.nn.relu(tf.matmul(self.s, self.w_l1) + self.b_l1)
+            #
+            # self.w_pi1 = tf.Variable(tf.random_normal([n_units, env.NUM_ACTIONS], stddev=0.1))
+            # self.b_pi1 = tf.Variable(tf.random_normal([env.NUM_ACTIONS], stddev=0.1))
+            # self.actions_prob = tf.nn.softmax(tf.matmul(self.l1, self.w_pi1) + self.b_pi1)
+            # var_list = [self.w_l1, self.b_l1, self.w_pi1, self.b_pi1]
 
-            self.l1 = tf.nn.relu(tf.matmul(self.s, self.w_l1) + self.b_l1)
-            self.w_pi1 = tf.Variable(tf.random_normal([n_units, env.NUM_ACTIONS], stddev=0.1))
-            self.b_pi1 = tf.Variable(tf.random_normal([env.NUM_ACTIONS], stddev=0.1))
+            if not isinstance(n_units, list):
+                units = [env.NUM_STATES, n_units,  env.NUM_ACTIONS]
+            else:
+                units = [env.NUM_STATES] + n_units + [env.NUM_ACTIONS]
+            print("units", units)
+            var_list = []
+            input_ = self.s
+            for i in range(len(units)):
+                with tf.variable_scope(f"layer_{i}"):
+                    n_in = units[i]
+                    n_out = units[i + 1]
+                    print("i", i)
+                    print("n_in", n_in)
+                    print("n_out", n_out)
+                    if i + 1 == len(units) - 1:
+                        break
+                    w_l1 = tf.Variable(tf.random_normal([n_in, n_out], stddev=0.1))
+                    b_l1 = tf.Variable(tf.random_normal([n_out], stddev=0.1))
+                    l1 = tf.nn.relu(tf.matmul(input_, w_l1) + b_l1)
+                    var_list.extend([w_l1, b_l1])
+                    # l1_opt = tf.print("before BN l1", l1)
+                    # with tf.control_dependencies([l1_opt]):
+                    #     l1 = tf.compat.v1.layers.batch_normalization(l1, training=training)
+                    input_ = l1
 
-            self.actions_prob = tf.nn.softmax(tf.matmul(self.l1, self.w_pi1) + self.b_pi1)
+            self.w_pi1 = tf.Variable(tf.random_normal([n_in, n_out], stddev=0.1))
+            self.b_pi1 = tf.Variable(tf.random_normal([n_out], stddev=0.1))
+            # l1_opt = tf.print("after BN l1", l1)
+            # with tf.control_dependencies([l1_opt]):
+            self.actions_prob = tf.nn.softmax(tf.matmul(input_, self.w_pi1) + self.b_pi1)
+            var_list.extend([self.w_pi1, self.b_pi1])
 
-            var_list = [self.w_l1, self.b_l1, self.w_pi1, self.b_pi1]
             self.parameters = tf.concat(axis=0, values=[tf.reshape(v, [numel(v)]) for v in var_list])
             weigths_norm = math_ops.reduce_sum(self.parameters * self.parameters, None, keepdims=True)
             self.weigths_norm = tf.sqrt(tf.reduce_sum(weigths_norm))
 
-        with tf.variable_scope('exp_v'):
-            log_prob = tf.log(self.actions_prob[0, self.a])
-            self.exp_v = tf.reduce_mean(log_prob * self.td_error)
-            self.g_log_pi = tf.gradients(log_prob, self.s)
+            with tf.variable_scope('exp_v'):
+                log_prob = tf.log(self.actions_prob[0, self.a])
+                self.exp_v = tf.reduce_mean(log_prob * self.td_error)
+                self.g_log_pi = tf.gradients(log_prob, self.s)
 
-        with tf.variable_scope('trainActor'):
-            self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(-self.exp_v +
-                                                                           self.weigths_norm * weight_decay)
+            with tf.variable_scope('trainActor'):
+                self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(-self.exp_v +
+                                                                               self.weigths_norm * weight_decay)
+                update_ops = tf.compat.v1.get_collection(tf.GraphKeys.UPDATE_OPS)
+                self.train_op = tf.group([self.train_op, update_ops])
 
     def learn(self, sess, s, a, td):
         s = s[np.newaxis, :]
         feed_dict = {self.s: s, self.a: a, self.td_error: td}
+        # act_probs = sess.run([self.act_probs], feed_dict)
+        # if "CoinGame" in self.env_name:
+        #     feed_dict["state_ag:0"]= s
+        #     feed_dict["state_critic:0"]= s
+        #     feed_dict["state_ag_1:0"]= s
+        #     feed_dict["state_critic_1:0"]= s
+        #     feed_dict["act_probs:0"]= act_probs
+        #     feed_dict["act_probs_1:0"]= act_probs
         _, exp_v = sess.run([self.train_op, self.exp_v], feed_dict)
         return exp_v
 
@@ -189,7 +230,7 @@ class Critic(object):
         self.critic_variant = critic_variant
         self.env = env
 
-        self.s = tf.placeholder(tf.float32, [1, env.NUM_STATES], "state")
+        self.s = tf.placeholder(tf.float32, [1, env.NUM_STATES], "state_critic")
         self.v_ = tf.placeholder(tf.float32, [1, 1], "v_next")
         self.r = tf.placeholder(tf.float32, None, 'r')
 
@@ -199,15 +240,57 @@ class Critic(object):
         else:
             self.nn_inputs = self.s
 
-        with tf.variable_scope('Critic'):
-            l1 = tf.layers.dense(
-                inputs=self.nn_inputs,
-                units=n_units,  # number of hidden units
-                activation=tf.nn.relu,  # None
-                kernel_initializer=tf.random_normal_initializer(0., .1),  # weights
-                bias_initializer=tf.constant_initializer(0.1),  # biases
-                name='l1' + str(agent_idx)
-            )
+        with tf.variable_scope(f'Critic_{agent_idx}'):
+            # l1 = tf.layers.dense(
+            #     inputs=self.nn_inputs,
+            #     units=n_units,  # number of hidden units
+            #     activation=tf.nn.relu,  # None
+            #     kernel_initializer=tf.random_normal_initializer(0., .1),  # weights
+            #     bias_initializer=tf.constant_initializer(0.1),  # biases
+            #     name='l1' + str(agent_idx)
+            # )
+
+
+            # n_units = n_units[0]
+            # self.w_l1 = tf.Variable(tf.random_normal([env.NUM_STATES, n_units], stddev=0.1))
+            # self.b_l1 = tf.Variable(tf.random_normal([n_units], stddev=0.1))
+            # self.l1 = tf.nn.relu(tf.matmul(self.s, self.w_l1) + self.b_l1)
+            #
+            # self.w_pi1 = tf.Variable(tf.random_normal([n_units, env.NUM_ACTIONS], stddev=0.1))
+            # self.b_pi1 = tf.Variable(tf.random_normal([env.NUM_ACTIONS], stddev=0.1))
+            # self.actions_prob = tf.nn.softmax(tf.matmul(self.l1, self.w_pi1) + self.b_pi1)
+            # var_list = [self.w_l1, self.b_l1, self.w_pi1, self.b_pi1]
+
+            if self.critic_variant is Critic_Variant.CENTRALIZED:
+                if not isinstance(n_units, list):
+                    units = [env.NUM_STATES + env.NUM_ACTIONS * env.NUM_AGENTS, n_units, 1]
+                else:
+                    units = [env.NUM_STATES + env.NUM_ACTIONS * env.NUM_AGENTS] + n_units + [1]
+            else:
+                if not isinstance(n_units, list):
+                    units = [env.NUM_STATES, n_units,  1]
+                else:
+                    units = [env.NUM_STATES] + n_units + [1]
+            print("units", units)
+            var_list = []
+            input_ = self.nn_inputs
+            for i in range(len(units)):
+                with tf.variable_scope(f"layer_{i}"):
+                    n_in = units[i]
+                    n_out = units[i + 1]
+                    print("i", i)
+                    print("n_in", n_in)
+                    print("n_out", n_out)
+                    if i + 1 == len(units) - 1:
+                        break
+                    w_l1 = tf.Variable(tf.random_normal([n_in, n_out], stddev=0.1))
+                    b_l1 = tf.Variable(tf.random_normal([n_out], stddev=0.1))
+                    l1 = tf.nn.relu(tf.matmul(input_, w_l1) + b_l1)
+                    var_list.extend([w_l1, b_l1])
+                    # l1_opt = tf.print("before BN l1", l1)
+                    # with tf.control_dependencies([l1_opt]):
+                    #     l1 = tf.compat.v1.layers.batch_normalization(l1, training=True)
+                    input_ = l1
 
             self.v = tf.layers.dense(
                 inputs=l1,
@@ -271,7 +354,9 @@ class Simple_Agent(Agent):  # plays games with 2 actions, using a single paramet
             # self.actions_prob = tf.expand_dims(tf.nn.softmax(self.theta), 0)
 
         with tf.variable_scope('exp_v'):
-            self.log_prob = tf.log(self.actions_prob[0, self.a])
+            a_opt_val = tf.print("self.a", self.a)
+            with tf.control_dependencies([a_opt_val]):
+                self.log_prob = tf.log(self.actions_prob[0, self.a])
             log_prob_opt_val = tf.print("self.log_prob", self.log_prob)
             actions_prob_opt_val = tf.print("self.actions_prob", self.actions_prob)
             with tf.control_dependencies([log_prob_opt_val, actions_prob_opt_val]):
