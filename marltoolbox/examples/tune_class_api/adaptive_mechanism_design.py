@@ -69,17 +69,22 @@ def add_env_hp(hp):
             "lr": 0.01/3.0,
             "gamma": 0.5,
             "n_steps_per_epi": 20,
-            # "n_units": 8,
+            "n_units": 8,
             # "n_units": [16, 32],
-            "n_units": tune.grid_search([8, [16, 32]]),
+            # "n_units": tune.grid_search([8, [16, 32]]),
             "use_simple_agents": False,
             "n_episodes": 10 if hp["debug"] else 16000,
-            "max_reward_strength": 1.0,
-            "weight_decay": 0.003,
+            "max_reward_strength": 3.0,
+            # "weight_decay": 0.0,
+            # "weight_decay": 0.003,
+            "weight_decay": 0.000003,
             "convert_a_to_one_hot": True,
             "loss_mul_planner": 1.0,
             "mean_theta": None,
             "std_theta": None,
+            # "cost_param": 0.0,
+            # "cost_param": 0.0002,
+            "cost_param": 0.00000002,
         })
 
     return hp
@@ -106,8 +111,8 @@ def main(debug):
         "cost_param": 0.0002,
         "n_planning_eps": math.inf,
 
-        "value_fn_variant": 'exact',
-        # "value_fn_variant": 'estimated',
+        # "value_fn_variant": 'exact',
+        "value_fn_variant": 'estimated',
         # "value_fn_variant": tune.grid_search(['exact', 'estimated']),
 
         "action_flip_prob": 0,

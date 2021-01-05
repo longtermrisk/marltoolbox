@@ -1,6 +1,7 @@
 ##########
 # Code from: https://github.com/tobiasbaumann1/Adaptive_Mechanism_Design
 ##########
+import copy
 
 import logging
 import numpy as np
@@ -94,13 +95,9 @@ class Planning_Agent(Agent):
                             b_l1 = tf.Variable(tf.random_normal([n_out], stddev=0.1))
                             l1 = tf.nn.relu(tf.matmul(input_, w_l1) + b_l1)
                             var_list.extend([w_l1, b_l1])
-                            # l1_opt = tf.print("before BN l1", l1)
-                            # with tf.control_dependencies([l1_opt]):
-                            #     l1 = tf.compat.v1.layers.batch_normalization(l1, training=training)
+                            # l1 = tf.compat.v1.layers.batch_normalization(l1, training=training)
                             input_ = l1
 
-                    # l1_opt = tf.print("after BN l1", l1)
-                    # with tf.control_dependencies([l1_opt]):
                     self.w_pi0 = tf.Variable(tf.random_normal([n_in, n_out], stddev=0.1))
                     self.b_pi0 = tf.Variable(tf.random_normal([n_out], stddev=0.1))
                     self.l1 = tf.matmul(input_, self.w_pi0) + self.b_pi0
@@ -127,7 +124,6 @@ class Planning_Agent(Agent):
             with tf.variable_scope('Vp'):
                 # Vp is trivial to calculate in this special case
                 op0 = tf.print("self.action_layer", self.action_layer)
-                # self.l1 = tf.group([self.l1, update_ops])
                 with tf.control_dependencies([op0]):
                     if max_reward_strength is not None:
                         self.vp = 2 * max_reward_strength * (self.action_layer - 0.5)
@@ -143,6 +139,8 @@ class Planning_Agent(Agent):
                         self.v = tf.reduce_sum(self.r_players)
                     else:
                         self.v = tf.reduce_sum(self.r_players) - 1.9
+                if value_fn_variant == 'exact':
+                    self.v = tf.placeholder(tf.float32, [1, n_players], "player_values")
             with tf.variable_scope('cost_function'):
                 if value_fn_variant == 'estimated':
                     if "CoinGame" in self.env_name:
@@ -167,9 +165,9 @@ class Planning_Agent(Agent):
                     if value_fn_variant == 'exact':
                         if "CoinGame" in self.env_name:
                             self.g_p = self.p_players[0, idx] * (1 - self.p_players[0, idx])
-                            self.p_opp = self.p_players[0, 1 - idx]
-                            self.g_Vp = self.g_p * tf.gradients(ys=self.vp[0, idx], xs=self.a_players)[0][0, idx]
-                            self.g_V = self.g_p * tf.gradients(ys=self.v[0, idx], xs=self.s)[0][0, idx]
+                            self.g_Vp = self.g_p * tf.gradients(ys=self.vp[0, idx], xs=self.inputs)[0][0, idx]
+                            self.g_V = self.g_p * (tf.reduce_sum(self.v) - 2*tf.reduce_sum(self.vp))
+                            # self.g_V = self.g_p * tf.reduce_sum(self.v)
                         else:
                             self.g_p = self.p_players[0, idx] * (1 - self.p_players[0, idx])
                             self.p_opp = self.p_players[0, 1 - idx]
@@ -196,8 +194,8 @@ class Planning_Agent(Agent):
                                                                                var_list=tf.get_collection(
                                                                                    tf.GraphKeys.GLOBAL_VARIABLES,
                                                                                    scope='Planner/Policy_p'))
-                # update_ops = tf.compat.v1.get_collection(tf.GraphKeys.UPDATE_OPS)
-                # self.train_op = tf.group([self.train_op, update_ops])
+                update_ops = tf.compat.v1.get_collection(tf.GraphKeys.UPDATE_OPS, scope='Planner/Policy_p')
+                self.train_op = tf.group([self.train_op, update_ops])
             self.sess.run(tf.global_variables_initializer())
 
     def learn(self, s, a_players, coin_game=False, env_rewards=None):
@@ -216,10 +214,12 @@ class Planning_Agent(Agent):
 
         if self.convert_a_to_one_hot:
             a_players_one_hot = self.action_to_one_hot(a_players)
-            feed_dict = {self.s: s, self.a_players: a_players_one_hot[np.newaxis, ...],
+            feed_dict = {self.s: s,
+                         self.a_players: a_players_one_hot[np.newaxis, ...],
                          self.r_players: r_players[np.newaxis, :]}
         else:
-            feed_dict = {self.s: s, self.a_players: a_players[np.newaxis, ...],
+            feed_dict = {self.s: s,
+                         self.a_players: a_players[np.newaxis, ...],
                          self.r_players: r_players[np.newaxis, :]}
         if self.value_fn_variant == 'estimated':
             g_log_pi_list = []
@@ -236,29 +236,34 @@ class Planning_Agent(Agent):
             feed_dict[self.g_log_pi] = g_log_pi_arr
         if self.value_fn_variant == 'exact':
             p_players_list = []
+            v_list = []
             for underlying_agent in self.underlying_agents:
                 idx = underlying_agent.agent_idx
-                p_players_list.append(underlying_agent.calc_action_probs(s)[0, -1])
+                p_players_list.append(underlying_agent.calc_action_probs(s, add_dim=False)[0, -1])
+                if "CoinGame" in self.env_name:
+                    v_list.append(underlying_agent.calcul_value(s, add_dim=False))
             p_players_arr = np.reshape(np.asarray(p_players_list), [1, -1])
             feed_dict[self.p_players] = p_players_arr
+            if "CoinGame" in self.env_name:
+                v_players_arr = np.reshape(np.asarray(v_list), [1, -1])
+                feed_dict[self.v] = v_players_arr
             if "CoinGame" not in self.env_name:
                 feed_dict[self.a_plan] = self.calc_conditional_planning_actions(s)
-        # if "CoinGame" in self.env_name:
-        #     feed_dict["state_ag:0"]= s
-        #     feed_dict["state_ag_1:0"]= s
         self.sess.run([self.train_op], feed_dict)
 
         action, loss, g_Vp, g_V = self.sess.run([self.vp, self.loss,
                                                  self.g_Vp, self.g_V], feed_dict)
         print('Learning step')
         print('Planning_action: ' + str(action))
-        if self.value_fn_variant == 'estimated':
-            vp, v = self.sess.run([self.vp, self.v], feed_dict)
-            print('Vp: ' + str(vp))
-            print('V: ' + str(v))
+        # if self.value_fn_variant == 'estimated':
+        vp, v = self.sess.run([self.vp, self.v], feed_dict)
+        print('Vp: ' + str(vp))
+        print('V: ' + str(v))
         print('Gradient of V_p: ' + str(g_Vp))
         print('Gradient of V: ' + str(g_V))
         print('Loss: ' + str(loss))
+
+        return action, loss, g_Vp, g_V, vp, v
 
     def get_log(self):
         return self.log

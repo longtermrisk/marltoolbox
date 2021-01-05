@@ -1,7 +1,7 @@
 ##########
 # Code from: https://github.com/tobiasbaumann1/Adaptive_Mechanism_Design
 ##########
-
+import copy
 import logging
 import numpy as np
 import tensorflow as tf
@@ -117,8 +117,11 @@ class Actor_Critic_Agent(Agent):
     def __str__(self):
         return 'Actor_Critic_Agent_' + str(self.agent_idx)
 
-    def calc_action_probs(self, s):
-        return self.actor.calc_action_probs(self.sess, s)
+    def calc_action_probs(self, s, add_dim=True):
+        return self.actor.calc_action_probs(self.sess, s, add_dim)
+
+    def calcul_value(self, s, add_dim=True):
+        return self.critic.calcul_value(self.sess, s, add_dim)
 
     def pass_agent_list(self, agent_list):
         self.critic.pass_agent_list(agent_list)
@@ -174,15 +177,11 @@ class Actor(object):
                     b_l1 = tf.Variable(tf.random_normal([n_out], stddev=0.1))
                     l1 = tf.nn.relu(tf.matmul(input_, w_l1) + b_l1)
                     var_list.extend([w_l1, b_l1])
-                    # l1_opt = tf.print("before BN l1", l1)
-                    # with tf.control_dependencies([l1_opt]):
-                    #     l1 = tf.compat.v1.layers.batch_normalization(l1, training=training)
+                    # l1 = tf.compat.v1.layers.batch_normalization(l1, training=training)
                     input_ = l1
 
             self.w_pi1 = tf.Variable(tf.random_normal([n_in, n_out], stddev=0.1))
             self.b_pi1 = tf.Variable(tf.random_normal([n_out], stddev=0.1))
-            # l1_opt = tf.print("after BN l1", l1)
-            # with tf.control_dependencies([l1_opt]):
             self.actions_prob = tf.nn.softmax(tf.matmul(input_, self.w_pi1) + self.b_pi1)
             var_list.extend([self.w_pi1, self.b_pi1])
 
@@ -198,25 +197,18 @@ class Actor(object):
             with tf.variable_scope('trainActor'):
                 self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(-self.exp_v +
                                                                                self.weigths_norm * weight_decay)
-                update_ops = tf.compat.v1.get_collection(tf.GraphKeys.UPDATE_OPS)
+                update_ops = tf.compat.v1.get_collection(tf.GraphKeys.UPDATE_OPS, scope=f'Actor_{agent_idx}')
                 self.train_op = tf.group([self.train_op, update_ops])
 
     def learn(self, sess, s, a, td):
         s = s[np.newaxis, :]
         feed_dict = {self.s: s, self.a: a, self.td_error: td}
-        # act_probs = sess.run([self.act_probs], feed_dict)
-        # if "CoinGame" in self.env_name:
-        #     feed_dict["state_ag:0"]= s
-        #     feed_dict["state_critic:0"]= s
-        #     feed_dict["state_ag_1:0"]= s
-        #     feed_dict["state_critic_1:0"]= s
-        #     feed_dict["act_probs:0"]= act_probs
-        #     feed_dict["act_probs_1:0"]= act_probs
         _, exp_v = sess.run([self.train_op, self.exp_v], feed_dict)
         return exp_v
 
-    def calc_action_probs(self, sess, s):
-        s = s[np.newaxis, :]
+    def calc_action_probs(self, sess, s, add_dim=True):
+        if add_dim:
+            s = s[np.newaxis, :]
         probs = sess.run(self.actions_prob, {self.s: s})  # get probabilities for all actions
         return probs
 
@@ -287,9 +279,7 @@ class Critic(object):
                     b_l1 = tf.Variable(tf.random_normal([n_out], stddev=0.1))
                     l1 = tf.nn.relu(tf.matmul(input_, w_l1) + b_l1)
                     var_list.extend([w_l1, b_l1])
-                    # l1_opt = tf.print("before BN l1", l1)
-                    # with tf.control_dependencies([l1_opt]):
-                    #     l1 = tf.compat.v1.layers.batch_normalization(l1, training=True)
+                    # l1 = tf.compat.v1.layers.batch_normalization(l1, training=True)
                     input_ = l1
 
             self.v = tf.layers.dense(
@@ -306,6 +296,8 @@ class Critic(object):
             self.loss = tf.square(self.td_error)
         with tf.variable_scope('trainCritic'):
             self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(self.loss)
+            update_ops = tf.compat.v1.get_collection(tf.GraphKeys.UPDATE_OPS, scope=f'Critic_{agent_idx}')
+            self.train_op = tf.group([self.train_op, update_ops])
 
     def pass_agent_list(self, agent_list):
         self.agent_list = agent_list
@@ -337,6 +329,30 @@ class Critic(object):
                                {self.nn_inputs: nn_inputs, self.v_: v_, self.r: r})
         return td_error
 
+    def calcul_value(self, sess, s, add_dim=True, *args):
+        s = s.astype(np.float32)
+
+        if self.critic_variant is Critic_Variant.CENTRALIZED:
+            if args:
+                raise NotImplementedError()
+            #     obslist = args[0]
+            #     # obs_list = args[1]
+            #     act_probs = np.hstack(
+            #         [agent.calc_action_probs(obslist[idx]) for idx, agent in enumerate(self.agent_list)])
+            # else:
+            act_probs = np.hstack([agent.calc_action_probs(s, add_dim=add_dim) for idx, agent in enumerate(self.agent_list)])
+            if add_dim:
+                nn_inputs = np.hstack([s[np.newaxis, :], act_probs])
+            else:
+                nn_inputs = np.hstack([s, act_probs])
+        else:
+            if add_dim:
+                nn_inputs = s[np.newaxis, :]
+            else:
+                nn_inputs = s
+
+        v = sess.run(self.v, {self.nn_inputs: nn_inputs})
+        return v
 
 class Simple_Agent(Agent):  # plays games with 2 actions, using a single parameter
     def __init__(self, env, learning_rate=0.001, n_units_critic=20, gamma=0.95, agent_idx=0,
