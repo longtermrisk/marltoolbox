@@ -2,9 +2,11 @@
 # Additional dependencies are needed:
 # 1) Python 3.6
 # conda install python=3.6
-# 2) A fork of LOLA https://github.com/Manuscrit/lola which adds the logging through Tune
+# reinstall marltoolbox and RLLib with Python 3.6 (see README.md)
+# 2) A fork of LOLA https://github.com/Manuscrit/lola
 # git clone https://github.com/Manuscrit/lola
 # git checkout 181cb6dfa0ebf85807d42f1f770b0556a8f4f4d6
+# cd lola
 # pip install -e .
 ##########
 

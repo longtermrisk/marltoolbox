@@ -1,4 +1,5 @@
 # CLR research framework
+## Overview
 **Goal**: Facilitate and speed up the research on 
 bargaining in multi-agent systems.  
 **Philosophy**: Implement lazily (only when needed). 
@@ -10,11 +11,11 @@ We rely on two components:
     This repository, which has a `master` branch and an `experimental` branch.
 
 
-# Starting
+# Get starting
 `Tune` is built on top of `Ray` and 
 `RLLib` is built on top of `Tune`.  
 This toolbox (`marltoolbox`) is built to work with `RLLib` 
-but also to allow to fallback to `Tune` (only) if needed, 
+but also to allow to fallback to `Tune` only if needed, 
 at the cost of some functionalities.   
 
 
@@ -29,38 +30,80 @@ To explore further `Tune` please refer to the
 [RLlib in 60 seconds](https://docs.ray.io/en/master/rllib.html).  
     
 To explore further `RLLib` please refer to the 
-[RLLib documentation](https://docs.ray.io/en/master/rllib-toc.html).
+[`RLLib` documentation](https://docs.ray.io/en/master/rllib-toc.html).
 Finally, you also can find many 
 [examples provided by `RLLib`](https://github.com/ray-project/ray/tree/master/rllib/examples). 
 
 ### Toolbox installation
 
 ```bash
-# Create a virtual environment
+# Tested on Ubuntu 18.04 LTS (prefered) and 20.04 LTS
+# Require up to 20 Go of space. 
+
+# If needed, connect to your Virtual Machine(VM) on Google Cloud Plateform with:
+gcloud compute ssh {replace-by-instance-name}
+
+# Basic upgrade & requirements (needed on new VM)
+sudo apt update
+sudo apt upgrade
+sudo apt-get install build-essential
+# Run this command another time (especially needed with Ubuntu 20.04 LTS)
+sudo apt-get install build-essential
+
+# If needed, install conda:
+## Follow instruction at
+https://docs.conda.io/projects/conda/en/latest/user-guide/install/linux.html
+## Like that:
+	wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+	bash Miniconda3-latest-Linux-x86_64.sh
+	# Enter. Enter... yes. Enter. yes.
+	exit  
+	# Connect again to the VM   
+    gcloud compute ssh {replace-by-instance-name}
+	# Check conda installation  
+	conda list
+
+# Create a virtual environment:
 conda create -n marltoolbox python=3.8.5
 conda activate marltoolbox
+pip install --upgrade pip
 
 # Install the toolbox: marltoolbox
+## Install dependencies
+### For RLLib
 conda install psutil
-git clone https://github.com/Manuscrit/temp_research_framework.git
-cd temp_research_framework
+### (optional) To be able to use most of the gym environments
+sudo apt-get install -y libglu1-mesa-dev libgl1-mesa-dev libosmesa6-dev xvfb ffmpeg curl patchelf libglfw3 libglfw3-dev cmake zlib1g zlib1g-dev swig
+## Install marltoolbox
+git clone https://github.com/longtermrisk/marltoolbox.git
+## Here, you may need to provide github authentification (email and password)
+cd marltoolbox
 pip install -e .
+### Only if you get some errors related to atari-py then run against the following:
+    sudo apt update && sudo apt upgrade &&  sudo apt-get install build-essential
+    pip install --upgrade pip &&  conda install psutil
+    sudo apt-get install -y libglu1-mesa-dev libgl1-mesa-dev libosmesa6-dev xvfb ffmpeg curl patchelf libglfw3 libglfw3-dev cmake zlib1g zlib1g-dev swig
+    pip install -e .
 
 # Check that RLLib is working
-# Use RLLib built-in training fonctionnalities
+## Use RLLib built-in training fonctionnalities
 rllib train --run=PPO --env=CartPole-v0 --torch 
+## Ctrl+C to stop the training 
 
 # Check that the toolbox is working
 python ./marltoolbox/examples/rllib_api/pg_ipd.py
+## You should get status: TERMINATED
 
-# Visualize logs
+# Visualize the logs
 tensorboard --logdir ~/ray_results
-# If working on GCP: forward the connection from a Virtual Machine(VM) to your machine
-gcloud compute ssh {replace-by-instance-name} --zone={replace-by-instance-zone} -- -NfL 6006:localhost:6006
+## If working on GCP: forward the connection from a Virtual Machine(VM) to your machine
+## Run this command on your local machine from another terminal (not on the VM)
+gcloud compute ssh {replace-by-instance-name} -- -NfL 6006:localhost:6006
+## Go to your browser to visualize the adresse http://localhost:6006/
 
 # Commands below are optionals: 
 
-# Install PyTorch with GPU
+# Install PyTorch with GPU (the CPU version should already be installed)
 # Check cuda version
 nvidia-smi
 # Look for "CUDA Version: XX.X"
@@ -74,7 +117,6 @@ python
     exit()
 
 # Install Tensorflow
-pip install --upgrade pip
 pip install tensorflow
 ```
 
