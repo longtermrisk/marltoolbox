@@ -11,7 +11,7 @@ We rely on two components:
     This repository, which has a `master` branch and an `experimental` branch.
 
 
-# Get starting
+# Get started
 `Tune` is built on top of `Ray` and 
 `RLLib` is built on top of `Tune`.  
 This toolbox (`marltoolbox`) is built to work with `RLLib` 
