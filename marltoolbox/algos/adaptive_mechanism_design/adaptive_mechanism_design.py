@@ -161,8 +161,10 @@ class AdaptiveMechanismDesign(tune.Trainable):
                 cum_planning_rs = [sum(r) for r in zip(cum_planning_rs, planning_rs)]
                 # Training planning agent
                 # TODO using the past rewards is not working since I perturbate the actions
-                self.planning_agent.learn(last_s, perturbed_actions, coin_game=self.env.NAME == "CoinGame"  # )
-                                          , env_rewards=env_rewards)
+                action, loss, g_Vp, g_V, vp, values = self.planning_agent.learn(
+                    last_s, perturbed_actions,
+                    coin_game=self.env.NAME == "CoinGame",
+                    env_rewards=env_rewards)
             print('Actions:' + str(actions))
             print('State after:' + str(current_s))
             print('Rewards: ' + str(rewards))
@@ -202,6 +204,18 @@ class AdaptiveMechanismDesign(tune.Trainable):
             to_report[f"act_{k}"] = v
         to_report.update(info_rllib_format)
         to_report["mean_reward"] = np.mean(epi_rewards, axis=0)
+        # print("action, loss, g_Vp, g_V, vp, v", action.shape, loss.shape,
+        #       g_Vp.shape, g_V.shape, vp.shape, v.shape)
+        to_report[f"loss"] = loss
+        if self.value_fn_variant == 'exact':
+            to_report[f"v_1"] = values[0,0]
+            to_report[f"v_2"] = values[0,1]
+        else:
+            to_report[f"v"] = values
+        to_report[f"g_V"] = g_V
+        to_report[f"vp_1"] = vp[0,0]
+        to_report[f"vp_2"] = vp[0,1]
+        # action, loss, g_Vp, g_V, vp, v
         if self.planning_agent is not None and self.epi_n < self.n_planning_eps:
             to_report["planning_reward_player1"] = planning_rs[0]
             to_report["planning_reward_player2"] = planning_rs[1]
