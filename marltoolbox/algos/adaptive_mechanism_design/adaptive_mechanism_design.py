@@ -8,6 +8,7 @@ import numpy as np
 import os
 import random
 from ray import tune
+import tensorflow as tf
 
 logging.basicConfig(filename='main.log', level=logging.DEBUG, filemode='w')
 
@@ -25,7 +26,8 @@ from marltoolbox.envs.coin_game import CoinGame
 
 
 def create_population(env, n_agents, n_units, use_simple_agents=False,
-                      lr=0.01, gamma=0.9, weight_decay=0.0, mean_theta=-2.0, std_theta=0.5):
+                      lr=0.01, gamma=0.9, weight_decay=0.0, mean_theta=-2.0, std_theta=0.5,
+                      entropy_coeff=0.001, use_adam_optimizer=True):
     critic_variant = Critic_Variant.CENTRALIZED
     if use_simple_agents:
         l = [Simple_Agent(env,
@@ -43,7 +45,11 @@ def create_population(env, n_agents, n_units, use_simple_agents=False,
                                 n_units_actor=n_units,
                                 agent_idx=i,
                                 critic_variant=critic_variant,
-                                weight_decay=weight_decay) for i in range(n_agents)]
+                                weight_decay=weight_decay,
+                                std_theta=std_theta,
+                                mean_theta=mean_theta,
+                                entropy_coeff=entropy_coeff,
+                                use_adam_optimizer=use_adam_optimizer) for i in range(n_agents)]
     # Pass list of agents for centralized critic
     if critic_variant is Critic_Variant.CENTRALIZED:
         for agent in l:
@@ -56,28 +62,74 @@ class AdaptiveMechanismDesign(tune.Trainable):
     def _init_algo(self, fear, greed, n_players, use_simple_agents, action_flip_prob,
                    max_reward_strength, value_fn_variant, cost_param, with_redistribution,
                    n_planning_eps, env_config, n_units, n_episodes, env, lr, gamma, weight_decay,
-                   convert_a_to_one_hot, loss_mul_planner, mean_theta, with_planner, std_theta,
-                   **kwargs):
+                   loss_mul_planner, mean_theta, with_planner, std_theta, add_state_grad,planner_momentum,
+                   planner_clip_norm, entropy_coeff, seed, normalize_planner, no_weights_decay_planner,
+                   planner_std_theta_mul, use_adam_optimizer, use_softmax_hot, report_every_n, **kwargs):
+
+        if not use_simple_agents:
+            if env == "FearGreedMatrix":
+                speed_ratio = 5.0
+                lr = lr / speed_ratio
+                loss_mul_planner = loss_mul_planner * speed_ratio**2 / 2 / 2
+                cost_param = cost_param * 1.5
+            if n_units == 64:
+                lr = lr / 8
 
         print("args not used:", kwargs)
+        convert_a_to_one_hot = not use_simple_agents
+        # convert_a_to_one_hot = True
+
+
+        np.random.seed(seed)
+        tf.set_random_seed(seed)
+        random.seed(seed)
 
         if env == "FearGreedMatrix":
             env = define_greed_fear_matrix_game(fear=fear, greed=greed)(env_config)
         elif env == "CoinGame":
+            # if not use_adam_optimizer:
+            #     entropy_coeff = entropy_coeff / 3.0
             env = CoinGame(env_config)
+
+        env.seed(seed=seed)
+
         agents = create_population(env, n_players,
                                    use_simple_agents=use_simple_agents, n_units=n_units,
                                    lr=lr, gamma=gamma, weight_decay=weight_decay,
-                                   mean_theta=mean_theta, std_theta=std_theta)
+                                   mean_theta=mean_theta, std_theta=std_theta, entropy_coeff=entropy_coeff,
+                                   use_adam_optimizer=use_adam_optimizer)
+        np.random.seed(seed+1)
+        tf.set_random_seed(seed+1)
+        random.seed(seed+1)
+
         if with_planner:
+            if "CoinGame" in env.NAME:
+                if not use_adam_optimizer:
+                    loss_mul_planner = loss_mul_planner * 100
+                    weight_decay = weight_decay / 1000
+            if no_weights_decay_planner:
+                weight_decay = 0.0
+            if not add_state_grad and use_softmax_hot:
+                loss_mul_planner = loss_mul_planner * 40
+                weight_decay = weight_decay / 40
+                cost_param = cost_param / 40
+            std_theta = std_theta * planner_std_theta_mul
             planning_agent = Planning_Agent(env, agents,
+                                            learning_rate=lr,
                                             max_reward_strength=max_reward_strength,
                                             cost_param=cost_param,
                                             with_redistribution=with_redistribution,
                                             value_fn_variant=value_fn_variant,
                                             n_units=n_units, weight_decay=weight_decay,
                                             convert_a_to_one_hot=convert_a_to_one_hot,
-                                            loss_mul_planner=loss_mul_planner)
+                                            loss_mul_planner=loss_mul_planner,
+                                            mean_theta=mean_theta,
+                                            std_theta=std_theta, planner_clip_norm=planner_clip_norm,
+                                            normalize_planner=normalize_planner,
+                                            add_state_grad=add_state_grad,
+                                            planner_momentum=planner_momentum,
+                                            use_adam_optimizer=use_adam_optimizer,
+                                            use_softmax_hot=use_softmax_hot)
         else:
             planning_agent = None
 
@@ -96,6 +148,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
         self.value_fn_variant = value_fn_variant
         self.fear = fear
         self.greed = greed
+        self.report_every_n = report_every_n
 
         # env.reset_ep_ctr()
         self.avg_planning_rewards_per_round = []
@@ -107,118 +160,135 @@ class AdaptiveMechanismDesign(tune.Trainable):
         self._init_algo(**config)
 
     def step(self):
-        self.epi_n += 1
-        s_rllib_format = self.env.reset()
-        last_s = convert_from_rllib_env_format(s_rllib_format, self.player_ids, state=True,
-                                               n_states=self.env.NUM_STATES, coin_game=self.env.NAME == "CoinGame")
+        for _ in range(self.report_every_n):
+            self.epi_n += 1
+            to_report = {"episodes_total": self.epi_n}
 
-        flag = isinstance(last_s, list)
+            s_rllib_format = self.env.reset()
+            last_s = convert_from_rllib_env_format(s_rllib_format, self.player_ids, state=True,
+                                                   n_states=self.env.NUM_STATES, coin_game=self.env.NAME == "CoinGame")
 
-        cum_planning_rs = [0] * len(self.players)
-        while True:
-            # choose action based on s
-            if flag:
-                actions = [player.choose_action(last_s[idx]) for idx, player in enumerate(self.players)]
-            else:
-                actions = [player.choose_action(last_s) for player in self.players]
-            print("actions", actions)
-            actions_rllib_format = convert_to_rllib_env_format(actions, self.player_ids,
-                                                               coin_game=self.env.NAME == "CoinGame")
+            flag = isinstance(last_s, list)
 
-            # take action and get next s and reward
-            s_rllib_format, rewards_rllib_format, done_rllib_format, info_rllib_format = self.env.step(
-                actions_rllib_format)
-            current_s = convert_from_rllib_env_format(s_rllib_format, self.player_ids, state=True,
-                                                      n_states=self.env.NUM_STATES,
-                                                      coin_game=self.env.NAME == "CoinGame")
-            rewards = convert_from_rllib_env_format(rewards_rllib_format, self.player_ids)
-            done = convert_from_rllib_env_format(done_rllib_format, self.player_ids)
-            self.episode_reward.append(rewards)
-
-            # perturbed_actions = [(1 - a if np.random.binomial(1, self.action_flip_prob) else a) for a in actions]
-            # perturbed_actions = [0,0]
-            # Make it work for discrete action space of N
-            perturbed_actions = []
-            for a in actions:
-                if np.random.binomial(1, self.action_flip_prob):
-                    perturbed_a = a
-                    while perturbed_a == a:
-                        perturbed_a = random.randint(0, self.env.NUM_STATES - 1)
-                        print("perturbed_a == a", perturbed_a, a, perturbed_a == a)
-                else:
-                    perturbed_actions.append(a)
-            print("perturbed_actions", perturbed_actions)
-
-            env_rewards = rewards
-
-            if self.planning_agent is not None and self.epi_n < self.n_planning_eps:
-                planning_rs = self.planning_agent.choose_action(last_s, perturbed_actions)
-                if self.with_redistribution:
-                    sum_planning_r = sum(planning_rs)
-                    mean_planning_r = sum_planning_r / self.n_players
-                    planning_rs = [r - mean_planning_r for r in planning_rs]
-                rewards = [sum(r) for r in zip(rewards, planning_rs)]
-                cum_planning_rs = [sum(r) for r in zip(cum_planning_rs, planning_rs)]
-                # Training planning agent
-                # TODO using the past rewards is not working since I perturbate the actions
-                action, loss, g_Vp, g_V, vp, values = self.planning_agent.learn(
-                    last_s, perturbed_actions,
-                    coin_game=self.env.NAME == "CoinGame",
-                    env_rewards=env_rewards)
-            print('Actions:' + str(actions))
-            print('State after:' + str(current_s))
-            print('Rewards: ' + str(rewards))
-            print('Done:' + str(done))
-
-            for idx, player in enumerate(self.players):
+            cum_planning_rs = [0] * len(self.players)
+            while True:
+                # choose action based on s
                 if flag:
-                    player.learn(last_s[idx], actions[idx], rewards[idx], current_s[idx], last_s, current_s)
+                    actions = [player.choose_action(last_s[idx]) for idx, player in enumerate(self.players)]
                 else:
-                    player.learn(last_s, actions[idx], rewards[idx], current_s)
+                    actions = [player.choose_action(last_s) for player in self.players]
+                actions_rllib_format = convert_to_rllib_env_format(actions, self.player_ids,
+                                                                   coin_game=self.env.NAME == "CoinGame")
 
-            # swap s
-            last_s = current_s
+                # take action and get next s and reward
+                s_rllib_format, rewards_rllib_format, done_rllib_format, info_rllib_format = self.env.step(
+                    actions_rllib_format)
+                current_s = convert_from_rllib_env_format(s_rllib_format, self.player_ids, state=True,
+                                                          n_states=self.env.NUM_STATES,
+                                                          coin_game=self.env.NAME == "CoinGame")
+                rewards = convert_from_rllib_env_format(rewards_rllib_format, self.player_ids)
+                done = convert_from_rllib_env_format(done_rllib_format, self.player_ids)
+                self.episode_reward.append(rewards)
 
-            # break while loop when done
-            if done:
-                for player in self.players:
-                    player.learn_at_episode_end()
-                break
-        if self.planning_agent is not None and self.epi_n < self.n_planning_eps:
-            self.avg_planning_rewards_per_round.append([r / self.env.step_count for r in cum_planning_rs])
-        epi_rewards = np.array(self.episode_reward)
-        self.training_epi_avg_reward.append(np.mean(epi_rewards, axis=0))
-        self.episode_reward.clear()
+                # perturbed_actions = [(1 - a if np.random.binomial(1, self.action_flip_prob) else a) for a in actions]
+                # perturbed_actions = [0,0]
+                # Make it work for discrete action space of N
+                perturbed_actions = []
+                for a in actions:
+                    if np.random.binomial(1, self.action_flip_prob):
+                        perturbed_a = a
+                        while perturbed_a == a:
+                            perturbed_a = random.randint(0, self.env.NUM_STATES - 1)
+                            print("perturbed_a == a", perturbed_a, a, perturbed_a == a)
+                    else:
+                        perturbed_actions.append(a)
+                # print("perturbed_actions", perturbed_actions)
 
-        # status updates
-        if (self.epi_n + 1) % 100 == 0:
-            print('Episode {} finished.'.format(self.epi_n + 1))
+                env_rewards = rewards
 
-        if self.epi_n == self.n_episodes:
-            get_avg_rewards_per_round = np.array(self.training_epi_avg_reward)
-            self.plot(get_avg_rewards_per_round, np.asarray(self.avg_planning_rewards_per_round)
-                      , coin_game="CoinGame" in self.env.NAME)
+                if self.planning_agent is not None and self.epi_n < self.n_planning_eps:
+                    planning_rs = self.planning_agent.choose_action(last_s, perturbed_actions)
+                    if self.with_redistribution:
+                        sum_planning_r = sum(planning_rs)
+                        mean_planning_r = sum_planning_r / self.n_players
+                        planning_rs = [r - mean_planning_r for r in planning_rs]
+                    rewards = [sum(r) for r in zip(rewards, planning_rs)]
+                    cum_planning_rs = [sum(r) for r in zip(cum_planning_rs, planning_rs)]
+                    # Training planning agent
+                    # TODO using the past rewards is not working since I perturbate the actions
+                    action, loss, g_Vp, g_V, vp, values, r_players, cost, extra_loss, l1 = self.planning_agent.learn(
+                        last_s, perturbed_actions,
+                        coin_game=self.env.NAME == "CoinGame",
+                        env_rewards=env_rewards)
+                # print('Actions:' + str(actions))
+                # print('State after:' + str(current_s))
+                # print('Rewards: ' + str(rewards))
+                # print('Done:' + str(done))
 
-        to_report = {"episodes_total": self.epi_n}
+                for idx, player in enumerate(self.players):
+                    if flag:
+                        critic_loss, advantage = player.learn(last_s[idx], actions[idx], rewards[idx], current_s[idx], last_s,
+                                                         current_s)
+                    else:
+                        critic_loss, advantage = player.learn(last_s, actions[idx], rewards[idx], current_s)
+                    to_report[f"critic_loss_p_{idx}"] = critic_loss[0,0]
+                    to_report[f"advantage_p_{idx}"] = advantage
+                # swap s
+                last_s = current_s
+
+                # break while loop when done
+                if done:
+                    for player in self.players:
+                        player.learn_at_episode_end()
+                    break
+            if self.planning_agent is not None and self.epi_n < self.n_planning_eps:
+                self.avg_planning_rewards_per_round.append([r / self.env.step_count for r in cum_planning_rs])
+            epi_rewards = np.array(self.episode_reward)
+            self.training_epi_avg_reward.append(np.mean(epi_rewards, axis=0))
+            self.episode_reward.clear()
+
+            # status updates
+            # if (self.epi_n + 1) % 100 == 0:
+            #     print('Episode {} finished.'.format(self.epi_n + 1))
+
+            if self.epi_n == self.n_episodes:
+                get_avg_rewards_per_round = np.array(self.training_epi_avg_reward)
+                self.plot(get_avg_rewards_per_round, np.asarray(self.avg_planning_rewards_per_round)
+                          , coin_game="CoinGame" in self.env.NAME)
+
         for k, v in actions_rllib_format.items():
             to_report[f"act_{k}"] = v
         to_report.update(info_rllib_format)
-        to_report["mean_reward"] = np.mean(epi_rewards, axis=0)
-        # print("action, loss, g_Vp, g_V, vp, v", action.shape, loss.shape,
-        #       g_Vp.shape, g_V.shape, vp.shape, v.shape)
-        to_report[f"loss"] = loss
-        if self.value_fn_variant == 'exact':
-            to_report[f"v_1"] = values[0,0]
-            to_report[f"v_2"] = values[0,1]
-        else:
-            to_report[f"v"] = values
-        to_report[f"g_V"] = g_V
-        to_report[f"vp_1"] = vp[0,0]
-        to_report[f"vp_2"] = vp[0,1]
-        # action, loss, g_Vp, g_V, vp, v
-        if self.planning_agent is not None and self.epi_n < self.n_planning_eps:
+        # to_report["mean_reward_p1"] = np.mean(epi_rewards, axis=0)[0]
+        # to_report["mean_reward_p2"] = np.mean(epi_rewards, axis=0)[1]
+
+        if self.planning_agent is not None:
+            to_report[f"loss_planner"] = loss
+            to_report[f"loss_pl_grad"] = cost
+            to_report[f"loss_rew_cost"] = extra_loss
+            # if self.value_fn_variant == 'exact':
+            #     to_report[f"v_1"] = values[0,0]
+            #     to_report[f"v_2"] = values[0,1]
+            # else:
+            # to_report[f"v"] = values
+            to_report[f"g_V"] = g_V
+            # to_report[f"vp_1"] = vp[0,0]
+            # to_report[f"vp_2"] = vp[0,1]
+            # to_report[f"r_p_1_wtout_pl"] = r_players[0]
+            # to_report[f"r_p_2_wtout_pl"] = r_players[1]
+            # to_report[f"l1"] = l1
+            planner_weights_norm = self.planning_agent.get_weights_norm()
+            to_report[f"planner_weights_norm"] = planner_weights_norm
             to_report["planning_reward_player1"] = planning_rs[0]
             to_report["planning_reward_player2"] = planning_rs[1]
+            # planner_weights = self.planning_agent.get_weigths()
+            # to_report[f"planner_weights"] = planner_weights
+
+        for idx, player in enumerate(self.players):
+            ac_weights_norm, cr_weights_norm = player.get_weights_norm()
+            to_report[f"actor_weights_norm_p_{idx}"] = ac_weights_norm
+            to_report[f"critic_weights_norm_p_{idx}"] = cr_weights_norm
+
         return to_report
 
     def plot(self, avg_rewards_per_round, avg_planning_rewards_per_round, coin_game=False):
