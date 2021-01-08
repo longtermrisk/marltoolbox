@@ -12,22 +12,18 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
 # Abstract class
-# TODO use env parent class provided by RLLib if it exists
-class MatrixSocialDilemma(MultiAgentEnv, ABC):
+class MatrixSequentialSocialDilemma(MultiAgentEnv, ABC):
     """
-    A two-agent base class environment for matrix games.
+    A multi-agent base class environment for matrix games.
 
     """
 
     def __init__(self, config: dict):
         """
-        PAYOUT_MATRIX: numpy array. Along dim 0 (rows), action of
-        player 1 change. Along dim 1 (col), action of player 2 change. (0,0) = (C,C), (1,1) = (D,D)
-
-        reward_randomness: add a normal(mean=0,std=reward_randomness)
-        sampled value to each player's rewards
-
-        max_steps: length of an episode
+        PAYOUT_MATRIX: Numpy array. Along dim N the action of the Nth player change.
+        reward_randomness: add a Normal(mean=0,std=reward_randomness) variation to each reward
+        max_steps: episode length
+        players_ids: agent ids for each player
         """
 
         assert self.PAYOUT_MATRIX is not None
@@ -39,8 +35,8 @@ class MatrixSocialDilemma(MultiAgentEnv, ABC):
         self.max_steps = config.get("max_steps", 20)
         self.reward_randomness = config.get("reward_randomness", 0.0)
         self.reward_randomness = 0.0 if self.reward_randomness is None else self.reward_randomness
+        self.reward_randomness = 0.0 if self.reward_randomness is False else self.reward_randomness
         self.get_additional_info = config.get("get_additional_info", True)
-        self.get_available_actions = config.get("get_available_actions", False)
 
         self.step_count = None
 
@@ -156,7 +152,7 @@ class TwoPlayersTwoActionsInfo:
         self.dd_count.append(ac0 == 1 and ac1 == 1)
 
 
-class IteratedMatchingPennies(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+class IteratedMatchingPennies(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Matching Pennies game.
     """
@@ -170,7 +166,7 @@ class IteratedMatchingPennies(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     NAME = "IMP"
 
 
-class IteratedPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+class IteratedPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Prisoner's Dilemma game.
     """
@@ -185,7 +181,7 @@ class IteratedPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     NAME = "IPD"
 
 
-class IteratedAsymPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+class IteratedAsymPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Prisoner's Dilemma game.
     """
@@ -200,7 +196,7 @@ class IteratedAsymPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSocialDilemma
     NAME = "IPD"
 
 
-class IteratedStagHunt(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+class IteratedStagHunt(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Stag Hunt game.
     """
@@ -215,7 +211,7 @@ class IteratedStagHunt(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     NAME = "IteratedStagHunt"
 
 
-class IteratedChicken(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+class IteratedChicken(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Chicken game.
     """
@@ -230,7 +226,7 @@ class IteratedChicken(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     NAME = "IteratedChicken"
 
 
-class IteratedAsymChicken(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+class IteratedAsymChicken(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Chicken game.
     """
@@ -245,7 +241,7 @@ class IteratedAsymChicken(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     NAME = "AsymmetricIteratedChicken"
 
 
-class IteratedBoS(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+class IteratedBoS(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the BoS game.
     """
@@ -260,7 +256,7 @@ class IteratedBoS(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
     NAME = "IteratedBoS"
 
 
-class IteratedAsymBoS(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+class IteratedAsymBoS(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the BoS game.
     """
@@ -276,7 +272,7 @@ class IteratedAsymBoS(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
 
 
 def define_greed_fear_matrix_game(greed, fear):
-    class GreedFearGame(TwoPlayersTwoActionsInfo, MatrixSocialDilemma):
+    class GreedFearGame(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
         """
         A two-agent environment for the BoS game.
         """
@@ -325,7 +321,7 @@ class NPlayersDiscreteActionsInfo:
         self.info_counters["n_steps_accumulated"] += 1
 
 
-class IteratedBoSAndPD(NPlayersDiscreteActionsInfo, MatrixSocialDilemma):
+class IteratedBoSAndPD(NPlayersDiscreteActionsInfo, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the BOTS + PD game.
     """

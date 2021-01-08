@@ -12,7 +12,7 @@ parser.add_argument("--tf", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 
 
-def main(stop_iters, tf, debug):
+def main(debug, stop_iters=200, tf=False):
     train_n_replicates = 1 if debug else 1
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("PG_IPD")
@@ -62,12 +62,13 @@ def main(stop_iters, tf, debug):
         "framework": "tf" if tf else "torch",
     }
 
-    results = tune.run(PGTrainer, config=rllib_config, stop=stop, verbose=1,
+    tune_analysis = tune.run(PGTrainer, config=rllib_config, stop=stop, verbose=1,
                        checkpoint_freq=0, checkpoint_at_end=True, name=exp_name)
     ray.shutdown()
+    return tune_analysis
 
 
 if __name__ == "__main__":
     debug_mode = True
     args = parser.parse_args()
-    main(args.stop_iters, args.tf, debug_mode)
+    main(debug_mode, args.stop_iters, args.tf)
