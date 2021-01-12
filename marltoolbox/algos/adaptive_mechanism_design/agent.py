@@ -79,11 +79,8 @@ class Agent(object):
 
     def choose_action(self, s):
         action_probs = self.calc_action_probs(s)
-        # print("action_probs.shape[1]", action_probs.shape[1])
-        # print("action_probs", action_probs)
         action = np.random.choice(range(action_probs.shape[1]),
                                   p=action_probs.ravel())  # select action w.r.t the actions prob
-        # print("action", action)
         self.log.append(action_probs[0, 1])
         return action
 
@@ -104,14 +101,14 @@ class Actor_Critic_Agent(Agent):
     def __init__(self, env, learning_rate=0.001, n_units_actor=20,
                  n_units_critic=20, gamma=0.95, agent_idx=0, mean_theta=0.0,
                  critic_variant=Critic_Variant.INDEPENDENT, weight_decay=0.0, std_theta=0.1,
-                 entropy_coeff=0.001, use_adam_optimizer=True, *args):
+                 entropy_coeff=0.001, use_adam_optimizer=True, momentum=0.9, *args):
         super().__init__(env, learning_rate, gamma, agent_idx)
         self.actor = Actor(env, n_units_actor, learning_rate, agent_idx, weight_decay=weight_decay,
                            std_theta=std_theta, entropy_coeff=entropy_coeff, mean_theta=mean_theta,
-                           use_adam_optimizer=use_adam_optimizer)
+                           use_adam_optimizer=use_adam_optimizer, momentum=momentum)
         self.critic = Critic(env, n_units_critic, learning_rate, gamma, agent_idx, critic_variant,
                              mean_theta=mean_theta, weight_decay=weight_decay, std_theta=std_theta,
-                             use_adam_optimizer=use_adam_optimizer)
+                             use_adam_optimizer=use_adam_optimizer, momentum=momentum)
         self.sess.run(tf.global_variables_initializer())
 
     def learn(self, s, a, r, s_, done=False, *args):
@@ -151,23 +148,13 @@ class Actor_Critic_Agent(Agent):
 
 class Actor(object):
     def __init__(self, env, n_units=20, learning_rate=0.001, agent_idx=0, weight_decay=0.0, training=True,
-                 std_theta=0.1, entropy_coeff=0.001, mean_theta=0.0, use_adam_optimizer=True):
+                 std_theta=0.1, entropy_coeff=0.001, mean_theta=0.0, use_adam_optimizer=True,
+                 momentum=0.9):
         self.s = tf.placeholder(tf.float32, [1, env.NUM_STATES], "state_ag")
         self.a = tf.placeholder(tf.int32, None, "act")
-        # self.a = tf.placeholder(tf.int32, [None, env.NUM_ACTIONS], "act")
         self.td_error = tf.placeholder(tf.float32, None, "td_error")  # TD_error
         self.env_name = env.NAME
         with tf.variable_scope(f'Actor_{agent_idx}'):
-            # n_units = n_units[0]
-            # self.w_l1 = tf.Variable(tf.random_normal([env.NUM_STATES, n_units], stddev=0.1))
-            # self.b_l1 = tf.Variable(tf.random_normal([n_units], stddev=0.1))
-            # self.l1 = tf.nn.relu(tf.matmul(self.s, self.w_l1) + self.b_l1)
-            #
-            # self.w_pi1 = tf.Variable(tf.random_normal([n_units, env.NUM_ACTIONS], stddev=0.1))
-            # self.b_pi1 = tf.Variable(tf.random_normal([env.NUM_ACTIONS], stddev=0.1))
-            # self.actions_prob = tf.nn.softmax(tf.matmul(self.l1, self.w_pi1) + self.b_pi1)
-            # var_list = [self.w_l1, self.b_l1, self.w_pi1, self.b_pi1]
-
             if not isinstance(n_units, list):
                 units = [env.NUM_STATES, n_units,  env.NUM_ACTIONS]
             else:
@@ -188,16 +175,11 @@ class Actor(object):
                     b_l1 = tf.Variable(tf.random_normal([n_out], mean=0.0, stddev=std_theta))
                     l1 = tf.nn.leaky_relu(tf.matmul(input_, w_l1) + b_l1)
                     var_list.extend([w_l1, b_l1])
-                    # l1 = tf.compat.v1.layers.batch_normalization(l1, training=training)
                     input_ = l1
-            # print("std_theta",std_theta)
             self.w_pi1 = tf.Variable(tf.random_normal([n_in, n_out], mean=0.0, stddev=std_theta))
             self.b_pi1 = tf.Variable(tf.random_normal([n_out], mean=mean_theta, stddev=std_theta))
             self.actions_prob = tf.nn.softmax(tf.matmul(input_, self.w_pi1) + self.b_pi1)
             var_list.extend([self.w_pi1, self.b_pi1])
-            # opt = tf.print("tf.matmul(input_, self.w_pi1) + self.b_pi1", tf.matmul(input_, self.w_pi1),
-            #                     self.b_pi1, input_, self.w_pi1)
-            # with tf.control_dependencies([opt]):
             self.entropy = tf.reduce_sum(tf.log(self.actions_prob) * self.actions_prob)
 
             self.parameters = tf.concat(axis=0, values=[tf.reshape(v, [numel(v)]) for v in var_list])
@@ -211,8 +193,6 @@ class Actor(object):
                 self.g_log_pi = tf.gradients(log_prob, self.s)
 
             with tf.variable_scope('trainActor'):
-                # entropy_opt = tf.print("self.entropy", self.entropy)
-                # with tf.control_dependencies([entropy_opt]):
                 self.loss = -self.exp_v
                 if weight_decay > 0.0:
                     self.loss += self.weights_norm * weight_decay
@@ -221,25 +201,7 @@ class Actor(object):
                 if use_adam_optimizer:
                     self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(self.loss)
                 else:
-                    self.train_op = tf.train.MomentumOptimizer(learning_rate, momentum=0.9).minimize(self.loss)
-                # update_ops = tf.compat.v1.get_collection(tf.GraphKeys.UPDATE_OPS, scope=f'Actor_{agent_idx}')
-                # self.train_op = tf.group([self.train_op, update_ops])
-
-
-
-        # with tf.variable_scope('Actor'):
-        #     self.theta = tf.Variable(tf.random_normal([1], mean=0.0, stddev=std_theta))
-        #     self.actions_prob = tf.expand_dims(tf.concat([1 - tf.sigmoid(self.theta), tf.sigmoid(self.theta)], 0), 0)
-        #
-        # with tf.variable_scope('exp_v'):
-        #     self.log_prob = tf.log(self.actions_prob[0, self.a])
-        #     self.g_log_pi = tf.gradients(self.log_prob, self.theta)
-        #     self.exp_v = tf.reduce_mean(self.log_prob * self.td_error)
-        #
-        # with tf.variable_scope('trainActor'):
-        #     self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(-self.exp_v)
-        #
-        # self.weights_norm = self.theta
+                    self.train_op = tf.train.MomentumOptimizer(learning_rate, momentum=momentum).minimize(self.loss)
 
     def learn(self, sess, s, a, td):
         s = s[np.newaxis, :]
@@ -251,9 +213,7 @@ class Actor(object):
         if add_dim:
             s = s[np.newaxis, :]
         probs = sess.run(self.actions_prob, {self.s: s})  # get probabilities for all actions
-        # print("actor probs", probs)
         return probs
-        # return np.array([[0.75, 0.25]])
 
     def calc_g_log_pi(self, sess, s, a):
         return sess.run(self.g_log_pi, feed_dict={self.s: s, self.a: a})
@@ -264,7 +224,7 @@ class Actor(object):
 class Critic(object):
     def __init__(self, env, n_units, learning_rate, gamma, agent_idx,
                  critic_variant=Critic_Variant.INDEPENDENT, weight_decay=0.0, std_theta=0.1, mean_theta=0.0,
-                 use_adam_optimizer=True):
+                 use_adam_optimizer=True, momentum=0.9):
         self.critic_variant = critic_variant
         self.env = env
 
@@ -279,25 +239,6 @@ class Critic(object):
             self.nn_inputs = self.s
 
         with tf.variable_scope(f'Critic_{agent_idx}'):
-            # l1 = tf.layers.dense(
-            #     inputs=self.nn_inputs,
-            #     units=n_units,  # number of hidden units
-            #     activation=tf.nn.relu,  # None
-            #     kernel_initializer=tf.random_normal_initializer(0., .1),  # weights
-            #     bias_initializer=tf.constant_initializer(0.1),  # biases
-            #     name='l1' + str(agent_idx)
-            # )
-
-
-            # n_units = n_units[0]
-            # self.w_l1 = tf.Variable(tf.random_normal([env.NUM_STATES, n_units], stddev=0.1))
-            # self.b_l1 = tf.Variable(tf.random_normal([n_units], stddev=0.1))
-            # self.l1 = tf.nn.relu(tf.matmul(self.s, self.w_l1) + self.b_l1)
-            #
-            # self.w_pi1 = tf.Variable(tf.random_normal([n_units, env.NUM_ACTIONS], stddev=0.1))
-            # self.b_pi1 = tf.Variable(tf.random_normal([env.NUM_ACTIONS], stddev=0.1))
-            # self.actions_prob = tf.nn.softmax(tf.matmul(self.l1, self.w_pi1) + self.b_pi1)
-            # var_list = [self.w_l1, self.b_l1, self.w_pi1, self.b_pi1]
 
             if self.critic_variant is Critic_Variant.CENTRALIZED:
                 if not isinstance(n_units, list):
@@ -325,18 +266,7 @@ class Critic(object):
                     b_l1 = tf.Variable(tf.random_normal([n_out], mean=0.0, stddev=std_theta))
                     l1 = tf.nn.leaky_relu(tf.matmul(input_, w_l1) + b_l1)
                     var_list.extend([w_l1, b_l1])
-                    # l1 = tf.compat.v1.layers.batch_normalization(l1, training=True)
                     input_ = l1
-
-            # TODO use this everywhere
-            # self.v = tf.layers.dense(
-            #     inputs=l1,
-            #     units=1,  # output units
-            #     activation=None,
-            #     kernel_initializer=tf.random_normal_initializer(0., .1),  # weights
-            #     bias_initializer=tf.constant_initializer(0.1),  # biases
-            #     name='V' + str(agent_idx)
-            # )
 
             self.w_pi1 = tf.Variable(tf.random_normal([n_in, n_out], mean=0.0, stddev=std_theta))
             self.b_pi1 = tf.Variable(tf.random_normal([n_out], mean=mean_theta, stddev=std_theta))
@@ -348,8 +278,6 @@ class Critic(object):
         self.weights_norm = tf.sqrt(tf.reduce_sum(weights_norm))
 
         with tf.variable_scope('squared_TD_error'):
-            # print_opt = tf.print("self.r + gamma * self.v_ - self.v", self.r, gamma, self.v_, self.v)
-            # with tf.control_dependencies([print_opt]):
             self.td_error = self.r + gamma * self.v_ - self.v
             self.loss = tf.square(self.td_error)
         with tf.variable_scope('trainCritic'):
@@ -358,10 +286,7 @@ class Critic(object):
             if use_adam_optimizer:
                 self.train_op = tf.train.AdamOptimizer(learning_rate).minimize(self.loss)
             else:
-                self.train_op = tf.train.MomentumOptimizer(learning_rate, momentum=0.9).minimize(self.loss)
-            # update_ops = tf.compat.v1.get_collection(tf.GraphKeys.UPDATE_OPS, scope=f'Critic_{agent_idx}')
-            # self.train_op = tf.group([self.train_op, update_ops])
-
+                self.train_op = tf.train.MomentumOptimizer(learning_rate, momentum=momentum).minimize(self.loss)
 
 
 
@@ -382,14 +307,10 @@ class Critic(object):
             else:
                 act_probs = np.hstack([agent.calc_action_probs(s) for idx, agent in enumerate(self.agent_list)])
                 act_probs_ = np.hstack([agent.calc_action_probs(s_) for idx, agent in enumerate(self.agent_list)])
-            # op1 = tf.print("act_probs", act_probs)
-            # op2 = tf.print("act_probs_", act_probs_)
-            # with tf.control_dependencies([op1, op2]):
             nn_inputs = np.hstack([s[np.newaxis, :], act_probs])
             nn_inputs_ = np.hstack([s_[np.newaxis, :], act_probs_])
         else:
             nn_inputs, nn_inputs_ = s[np.newaxis, :], s_[np.newaxis, :]
-        # print("nn_inputs_", nn_inputs_)
         v_ = sess.run(self.v, {self.nn_inputs: nn_inputs_})
         td_error, _, critic_loss = sess.run([self.td_error, self.train_op, self.loss],
                                {self.nn_inputs: nn_inputs, self.v_: v_, self.r: r})
@@ -401,11 +322,7 @@ class Critic(object):
         if self.critic_variant is Critic_Variant.CENTRALIZED:
             if args:
                 raise NotImplementedError()
-            #     obslist = args[0]
-            #     # obs_list = args[1]
-            #     act_probs = np.hstack(
-            #         [agent.calc_action_probs(obslist[idx]) for idx, agent in enumerate(self.agent_list)])
-            # else:
+
             act_probs = np.hstack([agent.calc_action_probs(s, add_dim=add_dim) for idx, agent in enumerate(self.agent_list)])
             if add_dim:
                 nn_inputs = np.hstack([s[np.newaxis, :], act_probs])
@@ -433,18 +350,10 @@ class Simple_Agent(Agent):  # plays games with 2 actions, using a single paramet
 
         with tf.variable_scope('Actor'):
             self.theta = tf.Variable(tf.random_normal([1], mean=mean_theta, stddev=std_theta))
-            # self.theta = tf.Variable(tf.random_normal([1], mean=0, stddev=0.5))
             self.actions_prob = tf.expand_dims(tf.concat([1 - tf.sigmoid(self.theta), tf.sigmoid(self.theta)], 0), 0)
-            # self.theta = tf.Variable(tf.random_normal([env.NUM_ACTIONS], mean=-2, stddev=0.5))
-            # self.actions_prob = tf.expand_dims(tf.nn.softmax(self.theta), 0)
 
         with tf.variable_scope('exp_v'):
-            # a_opt_val = tf.print("self.a", self.a)
-            # with tf.control_dependencies([a_opt_val]):
             self.log_prob = tf.log(self.actions_prob[0, self.a])
-            # log_prob_opt_val = tf.print("self.log_prob", self.log_prob)
-            # actions_prob_opt_val = tf.print("self.actions_prob", self.actions_prob)
-            # with tf.control_dependencies([log_prob_opt_val, actions_prob_opt_val]):
             self.g_log_pi = tf.gradients(self.log_prob, self.theta)
             self.exp_v = tf.reduce_mean(self.log_prob * self.td_error)
 
@@ -472,7 +381,6 @@ class Simple_Agent(Agent):  # plays games with 2 actions, using a single paramet
         s = s[np.newaxis, :]
         probs = self.sess.run(self.actions_prob)
         return probs
-        # return np.array([[0.75, 0.25]])
 
     def pass_agent_list(self, agent_list):
         self.critic.pass_agent_list(agent_list)

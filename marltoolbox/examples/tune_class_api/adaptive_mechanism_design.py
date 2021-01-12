@@ -8,7 +8,6 @@ import math
 import ray
 import time
 from ray import tune
-import numpy as np
 
 logging.basicConfig(filename='main.log', level=logging.DEBUG, filemode='w')
 from marltoolbox.algos.adaptive_mechanism_design.adaptive_mechanism_design import AdaptiveMechanismDesign
@@ -49,7 +48,6 @@ def add_env_hp(hp):
             "lr": 0.01,
             "gamma": 0.9,
             "n_steps_per_epi": 1,
-            # "n_steps_per_epi": 20,
             # "n_units": 10,
             "n_units": 64,
             # "use_simple_agents": True,
@@ -58,93 +56,121 @@ def add_env_hp(hp):
             "n_episodes": 10 if hp["debug"] else 4000,
             "max_reward_strength": 3,
             "weight_decay": 0.0,
-            # "convert_a_to_one_hot": False,
             # TODO rename to lr planner scaler...
             "loss_mul_planner": 1.0,
-            # "mean_theta": -2.0,
-            # "std_theta": 0.5,
             # since I am using greed = 1 instead of -1 then I don't need mean = -2.0
             "mean_theta": 0.0,
             "std_theta": 0.1,
             "planner_clip_norm": None,  # no clipping
-            # "planner_clip_norm": 1.0,
             "entropy_coeff": 0.0,
-            # "cost_param": 0.0002/100,
-            # "cost_param": 0.0,
-            # "cost_param": 0.0002,
             "cost_param": 0.0002 / 2 / 2,
 
             "normalize_planner": True,
 
+
+
+
+
+
+            "normalize_against_v": False,
+
         })
 
-        # if hp["value_fn_variant"] == 'estimated':
-        #     hp["mean_theta"] = -1.5
-        #     hp["std_theta"] = 0.05
+        if not hp["use_simple_agents"]:
+            hp.update({
+            # Good not use_simple_agents
+            "add_state_grad": False,
+            "no_weights_decay_planner": False,
+            "weight_decay_pl_mul": 1.0,
+            "use_adam_optimizer": False,
+            "momentum": 0.9,
+            "planner_momentum": 0.9,
+            "planner_std_theta_mul": 2.5,
+            "loss_mul_planner": 100.0 * 100,
+            "cost_param": 0.0002 / 2 / 2 / 10 / 100,
+            "use_softmax_hot": False,
+            "square_cost": False,
+            })
 
-        # if not hp["use_simple_agents"]:
-        #     hp["lr"] = 0.01 / 10.0
-        # #     hp["loss_mul_planner"] = 3.0
-        # #     hp["cost_param"] = 0.0002
+            if not hp["add_state_grad"]:
+                hp.update({
+                # Good add_state
+                "n_steps_per_epi": 20,
+                "lr": 0.01 / 3,
+                "loss_mul_planner": 100.0 * 100,
+                "weight_decay_pl_mul": 1.0 * 1000 * 3 * 3,
+                "use_v_pl": True,
+                })
 
     if hp["env"] == "CoinGame":
         hp.update({
-            # "lr": 0.01,
+            "report_every_n": 1,
+            "n_episodes": 10 if hp["debug"] else 10000,
+
+            "report_every_n": 10,
+            "n_episodes": 10 if hp["debug"] else 1000000,
+
+            "use_v_pl": True,
             "lr": 0.01/3.0,
-            # "lr": 0.01/3.0/8.0,
             "gamma": 0.5,
             "n_steps_per_epi": 20,
-            "n_units": 8, # Keep it low to make the actor learn slowly (at least with AdamOptim)
-            # "cost_param": 0.0002 / 2 / 2,
-            "cost_param": 0.0002 / 2 / 2 / 3,
-            # "n_units": 64,
-            # "cost_param": 0.0002 / 2 / 2,
-            # "n_units": [16, 32],
-            # "n_units": tune.grid_search([8, [16, 32]]),
             "use_simple_agents": False,
-            "n_episodes": 10 if hp["debug"] else 12000,
             "max_reward_strength": 1.0,
-            # "weight_decay": 0.0,
             "weight_decay": 0.003,
-            # "weight_decay": 0.000003,
-            # TODO remove this HP and use env name
-            # "convert_a_to_one_hot": True,
-            "loss_mul_planner": 1.0,
-            # "loss_mul_planner": 1.0/1000,
-            # "mean_theta": 0.0,
             "mean_theta": 0.0,
             "std_theta": 0.1,
-            # "std_theta": 1.0,
-            # "std_theta": 0.5,
-            # "cost_param": 0.0,
-            # "cost_param": 0.0002,
-            # "cost_param": 0.0002 / 2 / 2 * 8.0,
-            # "cost_param": 0.00000002,
-            "planner_clip_norm": None,  # no clipping
-            # "planner_clip_norm": 0.5,
-            "entropy_coeff": 0.1,
-            # "entropy_coeff": 0.1/3.0,
-            # "entropy_coeff": 0.1 * 8.0,
+            "planner_clip_norm": None,
 
             "normalize_planner": True,
 
+
+            "use_adam_optimizer": False,
             "add_state_grad": False,
-            "planner_momentum": 0.9,
-            "no_weights_decay_planner": True,
-            "planner_std_theta_mul": 10.0,
-            "use_adam_optimizer": True,
+            "no_weights_decay_planner": False,
+            "momentum": 0.99,
+            "planner_momentum": 0.99,
+            "entropy_coeff": 0.1/10/3,
+            "loss_mul_planner": 100.0 * 100 * 10 / 3,
             "use_softmax_hot": False,
+            "square_cost": False,
+            "n_units": 64,
+            "cost_param": 0.0002 / 2 / 2 / 10 / 100 / 10 / 5,
+            "weight_decay_pl_mul": 1.0 /100 / 100 / 100 / 10,
+            "planner_std_theta_mul": 1.0,
 
-            # "planner_momentum": tune.grid_search([0.9, 0.99]),
-            # "loss_mul_planner": tune.grid_search([3.0,1.0,1.0/3.0]),
-            # "entropy_coeff": tune.grid_search([0.1,0.1/3.0]),
+            # "lr": tune.grid_search([0.01/3.0, 0.01/3.0/3.0, 0.01/3.0/3.0/3.0, 0.01/3.0/3.0/3.0/3.0]),
+            # "momentum": tune.grid_search([0.99,0.999]),
+            # "planner_momentum": tune.grid_search([0.99,0.999]),
+            # "cost_param": tune.grid_search([0.0002 / 2 / 2 / 10 / 100 / 10 / 5,
+            #                                 0.0002 / 2 / 2 / 10 / 100 / 10 / 5*3,
+            #                                 0.0002 / 2 / 2 / 10 / 100 / 10 / 5/3]),
 
-            # "add_state_grad": tune.grid_search([True, False]),
-            # "use_adam_optimizer": tune.grid_search([True, False]),
-            # "use_softmax_hot": tune.grid_search([True, False]),
-            # "no_weights_decay_planner": tune.grid_search([True, False]),
-            # "cost_param": tune.grid_search([0.0002 / 2 / 2 / 3,0.0002 / 2 / 2]),
-            # "n_units": tune.grid_search([8, 64]),
+            "add_state_grad": True,
+            "normalize_against_v": 1000,
+            # "loss_mul_planner": 100.0 * 100 * 10 / 3 / 5 / 10 * 3,
+            # "planner_std_theta_mul": 0.5,
+            # "cost_param": 0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3,
+            "planner_momentum": 0.999,
+            "entropy_coeff": 0.1 / 10 / 3 * 3 * 3,
+
+            "loss_mul_planner": 100.0 * 100 * 10 / 3 / 5 / 10 * 3,
+            "planner_std_theta_mul": 1.0,
+            "cost_param": 0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3 / 3 / 3,
+            "weight_decay_pl_mul": 1.0 /100 / 100 / 100 / 10 * 3 / 10,
+            "cost_param": tune.grid_search([0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3,
+                                            0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3 / 3,
+                                            0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3 / 3 / 3,
+                                            0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3 * 3,
+                                            0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3 * 3 * 3]),
+            "loss_mul_planner": tune.grid_search([
+                100.0 * 100 * 10 / 3 / 5 / 10 * 3 * 3,
+                100.0 * 100 * 10 / 3 / 5 / 10 * 3,
+                100.0 * 100 * 10 / 3 / 5 / 10 * 3 / 3]),
+            "weight_decay_pl_mul": tune.grid_search([
+                1.0 /100 / 100 / 100 / 10 / 3,
+                1.0 /100 / 100 / 100 / 10,
+                1.0 /100 / 100 / 100 / 10 * 3]),
+            "normalize_against_vp": 1000,
 
         })
 
@@ -154,7 +180,6 @@ def add_env_hp(hp):
 def main(debug):
     train_n_replicates = 1 if debug else 1
     timestamp = int(time.time())
-    # timestamp = 1610039542
     seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
 
     exp_name, _ = log.log_in_current_day_dir("adaptive_mechanism_design")
@@ -164,7 +189,7 @@ def main(debug):
         "seed": tune.grid_search(seeds),
         # "seed": 1610052221,
         "debug": debug,
-        "report_every_n":10,
+        "report_every_n": 1,
 
         "fear": 1,
 
@@ -189,7 +214,8 @@ def main(debug):
         # "env": "FearGreedMatrix",
         "env": "CoinGame",
 
-        "add_state_grad": False,
+        "normalize_against_vp": False,
+        "normalize_against_v": False,
 
     }
 

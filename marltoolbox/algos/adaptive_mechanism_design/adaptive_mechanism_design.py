@@ -19,15 +19,10 @@ from marltoolbox.envs.matrix_SSD import define_greed_fear_matrix_game
 from marltoolbox.envs.coin_game import CoinGame
 
 
-# def run_game(
-#     for episode in range(N_EPISODES):
-#
-#     return env.get_avg_rewards_per_round(), np.asarray(avg_planning_rewards_per_round)
-
 
 def create_population(env, n_agents, n_units, use_simple_agents=False,
                       lr=0.01, gamma=0.9, weight_decay=0.0, mean_theta=-2.0, std_theta=0.5,
-                      entropy_coeff=0.001, use_adam_optimizer=True):
+                      entropy_coeff=0.001, use_adam_optimizer=True, momentum=0.9):
     critic_variant = Critic_Variant.CENTRALIZED
     if use_simple_agents:
         l = [Simple_Agent(env,
@@ -49,7 +44,8 @@ def create_population(env, n_agents, n_units, use_simple_agents=False,
                                 std_theta=std_theta,
                                 mean_theta=mean_theta,
                                 entropy_coeff=entropy_coeff,
-                                use_adam_optimizer=use_adam_optimizer) for i in range(n_agents)]
+                                use_adam_optimizer=use_adam_optimizer,
+                                momentum=momentum) for i in range(n_agents)]
     # Pass list of agents for centralized critic
     if critic_variant is Critic_Variant.CENTRALIZED:
         for agent in l:
@@ -64,20 +60,20 @@ class AdaptiveMechanismDesign(tune.Trainable):
                    n_planning_eps, env_config, n_units, n_episodes, env, lr, gamma, weight_decay,
                    loss_mul_planner, mean_theta, with_planner, std_theta, add_state_grad,planner_momentum,
                    planner_clip_norm, entropy_coeff, seed, normalize_planner, no_weights_decay_planner,
-                   planner_std_theta_mul, use_adam_optimizer, use_softmax_hot, report_every_n, **kwargs):
+                   planner_std_theta_mul, use_adam_optimizer, use_softmax_hot, report_every_n, momentum,
+                   weight_decay_pl_mul, square_cost, normalize_against_v, use_v_pl,
+                   normalize_against_vp, **kwargs):
 
         if not use_simple_agents:
-            if env == "FearGreedMatrix":
-                speed_ratio = 5.0
-                lr = lr / speed_ratio
-                loss_mul_planner = loss_mul_planner * speed_ratio**2 / 2 / 2
-                cost_param = cost_param * 1.5
+            speed_ratio = 5.0
+            lr = lr / speed_ratio
+            loss_mul_planner = loss_mul_planner * speed_ratio**2 / 2 / 2
+            cost_param = cost_param * 1.5
             if n_units == 64:
                 lr = lr / 8
 
         print("args not used:", kwargs)
         convert_a_to_one_hot = not use_simple_agents
-        # convert_a_to_one_hot = True
 
 
         np.random.seed(seed)
@@ -87,8 +83,6 @@ class AdaptiveMechanismDesign(tune.Trainable):
         if env == "FearGreedMatrix":
             env = define_greed_fear_matrix_game(fear=fear, greed=greed)(env_config)
         elif env == "CoinGame":
-            # if not use_adam_optimizer:
-            #     entropy_coeff = entropy_coeff / 3.0
             env = CoinGame(env_config)
 
         env.seed(seed=seed)
@@ -97,23 +91,16 @@ class AdaptiveMechanismDesign(tune.Trainable):
                                    use_simple_agents=use_simple_agents, n_units=n_units,
                                    lr=lr, gamma=gamma, weight_decay=weight_decay,
                                    mean_theta=mean_theta, std_theta=std_theta, entropy_coeff=entropy_coeff,
-                                   use_adam_optimizer=use_adam_optimizer)
+                                   use_adam_optimizer=use_adam_optimizer, momentum=momentum)
         np.random.seed(seed+1)
         tf.set_random_seed(seed+1)
         random.seed(seed+1)
 
         if with_planner:
-            if "CoinGame" in env.NAME:
-                if not use_adam_optimizer:
-                    loss_mul_planner = loss_mul_planner * 100
-                    weight_decay = weight_decay / 1000
+            std_theta = std_theta * planner_std_theta_mul
+            weight_decay = weight_decay * weight_decay_pl_mul
             if no_weights_decay_planner:
                 weight_decay = 0.0
-            if not add_state_grad and use_softmax_hot:
-                loss_mul_planner = loss_mul_planner * 40
-                weight_decay = weight_decay / 40
-                cost_param = cost_param / 40
-            std_theta = std_theta * planner_std_theta_mul
             planning_agent = Planning_Agent(env, agents,
                                             learning_rate=lr,
                                             max_reward_strength=max_reward_strength,
@@ -129,7 +116,11 @@ class AdaptiveMechanismDesign(tune.Trainable):
                                             add_state_grad=add_state_grad,
                                             planner_momentum=planner_momentum,
                                             use_adam_optimizer=use_adam_optimizer,
-                                            use_softmax_hot=use_softmax_hot)
+                                            use_softmax_hot=use_softmax_hot,
+                                            square_cost=square_cost,
+                                            normalize_against_v=normalize_against_v,
+                                            use_v_pl=use_v_pl,
+                                            normalize_against_vp=normalize_against_vp)
         else:
             planning_agent = None
 
@@ -150,7 +141,6 @@ class AdaptiveMechanismDesign(tune.Trainable):
         self.greed = greed
         self.report_every_n = report_every_n
 
-        # env.reset_ep_ctr()
         self.avg_planning_rewards_per_round = []
         self.episode_reward = []
         self.training_epi_avg_reward = []
@@ -191,7 +181,6 @@ class AdaptiveMechanismDesign(tune.Trainable):
                 self.episode_reward.append(rewards)
 
                 # perturbed_actions = [(1 - a if np.random.binomial(1, self.action_flip_prob) else a) for a in actions]
-                # perturbed_actions = [0,0]
                 # Make it work for discrete action space of N
                 perturbed_actions = []
                 for a in actions:
@@ -216,14 +205,11 @@ class AdaptiveMechanismDesign(tune.Trainable):
                     cum_planning_rs = [sum(r) for r in zip(cum_planning_rs, planning_rs)]
                     # Training planning agent
                     # TODO using the past rewards is not working since I perturbate the actions
-                    action, loss, g_Vp, g_V, vp, values, r_players, cost, extra_loss, l1 = self.planning_agent.learn(
+                    (action, loss, g_Vp, g_V, r_players, cost, extra_loss, l1,
+                     mean_v, vp, values, mean_vp)= self.planning_agent.learn(
                         last_s, perturbed_actions,
                         coin_game=self.env.NAME == "CoinGame",
                         env_rewards=env_rewards)
-                # print('Actions:' + str(actions))
-                # print('State after:' + str(current_s))
-                # print('Rewards: ' + str(rewards))
-                # print('Done:' + str(done))
 
                 for idx, player in enumerate(self.players):
                     if flag:
@@ -232,7 +218,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
                     else:
                         critic_loss, advantage = player.learn(last_s, actions[idx], rewards[idx], current_s)
                     to_report[f"critic_loss_p_{idx}"] = critic_loss[0,0]
-                    to_report[f"advantage_p_{idx}"] = advantage
+                    to_report[f"advantage_loss_p_{idx}"] = advantage
                 # swap s
                 last_s = current_s
 
@@ -247,10 +233,6 @@ class AdaptiveMechanismDesign(tune.Trainable):
             self.training_epi_avg_reward.append(np.mean(epi_rewards, axis=0))
             self.episode_reward.clear()
 
-            # status updates
-            # if (self.epi_n + 1) % 100 == 0:
-            #     print('Episode {} finished.'.format(self.epi_n + 1))
-
             if self.epi_n == self.n_episodes:
                 get_avg_rewards_per_round = np.array(self.training_epi_avg_reward)
                 self.plot(get_avg_rewards_per_round, np.asarray(self.avg_planning_rewards_per_round)
@@ -259,30 +241,21 @@ class AdaptiveMechanismDesign(tune.Trainable):
         for k, v in actions_rllib_format.items():
             to_report[f"act_{k}"] = v
         to_report.update(info_rllib_format)
-        # to_report["mean_reward_p1"] = np.mean(epi_rewards, axis=0)[0]
-        # to_report["mean_reward_p2"] = np.mean(epi_rewards, axis=0)[1]
+        to_report["mean_reward_p1"] = np.mean(epi_rewards, axis=0)[0]
+        to_report["mean_reward_p2"] = np.mean(epi_rewards, axis=0)[1]
+        to_report["mean_reward"] = np.sum(np.mean(epi_rewards, axis=0))
 
         if self.planning_agent is not None:
             to_report[f"loss_planner"] = loss
             to_report[f"loss_pl_grad"] = cost
             to_report[f"loss_rew_cost"] = extra_loss
-            # if self.value_fn_variant == 'exact':
-            #     to_report[f"v_1"] = values[0,0]
-            #     to_report[f"v_2"] = values[0,1]
-            # else:
-            # to_report[f"v"] = values
             to_report[f"g_V"] = g_V
-            # to_report[f"vp_1"] = vp[0,0]
-            # to_report[f"vp_2"] = vp[0,1]
-            # to_report[f"r_p_1_wtout_pl"] = r_players[0]
-            # to_report[f"r_p_2_wtout_pl"] = r_players[1]
-            # to_report[f"l1"] = l1
             planner_weights_norm = self.planning_agent.get_weights_norm()
             to_report[f"planner_weights_norm"] = planner_weights_norm
             to_report["planning_reward_player1"] = planning_rs[0]
             to_report["planning_reward_player2"] = planning_rs[1]
-            # planner_weights = self.planning_agent.get_weigths()
-            # to_report[f"planner_weights"] = planner_weights
+            to_report["mean_v"] = mean_v
+            to_report["mean_vp"] = mean_vp
 
         for idx, player in enumerate(self.players):
             ac_weights_norm, cr_weights_norm = player.get_weights_norm()
@@ -347,86 +320,3 @@ class AdaptiveMechanismDesign(tune.Trainable):
             os.makedirs(path)
         plt.savefig(path + '/' + title)
         # plt.show()
-
-    def save_checkpoint(self, checkpoint_dir):
-        raise NotImplementedError()
-        # path = os.path.join(checkpoint_dir, "checkpoint.json")
-        # tf_checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
-        # tf_checkpoint_dir, tf_checkpoint_filename = os.path.split(tf_checkpoint_path)
-        # checkpoint = {
-        #     "epi_n": self.epi_n,
-        #     "tf_checkpoint_dir": tf_checkpoint_dir,
-        #     "tf_checkpoint_filename": tf_checkpoint_filename,
-        # }
-        # with open(path, "w") as f:
-        #     json.dump(checkpoint, f, sort_keys=True, indent=4)
-        #
-        # # TF v1
-        # save_path = self.saver.save(self.sess, f"{tf_checkpoint_path}.ckpt")
-
-        # RLLib method
-        # self._variables = ray.experimental.tf_utils.TensorFlowVariables(self._loss, self._sess)
-        # self._variables.get_weights()
-
-        return path
-
-    def load_checkpoint(self, checkpoint_path):
-        raise NotImplementedError()
-        # checkpoint_path = os.path.expanduser(checkpoint_path)
-        # print('Loading Model...',checkpoint_path)
-        # with open(checkpoint_path, 'r') as f:
-        #     checkpoint = json.load(f)
-        # print("checkpoint", checkpoint)
-        #
-        # # Support VM and local (manual) loading
-        # tf_checkpoint_dir, _ = os.path.split(checkpoint_path)
-        # # tail, head = os.path.split(checkpoint["tf_checkpoint_dir"])
-        # # tf_checkpoint_dir = os.path.join(tail_json, head)
-        # print("tf_checkpoint_dir", tf_checkpoint_dir)
-        # ckpt = tf.train.get_checkpoint_state(tf_checkpoint_dir,
-        #                                      latest_filename=f'{checkpoint["tf_checkpoint_filename"]}')
-        # # print("ckpt",ckpt)
-        # tail, head = os.path.split(ckpt.model_checkpoint_path)
-        # ckpt.model_checkpoint_path = os.path.join(tf_checkpoint_dir, head)
-        # # print("ckpt after",ckpt.__dict__)
-        # self.saver.restore(self.sess, ckpt.model_checkpoint_path)
-
-        # RLLib method
-        # self._variables.set_weights(weights)
-
-        # TODO need to set in eval like batchnorm fixed
-
-    def cleanup(self):
-        # raise NotImplementedError()
-        # self.sess.close()
-        super().cleanup()
-
-    def _get_agent_to_use(self, policy_id):
-        if policy_id == "player_red":
-            agent_n = 0
-        elif policy_id == "player_blue":
-            agent_n = 1
-        else:
-            raise ValueError(f"policy_id {policy_id}")
-        return agent_n
-
-    def _preprocess_obs(self, single_obs, agent_to_use):
-        single_obs = single_obs[None, ...]  # add batch dim
-
-        return single_obs
-
-    def _post_process_action(self, action):
-        return action[None, ...]  # add batch dim
-
-    def compute_actions(self, policy_id: str, obs_batch: list):
-
-        for single_obs in obs_batch:
-            raise NotImplementedError()
-        action = self._post_process_action(a)
-
-        state_out = []
-        extra_fetches = {}
-        return action, state_out, extra_fetches
-
-    def reset_compute_actions_state(self):
-        raise NotImplementedError()
