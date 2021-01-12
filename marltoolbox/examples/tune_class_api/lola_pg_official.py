@@ -171,8 +171,8 @@ def main(debug):
         # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/LOLA_PG/2020_12_21/07_11_03/2020_12_21/09_53_39/SameAndCrossPlay_save.p",
 
         # Dynamically set
-        "num_episodes": 5 if debug else 2000,
-        "trace_length": 5 if debug else 20,
+        "num_episodes": 3 if debug else 2000,
+        "trace_length": 3 if debug else 20,
         "lr": None,
         "gamma": 0.5,
         "batch_size": 5 if debug else 512,
@@ -234,7 +234,7 @@ def main(debug):
 
         rllib_hparams = copy.deepcopy(tune_hparams)
         rllib_hparams["seed"] = 2020
-        rllib_hparams["num_episodes"] = 100
+        rllib_hparams["num_episodes"] = 1 if debug else 100
         eval_tune_config, stop, env_config = get_tune_config(rllib_hparams)
         env_config["batch_size"] = 1
         eval_tune_config['TuneTrainerClass'] = LOLAPGCG
@@ -244,7 +244,7 @@ def main(debug):
     else:
         rllib_hparams = copy.deepcopy(tune_hparams)
         rllib_hparams["seed"] = 2020
-        rllib_hparams["num_episodes"] = 100
+        rllib_hparams["num_episodes"] = 1 if debug else 100
         eval_tune_config, stop, env_config = get_tune_config(rllib_hparams)
         env_config["batch_size"] = 1
         eval_tune_config['TuneTrainerClass'] = LOLAPGCG

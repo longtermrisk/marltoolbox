@@ -473,7 +473,7 @@ def main(debug):
         # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-2/amTFT/2020_12_18/10_02_48/2020_12_18"
         #                   "/10_10_50/SameAndCrossPlay_save.p",
         # AsymChicken 40 seeds
-        "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-2/amTFT/2020_12_17/22_58_58/2020_12_17/23_15_14/SameAndCrossPlay_save.p",
+        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-2/amTFT/2020_12_17/22_58_58/2020_12_17/23_15_14/SameAndCrossPlay_save.p",
         # CG
         # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-1/2020_12_09/20_47_50/2020_12_09/22_41_20/SameAndCrossPlay_save.p",
         # ACG

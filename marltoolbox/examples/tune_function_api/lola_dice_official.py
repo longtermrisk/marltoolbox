@@ -139,7 +139,7 @@ def main(debug):
         "lr_om": .1,
         "inner_asymm": True,
         "n_agents": 2,
-        "n_inner_steps": 2,
+        "n_inner_steps": 1 if debug else 2,
         "batch_size": 4 if debug else 64,
         "value_batch_size": 16,
         "value_epochs": 0,

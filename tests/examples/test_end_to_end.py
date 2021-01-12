@@ -5,7 +5,7 @@ def test_pg_ipd():
 
 def test_ppo_asym_coin_game():
     from marltoolbox.examples.rllib_api.ppo_asymmetric_coin_game import main
-    main(stop_iters=10, tf=False, debug=True)
+    main(stop_iters=3, tf=False, debug=True)
 
 
 def test_le_ipd():

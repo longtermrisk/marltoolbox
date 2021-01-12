@@ -262,17 +262,17 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
     lvl1_policy_idx = 0
 
     if tune_hp["env"] == IteratedPrisonersDilemma:
-        rllib_hp["n_epi"] = 10 if rllib_hp["debug"] else 400
+        rllib_hp["n_epi"] = 3 if rllib_hp["debug"] else 400
         rllib_hp["base_lr"] = 0.04
         rllib_hp["x_limits"] = ((-3.5, 0.5),)
         rllib_hp["y_limits"] = ((-3.5, 0.5),)
     elif tune_hp["env"] == IteratedAsymChicken:
-        rllib_hp["n_epi"] = 10 if rllib_hp["debug"] else 400
+        rllib_hp["n_epi"] = 3 if rllib_hp["debug"] else 400
         rllib_hp["base_lr"] = 0.04
         rllib_hp["x_limits"] = ((-11.0, 4.0),)
         rllib_hp["y_limits"] = ((-11.0, 4.0),)
     elif tune_hp["env"] in (IteratedBoS, IteratedAsymBoS):
-        rllib_hp["n_epi"] = 10 if rllib_hp["debug"] else 800
+        rllib_hp["n_epi"] = 3 if rllib_hp["debug"] else 800
         rllib_hp["base_lr"] = 0.01
         rllib_hp["x_limits"] = ((-0.5, 4.5),)
         rllib_hp["y_limits"] = ((-0.5, 4.5),)
@@ -284,7 +284,7 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
             outside_value=0.1,
             framework="torch")
     elif tune_hp["env"] in [CoinGame, AsymCoinGame]:
-        rllib_hp["n_epi"] = 10 if rllib_hp["debug"] else 4000
+        rllib_hp["n_epi"] = 3 if rllib_hp["debug"] else 4000
         rllib_hp["base_lr"] = 0.1
         rllib_hp["x_limits"] = ((-1.0, 3.0),)
         rllib_hp["y_limits"] = ((-1.0, 1.0),)
@@ -325,7 +325,7 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
 
 
 def main(debug):
-    n_in_lvl0_population = 4 if debug else 40
+    n_in_lvl0_population = 2 if debug else 40
     n_lvl1 = 1 if debug else 1
     timestamp = int(time.time())
     lvl0_seeds = [seed + timestamp for seed in list(range(n_in_lvl0_population))]

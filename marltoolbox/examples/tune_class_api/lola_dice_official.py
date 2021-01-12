@@ -77,7 +77,7 @@ def train(hp):
     return training_results
 
 
-def evaluate(training_results, hp):
+def evaluate(training_results, hp, debug):
     hp_eval = copy.deepcopy(hp)
 
     plot_config = {}
@@ -85,7 +85,7 @@ def evaluate(training_results, hp):
     hp_eval["min_iter_time_s"] = 3.0
     hp_eval["seed"] = 2020
     hp_eval["batch_size"] = 1
-    hp_eval["num_episodes"] = 100
+    hp_eval["num_episodes"] = 3 if debug else 100
     tune_config, stop, env_config = get_tune_config(hp_eval)
     tune_config['TuneTrainerClass'] = LOLADICE
 
@@ -231,7 +231,7 @@ def main(debug):
     else:
         training_results = None
 
-    evaluate(training_results, hparams)
+    evaluate(training_results, hparams, debug)
     ray.shutdown()
 
 if __name__ == "__main__":
