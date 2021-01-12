@@ -452,32 +452,7 @@ def main(debug):
         # "a2c_lr_multiplier": 1.0/9.0,
 
         "load_plot_data": None,
-        # IPD
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-1/2020_12_09/20_47_26/2020_12_09/21_00_14/SameAndCrossPlay_save.p",
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-4/amTFT/2020_12_15/14_50_46/2020_12_15/14_56_46/SameAndCrossPlay_save.p",
-        # IPD 40 seeds
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/amTFT/2020_12_18/17_18_37/2020_12_18/17_21_27/SameAndCrossPlay_save.p",
-        # BOS + IPD
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-1/2020_12_09/20_47_26/2020_12_09/21_05_12/SameAndCrossPlay_save.p",
-        # BOS
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-5/amTFT/2020_12_15/14_51_10/2020_12_15"
-        #                   "/15_05_52/SameAndCrossPlay_save.p",
-        # AsymBoS
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/amTFT/2020_12_18/16_31_07"
-        #                   "/2020_12_18/16_35_54/SameAndCrossPlay_save.p",
-        # 40 seeds
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/amTFT/2020_12_21/14_03_39/2020_12_21/14_16_21/SameAndCrossPlay_save.p",
-
-        # AsymChicken
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-1/2020_12_09/20_47_34/2020_12_09/21_02_25/SameAndCrossPlay_save.p",
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-2/amTFT/2020_12_18/10_02_48/2020_12_18"
-        #                   "/10_10_50/SameAndCrossPlay_save.p",
-        # AsymChicken 40 seeds
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-2/amTFT/2020_12_17/22_58_58/2020_12_17/23_15_14/SameAndCrossPlay_save.p",
-        # CG
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-1/2020_12_09/20_47_50/2020_12_09/22_41_20/SameAndCrossPlay_save.p",
-        # ACG
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-2/2020_12_14/11_33_53/2020_12_14/12_19_20/SameAndCrossPlay_save.p",
+        # Example: "load_plot_data": ".../SameAndCrossPlay_save.p",
 
         "exp_name": exp_name,
         "n_steps_per_epi": 20,
@@ -498,7 +473,7 @@ def main(debug):
 
         # If not in self play then amTFT will be evaluated against a naive selfish policy
         "self_play": True,
-        # "self_play": False,
+        # "self_play": False, # Not tested
 
         # "env": matrix_SSD.IteratedPrisonersDilemma,
         "env": matrix_SSD.IteratedAsymBoS,

@@ -239,12 +239,12 @@ def main(debug):
         IteratedPrisonersDilemma.ACTION_SPACE,
         {}
     )
-    results = ray.tune.run(DQNTrainer, config=rllib_config,
+    tune_analysis = ray.tune.run(DQNTrainer, config=rllib_config,
                            verbose=1, checkpoint_freq=0, stop=stop,
                            checkpoint_at_end=True, name=exp_name)
 
     ray.shutdown()
-
+    return tune_analysis
 
 if __name__ == "__main__":
     debug = False

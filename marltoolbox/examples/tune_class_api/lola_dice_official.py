@@ -190,7 +190,7 @@ def main(debug):
 
         "load_plot_data": None,
         # IPD
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-2/LOLA_DICE/2020_12_15/11_44_21/2020_12_15/12_07_42/SameAndCrossPlay_save.p",
+        # Example: "load_plot_data": ".../SameAndCrossPlay_save.p",
 
         "exp_name": exp_name,
         "train_n_replicates": train_n_replicates,

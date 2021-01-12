@@ -159,6 +159,8 @@ def main(debug):
     tune_analysis = tune.run(lola_training, name=tune_hparams["exp_name"], config=tune_config)
     ray.shutdown()
 
+    return tune_analysis
+
 
 if __name__ == "__main__":
     debug_mode = True

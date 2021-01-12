@@ -159,46 +159,6 @@ def main(debug):
         "exp_name": "CoinGame",
         # "exp_name": "AsymCoinGame",
 
-    #     "pseudo": False,
-    #     "grid_size": 3,
-    #     "lola_update": False,
-    #     "opp_model": False,
-    #     "mem_efficient": True,
-    #     "lr_correction": 1,
-    #     "bs_mul": 1,
-    #     "simple_net": True,
-    #     "hidden": 32,
-    #     "reg": 0,
-    #     "set_zero": 0,
-    #
-    #     "exact": False,
-    #
-    #     "warmup": 1,
-    #
-    #     "seed": tune.grid_search([1]),
-    #
-    #     "changed_config": False,
-    #     "ac_lr": 0.005,
-    #     "summary_len": 1,
-    #     "use_MAE": False,
-    #
-    #     "use_toolbox_env": True,
-    #
-    #     "clip_lola_update_norm": False,
-    #     "clip_loss_norm": False,
-    #
-    #     "entropy_coeff": 0.1,
-    #
-    #     "weigth_decay": 0.001,
-    #
-    #     "lola_correction_multiplier": 1,
-    #
-    #     "lr_decay": False,
-    #
-    #     "correction_reward_baseline_per_step": False,
-    #
-    #     "use_critic": False,
-    # }
         "pseudo": False,
         "grid_size": 3,
         "lola_update": True,
@@ -239,6 +199,7 @@ def main(debug):
     tune_analysis = tune.run(lola_training, name=tune_hparams["exp_name"], config=tune_config)
     ray.shutdown()
 
+    return tune_analysis
 
 if __name__ == "__main__":
     debug_mode = True

@@ -167,8 +167,7 @@ def main(debug):
 
         # Print metrics
         "load_plot_data": None,
-        # CG 40 seeds
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/LOLA_PG/2020_12_21/07_11_03/2020_12_21/09_53_39/SameAndCrossPlay_save.p",
+        # Example: "load_plot_data": ".../SameAndCrossPlay_save.p",
 
         # Dynamically set
         "num_episodes": 3 if debug else 2000,

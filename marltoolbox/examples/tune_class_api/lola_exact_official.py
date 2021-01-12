@@ -151,7 +151,7 @@ def main(debug):
     hparams = {
 
         "load_plot_data": None,
-        # "load_plot_data": "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-2/LOLA_Exact/2020_12_22/09_10_23/2020_12_22/09_15_57/SameAndCrossPlay_save.p",
+        # Example "load_plot_data": ".../SameAndCrossPlay_save.p",
 
         "exp_name": exp_name,
         "train_n_replicates":train_n_replicates,
