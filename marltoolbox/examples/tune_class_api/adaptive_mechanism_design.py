@@ -157,20 +157,36 @@ def add_env_hp(hp):
             "planner_std_theta_mul": 1.0,
             "cost_param": 0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3 / 3 / 3,
             "weight_decay_pl_mul": 1.0 /100 / 100 / 100 / 10 * 3 / 10,
-            "cost_param": tune.grid_search([0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3,
-                                            0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3 / 3,
-                                            0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3 / 3 / 3,
-                                            0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3 * 3,
-                                            0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3 * 3 * 3]),
-            "loss_mul_planner": tune.grid_search([
-                100.0 * 100 * 10 / 3 / 5 / 10 * 3 * 3,
-                100.0 * 100 * 10 / 3 / 5 / 10 * 3,
-                100.0 * 100 * 10 / 3 / 5 / 10 * 3 / 3]),
-            "weight_decay_pl_mul": tune.grid_search([
-                1.0 /100 / 100 / 100 / 10 / 3,
-                1.0 /100 / 100 / 100 / 10,
-                1.0 /100 / 100 / 100 / 10 * 3]),
+            # "cost_param": tune.grid_search([0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3,
+            #                                 0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3 / 3,
+            #                                 0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3 / 3 / 3,
+            #                                 0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3 * 3,
+            #                                 0.0002 / 2 / 2 / 10 / 100 / 10 / 5 * 3 * 3 * 3]),
+            # "loss_mul_planner": tune.grid_search([
+            #     100.0 * 100 * 10 / 3 / 5 / 10 * 3 * 3,
+            #     100.0 * 100 * 10 / 3 / 5 / 10 * 3,
+            #     100.0 * 100 * 10 / 3 / 5 / 10 * 3 / 3]),
+            # "weight_decay_pl_mul": tune.grid_search([
+            #     1.0 /100 / 100 / 100 / 10 / 3,
+            #     1.0 /100 / 100 / 100 / 10,
+            #     1.0 /100 / 100 / 100 / 10 * 3]),
             "normalize_against_vp": 1000,
+
+            "add_state_grad": False,
+            "loss_mul_planner": 2000,
+            "cost_param": 2.7e-7,
+            "weight_decay_pl_mul": 3e-6,
+
+            # "with_planner": tune.grid_search([True, False]),
+
+            "weight_decay_pl_mul": tune.grid_search([3e-6, 1e-6]),
+            "cost_param": tune.grid_search([2.7e-7, 1e-8]),
+            "loss_mul_planner": tune.grid_search([2000, 6000]),
+            "entropy_coeff": tune.grid_search([
+                0.1 / 10 / 3 * 3 * 3,
+                0.1 / 10 / 3 * 3 * 3 * 3, ]),
+            "normalize_vp_separated": True,
+            "add_state_grad": tune.grid_search([True, False]),
 
         })
 
@@ -187,7 +203,6 @@ def main(debug):
     hyperparameters = {
         "exp_name": exp_name,
         "seed": tune.grid_search(seeds),
-        # "seed": 1610052221,
         "debug": debug,
         "report_every_n": 1,
 
@@ -216,6 +231,7 @@ def main(debug):
 
         "normalize_against_vp": False,
         "normalize_against_v": False,
+        "normalize_vp_separated": False,
 
     }
 

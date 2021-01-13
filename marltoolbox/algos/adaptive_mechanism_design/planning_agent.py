@@ -32,7 +32,7 @@ class Planning_Agent(Agent):
                  loss_mul_planner=1.0, std_theta=0.1, planner_clip_norm=0.5, normalize_planner=False,
                  add_state_grad=False, planner_momentum=0.9, use_adam_optimizer=True, use_softmax_hot=True,
                  square_cost=False, normalize_against_v=False, use_v_pl=False,
-                 normalize_against_vp=False):
+                 normalize_against_vp=False, normalize_vp_separated=False):
         super().__init__(env, learning_rate, gamma)
         self.underlying_agents = underlying_agents
         self.log = []
@@ -171,11 +171,14 @@ class Planning_Agent(Agent):
                     else:
                         self.extra_loss = cost_param * tf.norm(self.vp)
 
-                self.cost = tf.reduce_sum(tf.stack(cost_list))
+                if not normalize_vp_separated:
+                    self.cost = tf.reduce_sum(tf.stack(cost_list))
+                else:
+                    self.cost = tf.stack(cost_list, axis=0)
                 if planner_clip_norm is not None:
                     self.cost = tf.clip_by_norm(self.cost, planner_clip_norm, axes=None, name=None)
 
-                self.dynamic_scaling_vp(normalize_against_vp, max_reward_strength)
+                self.dynamic_scaling_vp(normalize_against_vp, max_reward_strength, normalize_vp_separated)
 
                 self.loss = (self.cost + self.extra_loss)
                 if weight_decay > 0.0:
@@ -247,18 +250,41 @@ class Planning_Agent(Agent):
         weights_norm = math_ops.reduce_sum(self.parameters * self.parameters, None, keepdims=True)
         self.weights_norm = tf.sqrt(tf.reduce_sum(weights_norm))
 
-    def dynamic_scaling_vp(self, normalize_against_vp, max_reward_strength):
+    def dynamic_scaling_vp(self, normalize_against_vp, max_reward_strength, normalize_vp_separated):
         if "CoinGame" in self.env_name:
-            self.mean_vp_np = 2.0 * normalize_against_vp
+            init_v = 2.0
         else:
-            self.mean_vp_np = 0.0
-        self.mean_vp_in = tf.placeholder(tf.float32, name="mean_vp")
+            init_v = 0.0
+
+        if not normalize_vp_separated:
+            self.mean_vp_np = init_v * normalize_against_vp
+            self.mean_vp_in = tf.placeholder(tf.float32, shape=(), name="mean_vp")
+        else:
+            temp_v = init_v * normalize_against_vp
+            self.mean_vp_np = [temp_v, temp_v]
+            self.mean_vp_in = tf.placeholder(tf.float32, shape=(2,), name="mean_vp")
+
         if normalize_against_vp:
-            self.mean_vp_out = ((1 - (1 / normalize_against_vp)) * self.mean_vp_in +
-                                tf.math.abs(tf.reduce_sum(self.vp)))
-            self.cost = tf.cond(tf.equal(self.mean_vp_out, 0.0), lambda: 0.0,
-                                lambda: self.cost / (
-                                        self.mean_vp_out / normalize_against_vp * 10 / max_reward_strength))
+            if not normalize_vp_separated:
+                null = 0.0
+                self.mean_vp_out = ((1 - (1 / normalize_against_vp)) * self.mean_vp_in +
+                                    tf.math.abs(tf.reduce_sum(self.vp)))
+                self.cost = tf.cond(tf.equal(self.mean_vp_out, null), lambda: null,
+                                    lambda: self.cost / (
+                                            self.mean_vp_out / normalize_against_vp * 10 / max_reward_strength))
+            else:
+                null = 0.0
+
+                self.mean_vp_out = ((1 - (1 / normalize_against_vp)) * self.mean_vp_in +
+                                    tf.math.abs(tf.reduce_sum(self.vp, axis=0)))
+                cost_list = []
+                cost_list.append(tf.cond(tf.equal(self.mean_vp_out[0], 0.0), lambda: null,
+                                    lambda: self.cost[0] / (
+                                            self.mean_vp_out[0] / normalize_against_vp * 10 / max_reward_strength)))
+                cost_list.append(tf.cond(tf.equal(self.mean_vp_out[1], 0.0), lambda: null,
+                                    lambda: self.cost[1] / (
+                                            self.mean_vp_out[1] / normalize_against_vp * 10 / max_reward_strength)))
+                self.cost = tf.reduce_sum(tf.stack(cost_list))
         else:
             self.mean_vp_out = self.mean_vp_in
 

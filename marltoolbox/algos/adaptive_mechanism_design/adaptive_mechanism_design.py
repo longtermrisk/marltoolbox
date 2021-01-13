@@ -62,7 +62,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
                    planner_clip_norm, entropy_coeff, seed, normalize_planner, no_weights_decay_planner,
                    planner_std_theta_mul, use_adam_optimizer, use_softmax_hot, report_every_n, momentum,
                    weight_decay_pl_mul, square_cost, normalize_against_v, use_v_pl,
-                   normalize_against_vp, **kwargs):
+                   normalize_against_vp, normalize_vp_separated, **kwargs):
 
         if not use_simple_agents:
             speed_ratio = 5.0
@@ -120,7 +120,8 @@ class AdaptiveMechanismDesign(tune.Trainable):
                                             square_cost=square_cost,
                                             normalize_against_v=normalize_against_v,
                                             use_v_pl=use_v_pl,
-                                            normalize_against_vp=normalize_against_vp)
+                                            normalize_against_vp=normalize_against_vp,
+                                            normalize_vp_separated=normalize_vp_separated)
         else:
             planning_agent = None
 
@@ -140,6 +141,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
         self.fear = fear
         self.greed = greed
         self.report_every_n = report_every_n
+        self.normalize_vp_separated=normalize_vp_separated
 
         self.avg_planning_rewards_per_round = []
         self.episode_reward = []
@@ -255,7 +257,11 @@ class AdaptiveMechanismDesign(tune.Trainable):
             to_report["planning_reward_player1"] = planning_rs[0]
             to_report["planning_reward_player2"] = planning_rs[1]
             to_report["mean_v"] = mean_v
-            to_report["mean_vp"] = mean_vp
+            if not self.normalize_vp_separated:
+                to_report["mean_vp"] = mean_vp
+            else:
+                to_report["mean_vp0"] = mean_vp[0]
+                to_report["mean_vp1"] = mean_vp[1]
 
         for idx, player in enumerate(self.players):
             ac_weights_norm, cr_weights_norm = player.get_weights_norm()
