@@ -61,7 +61,7 @@ def extract_checkpoints(tune_experiment_analysis):
     return all_best_checkpoints_per_trial
 
 
-def extract_config_value(tune_experiment_analysis, key):
+def extract_config_values_from_tune_analysis(tune_experiment_analysis, key):
     values = []
     for trial in tune_experiment_analysis.trials:
         dict_, k, current_value, found = move_to_key(trial.config, key)

@@ -239,7 +239,7 @@ def get_rllib_config(hp, welfare_fn):
         "callbacks": amTFT.get_amTFTCallBacks(
             additionnal_callbacks=[log.get_logging_callbacks_class(),
                                    postprocessing.OverwriteRewardWtWelfareCallback]),
-        "log_level": "INFO",
+        # "log_level": "INFO",
 
     }
 
@@ -379,10 +379,12 @@ def postprocess_utilitarian_results(results, env_config, hp):
 def train(hp):
     results_list = []
     for welfare_fn in hp['welfare_functions']:
-
+        print("==============================================")
+        print("Going to start two_steps_training with welfare function", welfare_fn)
         if welfare_fn == postprocessing.WELFARE_UTILITARIAN:
             hp = preprocess_utilitarian_config(hp)
         stop, env_config, trainer_config_update = get_rllib_config(hp, welfare_fn)
+        print("trainer_config_update", trainer_config_update)
         results = amTFT.two_steps_training(stop=stop,
                                            config=trainer_config_update,
                                            name=hp["exp_name"],
@@ -431,17 +433,19 @@ def evaluate_same_and_cross_perf(config_eval, results_list, hp, env_config, stop
         xlabel="player 1 payoffs", ylabel="player 2 payoffs", add_title=False, frameon=True,
         show_groups=True, plot_max_n_points=train_n_replicates
     )
+    return analysis_metrics_per_mode
 
 
 def main(debug):
     train_n_replicates = 1 if debug else 40
-    seeds = miscellaneous.get_random_seeds(train_n_replicates)
+    n_times_more_utilitarians_seeds = 4
+    pool_of_seeds = miscellaneous.get_random_seeds(train_n_replicates*(1+n_times_more_utilitarians_seeds))
     exp_name, _ = log.log_in_current_day_dir("amTFT")
     hparams = {
         "debug": debug,
 
         "train_n_replicates": train_n_replicates,
-        "n_times_more_utilitarians_seeds": 4,
+        "n_times_more_utilitarians_seeds": n_times_more_utilitarians_seeds,
 
         "NestedPolicyClass": dqn.DQNTorchPolicy,
         "TrainerClass": dqn.DQNTrainer,
@@ -459,7 +463,7 @@ def main(debug):
         "bs_epi_mul": 4,
         "welfare_functions": [postprocessing.WELFARE_INEQUITY_AVERSION, postprocessing.WELFARE_UTILITARIAN],
         "group_names": ["inequity_aversion", "utilitarian"],
-        "seeds": seeds,
+        "seeds": pool_of_seeds,
 
         "gamma": 0.5,
         "lambda": 0.9,
@@ -483,6 +487,7 @@ def main(debug):
 
         # For training speed
         "min_iter_time_s": 0.0 if debug else 3.0,
+
         "overwrite_reward": True,
         "use_adam": False,
     }
@@ -497,24 +502,25 @@ def main(debug):
         # Eval & Plot
         hparams["overwrite_reward"] = False
         hparams["n_epi"] = 1
-        hparams["n_steps_per_epi"] = 20 if hparams["debug"] else 100
+        hparams["n_steps_per_epi"] = 5 if hparams["debug"] else 100
         hparams["bs_epi_mul"] = 1
         stop, env_config, trainer_config_update = get_rllib_config(hparams, hparams["welfare_functions"][0])
-        evaluate_same_and_cross_perf(trainer_config_update, results_list,
+        analysis_metrics_per_mode = evaluate_same_and_cross_perf(trainer_config_update, results_list,
                                      hparams, env_config, stop, train_n_replicates)
 
         ray.shutdown()
     else:
         hparams["overwrite_reward"] = False
         hparams["n_epi"] = 1
-        hparams["n_steps_per_epi"] = 20 if hparams["debug"] else 100
+        hparams["n_steps_per_epi"] = 5 if hparams["debug"] else 100
         hparams["bs_epi_mul"] = 1
         # Plot
         results_list = None
         stop, env_config, trainer_config_update = get_rllib_config(hparams, hparams["welfare_functions"][0])
-        evaluate_same_and_cross_perf(trainer_config_update, results_list,
+        analysis_metrics_per_mode = evaluate_same_and_cross_perf(trainer_config_update, results_list,
                                      hparams, env_config, stop, train_n_replicates)
 
+    return results_list, analysis_metrics_per_mode
 
 if __name__ == "__main__":
     debug_mode = True

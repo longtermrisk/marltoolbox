@@ -9,12 +9,13 @@ def read(fname):
 
 setup(
     name='marltoolbox',
-    version='0.0.1',
+    version='0.0.4',
     packages=find_packages(),
     description='CLR MARL research framework toolbox',
     long_description=read('README.md'),
     license='MIT',
     install_requires=[
-        'ray[rllib]==1.0.0', 'gym', 'torch', 'tensorboard', 'numba', 'matplotlib'
+        'ray[rllib]==1.0.0', 'gym', 'torch', 'tensorboard', 'numba', 'matplotlib',
+        "pytest"
     ],
 )

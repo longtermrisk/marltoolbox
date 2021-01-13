@@ -499,14 +499,15 @@ class amTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
 def two_steps_training(stop, config, name, do_not_load=[], TrainerClass=DQNTrainer, **kwargs):
     for policy_id in config["multiagent"]["policies"].keys():
         config["multiagent"]["policies"][policy_id][3]["working_state"] = "train_selfish"
-
-    results = ray.tune.run(TrainerClass, config=config,
+    print("==============================================")
+    print("amTFT starting to train the selfish policy")
+    tune_analysis = ray.tune.run(TrainerClass, config=config,
                            stop=stop, name=name,
                            checkpoint_at_end=True,
                            metric="episode_reward_mean", mode="max",
                            **kwargs)
-    checkpoints = miscellaneous.extract_checkpoints(results)
-    seeds = miscellaneous.extract_config_value(results, "seed")
+    checkpoints = miscellaneous.extract_checkpoints(tune_analysis)
+    seeds = miscellaneous.extract_config_values_from_tune_analysis(tune_analysis, "seed")
     seed_to_checkpoint = {}
     for seed, checkpoint in zip(seeds, checkpoints):
         seed_to_checkpoint[seed] = checkpoint
@@ -518,7 +519,8 @@ def two_steps_training(stop, config, name, do_not_load=[], TrainerClass=DQNTrain
             config["multiagent"]["policies"][policy_id][3][restore.LOAD_FROM_CONFIG_KEY] = (
                 miscellaneous.seed_to_checkpoint(seed_to_checkpoint), policy_id
             )
-
+    print("==============================================")
+    print("amTFT starting to train the cooperative policy")
     # amTFTTrainerTrainSelfish = restore.prepare_trainer_to_load_checkpoints(amTFTTrainer)
     results = ray.tune.run(TrainerClass, config=config,
                            stop=stop, name=name,

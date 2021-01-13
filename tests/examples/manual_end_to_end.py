@@ -27,6 +27,13 @@ def test_ltft_ipd():
     check_learning_achieved(tune_results=tune_analysis_self_play, reward=-42, min=True)
     check_learning_achieved(tune_results=tune_analysis_naive_opponent, reward=-78, max=True)
 
+# def test_ltft_ipd():
+#     from marltoolbox.examples.rllib_api.amtft_various_env import main
+#     results_list, analysis_metrics_per_mode = main(debug=False)
+#     for result in results_list:
+#         check_learning_achieved(tune_results=result, reward=-42, min=True)
+
+
 if __name__ == "__main__":
     test_pg_ipd()
     test_ppo_asym_coin_game()
