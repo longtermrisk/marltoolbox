@@ -17,18 +17,13 @@ def sequence_of_fn_wt_same_args(*args, function_list, **kwargs) -> None:
 
 
 def overwrite_config(dict_: dict, key, value):
-    # assert isinstance(dict_, dict)
-    # current_value = dict_
-    # found = True
-    # for k in key.split("."):
-    #     if not found:
-    #         print(f'Intermediary key: {k} not found in full key: {key}')
-    #         return
-    #     dict_ = current_value
-    #     if k in current_value.keys():
-    #         current_value = current_value[k]
-    #     else:
-    #         found = False
+    """
+    Helper to overwrite configuration file (with nested dictionaries inside)
+    :param dict_: dict to edit
+    :param key: string of the key to edit like: "first_key.intermediary_key.final_key_to_edit"
+    :param value: value to write to for the "final_key_to_edit" key
+    :return: None
+    """
     dict_, k, current_value, found = move_to_key(dict_, key)
 
     if current_value != value:
@@ -41,7 +36,6 @@ def overwrite_config(dict_: dict, key, value):
 
 
 def move_to_key(dict_, key):
-    # TODO make this more simple
     assert isinstance(dict_, dict)
     current_value = dict_
     found = True
@@ -151,7 +145,7 @@ def set_config_for_evaluation(config: dict, policies_to_train=["None"]) -> dict:
     # Set to False for no exploration behavior (e.g., for evaluation).
     config_copy["explore"] = False
 
-    # TODO below is really useless? If so then clean it
+    # TODO below is really useless (since are not training anyway)? If so then clean it
     # The following is not really needed since we are not training any policies
     # === Optimization ===
     # Learning rate for adam optimizer
@@ -181,7 +175,6 @@ def filter_tune_results(tune_analysis, metric, metric_threshold: float, metric_m
             trials_filtered.append(trial)
     tune_analysis.trials = trials_filtered
     print("After trial filtering:", len(tune_analysis.trials), "trials")
-    # TODO also filter the other stuff inside tune_analysis
     return tune_analysis
 
 

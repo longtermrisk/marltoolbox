@@ -6,7 +6,6 @@ logger = logging.getLogger(__name__)
 LOAD_FROM_CONFIG_KEY = "checkpoint_to_load_from"
 
 
-# TODO use logger
 def after_init_load_policy_checkpoint(policy, observation_space=None, action_space=None, trainer_config=None):
     """
     This function is to be provided to a policy template (after_init argument).
@@ -30,7 +29,6 @@ def after_init_load_policy_checkpoint(policy, observation_space=None, action_spa
               f"by looking for config key: {LOAD_FROM_CONFIG_KEY}")
 
 
-# TODO use logger
 def load_one_policy_checkpoint(policy_id, policy, checkpoint_path, using_Tune_class=False):
     if using_Tune_class:
         # The provided policy must implement load_checkpoint.

@@ -237,7 +237,7 @@ class SameAndCrossPlayEvaluation:
         analysis_metrics_per_mode = self._extract_all_metrics(analysis_per_mode)
         return analysis_metrics_per_mode
 
-    # TODO may be make the plotting independant to be used for other stuff as well
+    # TODO make the plotting independent to be used in other places
     def plot_results(self, analysis_metrics_per_mode: dict, metrics: Tuple[Tuple[str, str]], metric_mode: str = "avg",
                      alpha=1.0, colors=None, x_limits: Iterable = None, y_limits: Iterable = None,
                      scale_multipliers: Iterable = None, show=False, save_fig=True,

@@ -14,7 +14,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 torch, nn = try_import_torch()
 
 from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma
-from marltoolbox.algos.le.learning_equilibrium import LE_DEFAULT_CONFIG_UPDATE, LE, LECallbacks
+from marltoolbox.algos.learning_tit_for_tat.ltft import LTFT_DEFAULT_CONFIG_UPDATE, LTFT, LTFTCallbacks
 from marltoolbox.algos.supervised_learning import SPLTorchPolicy
 from marltoolbox.utils import log, miscellaneous, exploration
 
@@ -45,7 +45,7 @@ def get_rllib_config(hp: dict):
         stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats))
 
     LE_CONFIG_UPDATE = merge_dicts(
-        LE_DEFAULT_CONFIG_UPDATE,
+        LTFT_DEFAULT_CONFIG_UPDATE,
         {
             "sgd_momentum": 0.9,
             'nested_policies': [
@@ -76,20 +76,19 @@ def get_rllib_config(hp: dict):
         }
     )
 
-    # TODO remove the useless hyper-parameters
     rllib_config = {
         "env": IteratedPrisonersDilemma,
         "env_config": env_config,
         "multiagent": {
             "policies": {
                 "player_row": (
-                    # The default policy is DQN defined in DQNTrainer but we overwrite it to use the LE policy
-                    LE,
+                    # The default policy is DQN defined in DQNTrainer but we overwrite it to use the LTFT policy
+                    LTFT,
                     IteratedPrisonersDilemma.OBSERVATION_SPACE,
                     IteratedPrisonersDilemma.ACTION_SPACE,
                     copy.deepcopy(LE_CONFIG_UPDATE)),
                 "player_col": (
-                    LE,
+                    LTFT,
                     IteratedPrisonersDilemma.OBSERVATION_SPACE,
                     IteratedPrisonersDilemma.ACTION_SPACE,
                     copy.deepcopy(LE_CONFIG_UPDATE)),
@@ -172,9 +171,9 @@ def get_rllib_config(hp: dict):
         "framework": "torch",
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        # LE supports only 1 worker only otherwise it would be mixing several opponents trajectories
+        # LTFT supports only 1 worker only otherwise it would be mixing several opponents trajectories
         "num_workers": 0,
-        # LE supports only 1 env per worker only otherwise several episodes would be played at the same time
+        # LTFT supports only 1 env per worker only otherwise several episodes would be played at the same time
         "num_envs_per_worker": 1,
         "batch_mode": "complete_episodes",
 
@@ -193,7 +192,7 @@ def get_rllib_config(hp: dict):
         # `DefaultCallbacks` class and `examples/custom_metrics_and_callbacks.py`
         # for more usage information.
         # "callbacks": DefaultCallbacks,
-        "callbacks": miscellaneous.merge_callbacks(LECallbacks,
+        "callbacks": miscellaneous.merge_callbacks(LTFTCallbacks,
                                                    log.get_logging_callbacks_class()),
         # Whether to attempt to continue training if a worker crashes. The number
         # of currently healthy workers is reported as the "num_healthy_workers"
@@ -226,12 +225,12 @@ def main(debug):
 
     rllib_config, env_config, stop = get_rllib_config(hparameters)
     ray.init(num_cpus=os.cpu_count(), num_gpus=0)
-    print("\n========== Training LE in self-play ==========\n")
-    results = ray.tune.run(DQNTrainer, config=rllib_config,
+    print("\n========== Training LTFT in self-play ==========\n")
+    tune_analysis_self_play = ray.tune.run(DQNTrainer, config=rllib_config,
                            verbose=1, checkpoint_freq=0, stop=stop,
                            checkpoint_at_end=True, name=exp_name)
 
-    print("\n========== Training LE against a naive opponent ==========\n")
+    print("\n========== Training LTFT against a naive opponent ==========\n")
     # Set player_col to use a naive policy
     rllib_config["multiagent"]["policies"][env_config["players_ids"][1]] = (
         None,
@@ -239,13 +238,13 @@ def main(debug):
         IteratedPrisonersDilemma.ACTION_SPACE,
         {}
     )
-    tune_analysis = ray.tune.run(DQNTrainer, config=rllib_config,
+    tune_analysis_naive_opponent = ray.tune.run(DQNTrainer, config=rllib_config,
                            verbose=1, checkpoint_freq=0, stop=stop,
                            checkpoint_at_end=True, name=exp_name)
 
     ray.shutdown()
-    return tune_analysis
+    return tune_analysis_self_play, tune_analysis_naive_opponent
 
 if __name__ == "__main__":
-    debug = False
+    debug = True
     main(debug)

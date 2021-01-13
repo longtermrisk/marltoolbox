@@ -7,8 +7,8 @@ Improve at each new use. Keep it simple.
 
 We rely on two components: 
 - [`RLLib 1.0.0` (Ray / Tune / RLLib)](https://docs.ray.io/en/master/rllib.html) 
-- A toolbox: `marltoolbox`.   
-    This repository, which has a `master` branch and an `experimental` branch.
+- A toolbox: `marltoolbox` this repository. Which has a `master` branch and 
+    an `experimental` branch with more experimental elements.
 
 
 # Get started
@@ -22,14 +22,14 @@ at the cost of some functionalities.
 ### Quick intro to Tune
 [Tune Key Concepts](https://docs.ray.io/en/master/tune/key-concepts.html)  
 
-To explore further `Tune` please refer to the 
+To explore `Tune` further please refer to the 
 [examples provided by `Tune`](https://docs.ray.io/en/master/tune/examples/index.html#tune-general-examples)
 
 
 ### Quick intro to RLLib
 [RLlib in 60 seconds](https://docs.ray.io/en/master/rllib.html).  
     
-To explore further `RLLib` please refer to the 
+To explore `RLLib` further please refer to the 
 [`RLLib` documentation](https://docs.ray.io/en/master/rllib-toc.html).
 Finally, you also can find many 
 [examples provided by `RLLib`](https://github.com/ray-project/ray/tree/master/rllib/examples). 
@@ -43,7 +43,7 @@ Finally, you also can find many
 # If needed, connect to your Virtual Machine(VM) on Google Cloud Plateform with:
 gcloud compute ssh {replace-by-instance-name}
 
-# Basic upgrade & requirements (needed on new VM)
+# Basic upgrade & requirements (needed on a new VM)
 sudo apt update
 sudo apt upgrade
 sudo apt-get install build-essential
@@ -58,9 +58,9 @@ https://docs.conda.io/projects/conda/en/latest/user-guide/install/linux.html
 	bash Miniconda3-latest-Linux-x86_64.sh
 	# Enter. Enter... yes. Enter. yes.
 	exit  
-	# Connect again to the VM   
-    gcloud compute ssh {replace-by-instance-name}
-	# Check conda installation  
+	# Connect again to the VM 
+    gcloud compute ssh {replace-by-instance-name} 
+	# Check your conda installation  
 	conda list
 
 # Create a virtual environment:
@@ -79,11 +79,6 @@ git clone https://github.com/longtermrisk/marltoolbox.git
 ## Here, you may need to provide github authentification (email and password)
 cd marltoolbox
 pip install -e .
-### Only if you get some errors related to atari-py then run against the following:
-    sudo apt update && sudo apt upgrade &&  sudo apt-get install build-essential
-    pip install --upgrade pip &&  conda install psutil
-    sudo apt-get install -y libglu1-mesa-dev libgl1-mesa-dev libosmesa6-dev xvfb ffmpeg curl patchelf libglfw3 libglfw3-dev cmake zlib1g zlib1g-dev swig
-    pip install -e .
 
 # Check that RLLib is working
 ## Use RLLib built-in training fonctionnalities
@@ -92,12 +87,12 @@ rllib train --run=PPO --env=CartPole-v0 --torch
 
 # Check that the toolbox is working
 python ./marltoolbox/examples/rllib_api/pg_ipd.py
-## You should get status: TERMINATED
+## You should get the status TERMINATED
 
 # Visualize the logs
 tensorboard --logdir ~/ray_results
 ## If working on GCP: forward the connection from a Virtual Machine(VM) to your machine
-## Run this command on your local machine from another terminal (not on the VM)
+## Run this command on your local machine from another terminal (not in the VM)
 gcloud compute ssh {replace-by-instance-name} -- -NfL 6006:localhost:6006
 ## Go to your browser to visualize the adresse http://localhost:6006/
 
@@ -125,12 +120,12 @@ pip install tensorflow
 
 There are mainly 3 ways to run experiments. 
 They support increasing functionalities 
-but also use a more and more complex API:
+but also use a more and more constrained API:
 
 **<ins>Tune function API</ins>** 
 - With the Tune function API, you only need to provide the training 
 function. [See the Tune documentation](https://docs.ray.io/en/master/tune/key-concepts.html).     
-- Best used if you very quickly want to run some code from an external repository.
+- Best used if you want to very quickly run some code from an external repository.
 - **Functionalities:** Running several seeds in parallel and comparing their results. 
 Easily plot values to Tensorboard (visualizing the plots in live). 
 Tracking your experiments and hyperparameters. Hyperparameter search.  
@@ -140,11 +135,12 @@ Tracking your experiments and hyperparameters. Hyperparameter search.
 step method. [See the Tune documentation](https://docs.ray.io/en/master/tune/key-concepts.html).    
 - Best used if you want to run some code from an external repository 
 and you need checkpoints. Helpers in this toolbox (`marltoolbox.utils.policy.get_tune_policy_class`)
- will also allow you to evaluate it against other RLLib algorithms or
- with some experimentation tools in `marltoolbox.utils`.
+ will also allow you transform this class (trained) into frozen RLLib policies. 
+ This is useful to produce evaluation against other RLLib algorithms or
+ when using experimentation tools in `marltoolbox.utils`.
 - **Additional functionalities:** Checkpoints.  
 The trained agents can be converted to the RLLib Policy format for evaluation only.
-This allows you to use functionalities which rely on the RLLib API. 
+This allows you to use functionalities which rely on the RLLib API (but not during training). 
 
 **<ins>RLLib Trainer class</ins>**  
 - You need to use the RLLib Trainer and Policy classes APIs. 
@@ -163,11 +159,11 @@ RLLib and an external repository.
     - various coin games
 - algos
     - amTFT [(approximate  Markov tit-for-tat)](https://arxiv.org/abs/1707.01068)
-    - L-TFT (Learning Tit-for-tat or Learning Equilibrium, **simplified version**)
+    - L-TFT (Learning Tit-for-tat, **simplified version**)
     - LOLA-DICE (unofficial, in the `experimental` branch, **WIP: not working properly**)  
     - supervised learning
     - hierarchical
-        - Base Policy class which allow to use nested algorithms 
+        - This is a base policy class which allows to use nested algorithms 
 - utils  
     - exploration
         - SoftQ with temperature schedule
@@ -177,13 +173,14 @@ RLLib and an external repository.
         - helper functions to train level 1 exploiters
     - policy
         - helper to transform a trained Tune Trainer
-        into a frozen RLLib policy
+        into frozen RLLib policies
     - postprocessing
         - helpers to compute welfare functions 
-        and add this data in the evaluation batch
+        and add this data in the evaluation batch 
+        (the batches sampled by the evaluation workers)
     - restore
         - helpers to load a checkpoint only for 
-        a chosen policy
+        a chosen policy (instead of for all existing policies as RLLib does) 
     - rollout
         - a rollout runner function which can be called from 
         inside a RLLib policy
@@ -205,7 +202,7 @@ RLLib and an external repository.
         - LOLA-DICE (official with slight modifications) 
     - RLLib API
         - Inequity aversion
-        - L-TFT (Learning Tit-for-tat or Learning Equilibrium) 
+        - L-TFT (Learning Tit-for-tat) 
         - amTFT
         - L1BR amTFT
         - LOLA-DICE (unofficial, in the `experimental` branch, **WIP: Not working properly**)
@@ -216,7 +213,7 @@ RLLib and an external repository.
 #### 0) Fall back to the `Tune` APIs when using the `RLLib` API is too costly
 You can find examples in `marltoolbox.examples.tune_class_api` and in `marltoolbox.examples.tune_function_api`.  
 
-If the setup you want to train already exist and has a training loop 
+If the setup you want to train already exist, has a training loop 
 and if the cost to convert it into `RLLib` is too expensive,
 then with minimum changes you can use `Tune`.
 
@@ -224,8 +221,8 @@ then with minimum changes you can use `Tune`.
 **When is the conversion cost to `RLLib` too high?**  
 - If the algorithm has a complex unusual dataflow 
 - If the algorithm has an unusual training process 
-    - like LOLA: performing virtual opponent updates
-    - like L-TFT(LE): nested algorithms
+    - like LOLA: performing "virtual" opponent updates
+    - like L-TFT: nested algorithms
 - If you don't need to change the algorithm
 - If you don't plan to run the algorithm against Policies from RLLib
 - If you do not plan to work much with the algorithm. 
@@ -239,13 +236,14 @@ Examples:
 [`multi_agent_independent_learning.py`](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py)
 - MADDPG and the two step game environment:
 [`two_step_game.py`](https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py)
-- Policy Gradient (PG) and the rock paper scissors environment (function `run_same_policy`):
+- Policy Gradient (PG) and the rock paper scissors environment:
 [`rock_paper_scissors_multiagent.py`](https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py)
+(in the `run_same_policy` function)
 
 #### 2) Using custom `RLLib` environments
 Examples:  
 - IPD environment: pg_ipd.py (toolbox example)
-- (Asymmetric) Coin Game: ppo_asymmetric_coin_game.py (toolbox example)
+- Asymmetric coin game: ppo_asymmetric_coin_game.py (toolbox example)
 
 #### 3) Customizing existing algorithms from `RLLib`
 Examples:  
@@ -264,7 +262,7 @@ Examples:
 - Hardcoded fixed Policy:
 [`rock_paper_scissors_multiagent.py`](https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py)  
 (in the `run_heuristic_vs_learned` function)
-- Policy with nested Policies: `le_ipd.py` (toolbox example)
+- Policy with nested Policies: `ltft_ipd.py` (toolbox example)
 
 #### 5) Using custom dataflows in `RLLib` (custom Trainer or Trainer's execution_plan)
 Examples:
@@ -281,14 +279,9 @@ Examples:
 
 
 # TODO / Wishlist
-- See the google doc "Survey for MARL framework"
-- See the google doc "MARL benchmark paper"
-- add unit tests
-- add a simple coin game env (not vectorized and more readable)
+- add more unit tests
+- use the logger everywhere
+- add docstring for SameAndCrossPlayEvaluation
 - check performance of coin game with and without reporting the additional info
-- set good hyper-parameters for our custom examples 
-    - like 2nd conv without padding for Coin Game?
-- RLLib install helper
+- set good hyper-parameters in the custom examples 
 - report all results directly in Weights&Biases (saving download time from VM)
-- MARL RLLib tutorial
-- give some guidelines for this toolbox

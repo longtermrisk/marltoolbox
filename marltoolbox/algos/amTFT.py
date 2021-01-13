@@ -6,7 +6,7 @@ import ray
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.dqn import DQNTrainer, DQNTorchPolicy
-from ray.rllib.agents.dqn.dqn_torch_policy import build_q_stats
+from ray.rllib.agents.dqn.dqn_torch_policy import build_q_stats, postprocess_nstep_and_prio
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
@@ -18,11 +18,6 @@ from marltoolbox.utils import postprocessing, log, rollout, miscellaneous, resto
 
 logger = logging.getLogger(__name__)
 
-# torch, nn = try_import_torch()
-# F = None
-# if nn:
-#     F = nn.functional
-
 APPROXIMATION_METHOD_Q_VALUE = "amTFT_use_Q_net"
 APPROXIMATION_METHOD_ROLLOUTS = "amTFT_use_rollout"
 APPROXIMATION_METHODS = (APPROXIMATION_METHOD_Q_VALUE, APPROXIMATION_METHOD_ROLLOUTS)
@@ -33,6 +28,14 @@ OWN_COOP_POLICY_IDX = 0
 OWN_SELFISH_POLICY_IDX = 1
 OPP_COOP_POLICY_IDX = 2
 OPP_SELFISH_POLICY_IDX = 3
+
+DEFAULT_NESTED_POLICY_SELFISH = DQNTorchPolicy.with_updates(stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats))
+DEFAULT_NESTED_POLICY_COOP = DEFAULT_NESTED_POLICY_SELFISH.with_updates(
+        postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
+            postprocessing.get_postprocessing_welfare_function(add_utilitarian_welfare=True,),
+            postprocess_nstep_and_prio
+        )
+    )
 
 DEFAULT_CONFIG = merge_dicts(
     hierarchical.DEFAULT_CONFIG,
@@ -55,19 +58,14 @@ DEFAULT_CONFIG = merge_dicts(
         "welfare": None,
 
         'nested_policies': [
-            # TODO refactor to use new postprocessing welfare
             # Here the trainer need to be a DQNTrainer to provide the config for the 3 DQNTorchPolicy
-            {"Policy_class":
-                 DQNTorchPolicy.with_updates(stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats)),
+            {"Policy_class":DEFAULT_NESTED_POLICY_COOP,
              "config_update": {}},
-            {"Policy_class":
-                 DQNTorchPolicy.with_updates(stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats)),
+            {"Policy_class":DEFAULT_NESTED_POLICY_SELFISH,
              "config_update": {}},
-            {"Policy_class":
-                 DQNTorchPolicy.with_updates(stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats)),
+            {"Policy_class":DEFAULT_NESTED_POLICY_COOP,
              "config_update": {}},
-            {"Policy_class":
-                 DQNTorchPolicy.with_updates(stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats)),
+            {"Policy_class":DEFAULT_NESTED_POLICY_SELFISH,
              "config_update": {}},
         ],
     }

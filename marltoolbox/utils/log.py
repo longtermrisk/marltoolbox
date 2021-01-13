@@ -17,7 +17,6 @@ from ray.rllib.utils.typing import PolicyID, TensorType
 from typing import Dict, Callable
 
 
-# TODO problem this add max, min, avg of each log...
 def get_logging_callbacks_class(log_env_step=True,
                                 log_from_policy=True,
                                 log_full_epi=False, log_full_epi_delay=100,
@@ -171,8 +170,7 @@ def get_logging_callbacks_class(log_env_step=True,
                 info = episode.last_info_for(agent_id)
                 for k, v in info.items():
                     if isinstance(v, numbers.Number):
-                        # TODO this add stuff as metrics (with mean, min, max) => available to select checkpoint but
-                        #  produce a lot of logs !! Should be better if
+                        # TODO this add the logs as metrics (with mean, min, max) => this does produce too much logs
                         episode.custom_metrics[f"{k}/{agent_id}"] = v
 
         def _update_train_result_wt_to_log(self, trainer, result: dict, function_to_exec):

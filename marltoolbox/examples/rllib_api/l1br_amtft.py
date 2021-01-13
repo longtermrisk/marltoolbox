@@ -373,5 +373,5 @@ def main(debug):
 
 
 if __name__ == "__main__":
-    debug_mode = False
+    debug_mode = True
     main(debug_mode)

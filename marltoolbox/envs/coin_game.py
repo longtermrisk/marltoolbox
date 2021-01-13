@@ -96,9 +96,9 @@ def generate_coin(batch_size, generate, red_coin, red_pos, blue_pos, coin_pos, g
 def generate_state(batch_size, red_pos, blue_pos, coin_pos, red_coin,
                    add_position_in_epi, step_count, max_steps, grid_size):
     if add_position_in_epi:
-        state = np.zeros((batch_size, grid_size, grid_size, 5))  # TODO: Avoid hard coding this
+        state = np.zeros((batch_size, grid_size, grid_size, 5))
     else:
-        state = np.zeros((batch_size, grid_size, grid_size, 4))  # TODO: Avoid hard coding this
+        state = np.zeros((batch_size, grid_size, grid_size, 4))
     for i in prange(batch_size):
         state[i, red_pos[i][0], red_pos[i][1], 0] = 1
         state[i, blue_pos[i][0], blue_pos[i][1], 1] = 1

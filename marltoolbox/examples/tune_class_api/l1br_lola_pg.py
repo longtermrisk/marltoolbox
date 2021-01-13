@@ -135,7 +135,6 @@ def get_rllib_config(hp: dict, lvl1_idx: list, lvl1_training: bool):
                 {"sgd_momentum": hp["sgd_momentum"]}
             )
 
-    # TODO remove the useless hyper-parameters
     rllib_config = {
         "env": hp["env"],
         "env_config": env_config,
@@ -430,5 +429,6 @@ def main(debug):
                                                     "^avg$", "last-10-avg"])
 
 if __name__ == "__main__":
+    # Only tested with the con game environments
     debug_mode = True
     main(debug_mode)

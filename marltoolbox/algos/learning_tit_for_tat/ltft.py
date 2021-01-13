@@ -22,7 +22,7 @@ from marltoolbox.utils import postprocessing
 
 torch, nn = try_import_torch()
 
-LE_DEFAULT_CONFIG_UPDATE = merge_dicts(
+LTFT_DEFAULT_CONFIG_UPDATE = merge_dicts(
     hierarchical.DEFAULT_CONFIG,
     {
         "percentile_for_likelihood_test": 95,
@@ -39,7 +39,7 @@ LE_DEFAULT_CONFIG_UPDATE = merge_dicts(
 )
 
 
-class LE(hierarchical.HierarchicalTorchPolicy):
+class LTFT(hierarchical.HierarchicalTorchPolicy):
     """
     Learning Tit-for-tat (Learning Equilibrium(LE))
     """
@@ -330,7 +330,7 @@ def compute_log_likelihoods_wt_exploration(
         return log_likelihoods
 
 
-class LECallbacks(DefaultCallbacks):
+class LTFTCallbacks(DefaultCallbacks):
 
     def on_episode_step(self, *, worker, base_env,
                         episode, env_index, **kwargs):

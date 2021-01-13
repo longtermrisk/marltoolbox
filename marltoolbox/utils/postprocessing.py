@@ -86,7 +86,6 @@ def _add_opponent_neg_reward_to_batch(sample_batch: SampleBatch, opp_ag_batch: S
     return sample_batch
 
 
-# TODO maybe should not apply gamma (only lambda)
 def _add_inequity_aversion_welfare_to_batch(sample_batch: SampleBatch, opp_ag_batch: SampleBatch,
                                             alpha: float, beta: float, gamma: float,
                                             lambda_: float) -> SampleBatch:
@@ -99,7 +98,6 @@ def _add_inequity_aversion_welfare_to_batch(sample_batch: SampleBatch, opp_ag_ba
     :return: sample_batch mutated with WELFARE_INEQUITY_AVERSION added
     """
 
-    # TODO verify than this batches are only one full episode
     own_rewards = np.array(sample_batch[sample_batch.REWARDS])
     opp_rewards = np.array(opp_ag_batch[opp_ag_batch.REWARDS])
     own_rewards = np.flip(own_rewards)
@@ -120,7 +118,6 @@ def _add_inequity_aversion_welfare_to_batch(sample_batch: SampleBatch, opp_ag_ba
 
 
 def _add_nash_welfare_to_batch(sample_batch: SampleBatch, opp_ag_batch: SampleBatch) -> SampleBatch:
-    # TODO verify than this batches are only one full episode
     own_rewards = np.array(opp_ag_batch[opp_ag_batch.REWARDS])
     opp_rewards = np.array(opp_ag_batch[opp_ag_batch.REWARDS])
     own_rewards_under_defection = np.array(opp_ag_batch.data[REWARDS_UNDER_DEFECTION])
@@ -136,7 +133,6 @@ def _add_nash_welfare_to_batch(sample_batch: SampleBatch, opp_ag_batch: SampleBa
 
 
 def _add_egalitarian_welfare_to_batch(sample_batch: SampleBatch, opp_ag_batch: SampleBatch) -> SampleBatch:
-    # TODO verify than this batches are only one full episode
     own_rewards = np.array(opp_ag_batch[opp_ag_batch.REWARDS])
     opp_rewards = np.array(opp_ag_batch[opp_ag_batch.REWARDS])
     own_rewards_under_defection = np.array(opp_ag_batch.data[REWARDS_UNDER_DEFECTION])

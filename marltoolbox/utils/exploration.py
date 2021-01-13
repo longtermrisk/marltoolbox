@@ -59,7 +59,6 @@ class SoftQSchedule(StochasticSampling):
         self.last_timestep = timestep
         # TODO This step changes the Q value, even when we are not exploring, create an issue
         # Quick correction
-        # TODO this correction breaks the LE algo?
         if explore:
             self.temperature = self.temperature_schedule(timestep if timestep is not None else self.last_timestep)
         else:

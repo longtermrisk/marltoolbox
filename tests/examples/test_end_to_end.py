@@ -9,7 +9,7 @@ def test_ppo_asym_coin_game():
 
 
 def test_le_ipd():
-    from marltoolbox.examples.rllib_api.le_ipd import main
+    from marltoolbox.examples.rllib_api.ltft_ipd import main
     main(debug=True)
 
 

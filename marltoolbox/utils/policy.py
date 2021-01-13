@@ -5,7 +5,6 @@ from ray.rllib.utils.typing import TrainerConfigDict
 from marltoolbox.utils.restore import LOAD_FROM_CONFIG_KEY
 
 
-# TODO add something to not load and create everything when only evaluating with RLLib
 def get_tune_policy_class(PolicyClass):
     class FrozenPolicyFromTuneTrainer(PolicyClass):
 
@@ -14,15 +13,8 @@ def get_tune_policy_class(PolicyClass):
             print("__init__ FrozenPolicyFromTuneTrainer")
 
             self.tune_config = config["tune_config"]
-            # self.tune_config["is_training"] = False
             TuneTrainerClass = self.tune_config["TuneTrainerClass"]
             self.tune_trainer = TuneTrainerClass(config=self.tune_config)
-
-            # remove checkpoint from config to prevent after_init_load_checkpoint_from_config
-            # to try to load a RLLib checkpoint
-            # TODO make this cleaner, there should be no need to know about after_init_load_checkpoint_from_config,
-            #  remove side effects
-
             self.load_checkpoint(config.pop(LOAD_FROM_CONFIG_KEY, (None, None)))
 
             super().__init__(observation_space, action_space, config)
