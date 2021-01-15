@@ -175,16 +175,17 @@ class Planning_Agent(Agent):
                     self.cost = tf.reduce_sum(tf.stack(cost_list))
                 else:
                     self.cost = tf.stack(cost_list, axis=0)
-                if planner_clip_norm is not None:
-                    self.cost = tf.clip_by_norm(self.cost, planner_clip_norm, axes=None, name=None)
 
                 self.dynamic_scaling_vp(normalize_against_vp, max_reward_strength, normalize_vp_separated)
+                self.dynamic_scaling_v(normalize_against_v)
+
+                if planner_clip_norm is not None:
+                    self.cost = tf.clip_by_norm(self.cost, planner_clip_norm, axes=None, name=None)
 
                 self.loss = (self.cost + self.extra_loss)
                 if weight_decay > 0.0:
                      self.loss += weight_decay * self.weights_norm
 
-                self.dynamic_scaling_v(normalize_against_v)
 
             with tf.variable_scope('trainPlanningAgent'):
                 #AdamOptimizer
@@ -252,7 +253,7 @@ class Planning_Agent(Agent):
 
     def dynamic_scaling_vp(self, normalize_against_vp, max_reward_strength, normalize_vp_separated):
         if "CoinGame" in self.env_name:
-            init_v = 2.0
+            init_v = 0.1
         else:
             init_v = 0.0
 
@@ -297,7 +298,7 @@ class Planning_Agent(Agent):
         if normalize_against_v:
             self.mean_v_out = ((1-(1/normalize_against_v)) * self.mean_v_in +
                            tf.reduce_sum(tf.math.abs(self.v)))
-            self.loss = tf.cond(tf.equal(self.mean_v_out, 0.0), lambda:0.0, lambda:self.loss /
+            self.cost = tf.cond(tf.equal(self.mean_v_out, 0.0), lambda:0.0, lambda:self.cost /
                                                                                    (self.mean_v_out/normalize_against_v))
         else:
             self.mean_v_out = self.mean_v_in

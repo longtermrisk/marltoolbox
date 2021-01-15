@@ -172,21 +172,34 @@ def add_env_hp(hp):
             #     1.0 /100 / 100 / 100 / 10 * 3]),
             "normalize_against_vp": 1000,
 
-            "add_state_grad": False,
+            "add_state_grad": True,
             "loss_mul_planner": 2000,
             "cost_param": 2.7e-7,
             "weight_decay_pl_mul": 3e-6,
 
             # "with_planner": tune.grid_search([True, False]),
 
-            "weight_decay_pl_mul": tune.grid_search([3e-6, 1e-6]),
-            "cost_param": tune.grid_search([2.7e-7, 1e-8]),
-            "loss_mul_planner": tune.grid_search([2000, 6000]),
-            "entropy_coeff": tune.grid_search([
-                0.1 / 10 / 3 * 3 * 3,
-                0.1 / 10 / 3 * 3 * 3 * 3, ]),
+            # "weight_decay_pl_mul": tune.grid_search([3e-6, 1e-6]),
+            # "cost_param": tune.grid_search([2.7e-7, 1e-8]),
+            # "loss_mul_planner": tune.grid_search([2000, 6000]),
+            # "entropy_coeff": tune.grid_search([
+            #     0.1 / 10 / 3 * 3 * 3,
+            #     0.1 / 10 / 3 * 3 * 3 * 3, ]),
+            # "normalize_vp_separated": True,
+            # "add_state_grad": tune.grid_search([True, False]),
+
+            "planner_clip_norm": 3e-6,
+            "loss_mul_planner": 2000,
+            "cost_param": 3e-8,
+            "weight_decay_pl_mul": 1e-7,
+            "entropy_coeff": 0.1,
             "normalize_vp_separated": True,
+
+            "weight_decay_pl_mul": tune.grid_search([3e-7, 1e-7]),
+            "cost_param": tune.grid_search([1e-8, 3e-9]),
+            "planner_clip_norm": tune.grid_search([3e-6, 1e-6]),
             "add_state_grad": tune.grid_search([True, False]),
+            "normalize_vp_separated": tune.grid_search([True, False]),
 
         })
 
