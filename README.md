@@ -36,20 +36,25 @@ Finally, you also can find many
 
 ### Toolbox installation
 
+The installation is tested with Ubuntu 18.04 LTS (prefered) and 20.04 LTS.  
+It requires less than 20 Go of space including all the dependencies like PyTorch, etc.
+
+**Optional**: Connect to your Virtual Machine(VM) on Google Cloud Platform(GCP) with:
 ```bash
-# Tested on Ubuntu 18.04 LTS (prefered) and 20.04 LTS
-# Require up to 20 Go of space. 
-
-# If needed, connect to your Virtual Machine(VM) on Google Cloud Plateform with:
 gcloud compute ssh {replace-by-instance-name}
+```
 
-# Basic upgrade & requirements (needed on a new VM)
+**Optional**: Do some basic upgrade and install some basic requirements (e.g. needed on a new VM)
+```bash
 sudo apt update
 sudo apt upgrade
 sudo apt-get install build-essential
 # Run this command another time (especially needed with Ubuntu 20.04 LTS)
 sudo apt-get install build-essential
+```
 
+**Optional**: use a virtual environment
+```bash
 # If needed, install conda:
 ## Follow instruction at
 https://docs.conda.io/projects/conda/en/latest/user-guide/install/linux.html
@@ -58,8 +63,8 @@ https://docs.conda.io/projects/conda/en/latest/user-guide/install/linux.html
 	bash Miniconda3-latest-Linux-x86_64.sh
 	# Enter. Enter... yes. Enter. yes.
 	exit  
-	# Connect again to the VM 
-    gcloud compute ssh {replace-by-instance-name} 
+	# Connect again to the VM or open a new terminal
+        gcloud compute ssh {replace-by-instance-name} 
 	# Check your conda installation  
 	conda list
 
@@ -67,8 +72,10 @@ https://docs.conda.io/projects/conda/en/latest/user-guide/install/linux.html
 conda create -n marltoolbox python=3.8.5
 conda activate marltoolbox
 pip install --upgrade pip
+```
 
-# Install the toolbox: marltoolbox
+**Install the toolbox: `marltoolbox`**
+```bash
 ## Install dependencies
 ### For RLLib
 conda install psutil
@@ -79,7 +86,9 @@ git clone https://github.com/longtermrisk/marltoolbox.git
 ## Here, you may need to provide github authentification (email and password)
 cd marltoolbox
 pip install -e .
-
+```
+**Test the installation**
+```bash
 # Check that RLLib is working
 ## Use RLLib built-in training fonctionnalities
 rllib train --run=PPO --env=CartPole-v0 --torch 
@@ -95,10 +104,10 @@ tensorboard --logdir ~/ray_results
 ## Run this command on your local machine from another terminal (not in the VM)
 gcloud compute ssh {replace-by-instance-name} -- -NfL 6006:localhost:6006
 ## Go to your browser to visualize the adresse http://localhost:6006/
-
-# Commands below are optionals: 
-
-# Install PyTorch with GPU (the CPU version should already be installed)
+```
+**Optional**: Install deep learning libraries (PyTorch CPU only is installed by default)
+```bash
+# Install PyTorch with GPU
 # Check cuda version
 nvidia-smi
 # Look for "CUDA Version: XX.X"
@@ -142,7 +151,7 @@ and you need checkpoints. Helpers in this toolbox (`marltoolbox.utils.policy.get
 The trained agents can be converted to the RLLib Policy format for evaluation only.
 This allows you to use functionalities which rely on the RLLib API (but not during training). 
 
-**<ins>RLLib Trainer class</ins>**  
+**<ins>RLLib trainer class</ins>**  
 - You need to use the RLLib Trainer and Policy classes APIs. 
 The RLLib Trainer class is a specific implementation of the Tune class API 
 (just above). [See the RLLib documentation](https://docs.ray.io/en/master/rllib-toc.html).  

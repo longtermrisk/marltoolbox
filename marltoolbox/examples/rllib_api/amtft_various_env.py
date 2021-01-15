@@ -381,7 +381,7 @@ def train(hp):
     for welfare_fn in hp['welfare_functions']:
         print("==============================================")
         print("Going to start two_steps_training with welfare function", welfare_fn)
-        if welfare_fn == postprocessing.WELFARE_UTILITARIAN:
+        if hp["filter_utilitarian"] and welfare_fn == postprocessing.WELFARE_UTILITARIAN:
             hp = preprocess_utilitarian_config(hp)
         stop, env_config, trainer_config_update = get_rllib_config(hp, welfare_fn)
         print("trainer_config_update", trainer_config_update)
@@ -389,7 +389,7 @@ def train(hp):
                                            config=trainer_config_update,
                                            name=hp["exp_name"],
                                            TrainerClass=hp["TrainerClass"])
-        if welfare_fn == postprocessing.WELFARE_UTILITARIAN:
+        if hp["filter_utilitarian"] and welfare_fn == postprocessing.WELFARE_UTILITARIAN:
             results = postprocess_utilitarian_results(results, env_config, hp)
         results_list.append(results)
     return results_list
@@ -436,13 +436,15 @@ def evaluate_same_and_cross_perf(config_eval, results_list, hp, env_config, stop
     return analysis_metrics_per_mode
 
 
-def main(debug):
-    train_n_replicates = 1 if debug else 40
+def main(debug, train_n_replicates=None, filter_utilitarian=True):
+    train_n_replicates = 1 if debug else train_n_replicates
+    train_n_replicates = 40 if train_n_replicates is None else train_n_replicates
     n_times_more_utilitarians_seeds = 4
     pool_of_seeds = miscellaneous.get_random_seeds(train_n_replicates*(1+n_times_more_utilitarians_seeds))
     exp_name, _ = log.log_in_current_day_dir("amTFT")
     hparams = {
         "debug": debug,
+        "filter_utilitarian": filter_utilitarian,
 
         "train_n_replicates": train_n_replicates,
         "n_times_more_utilitarians_seeds": n_times_more_utilitarians_seeds,
@@ -479,8 +481,8 @@ def main(debug):
         "self_play": True,
         # "self_play": False, # Not tested
 
-        # "env": matrix_SSD.IteratedPrisonersDilemma,
-        "env": matrix_SSD.IteratedAsymBoS,
+        "env": matrix_SSD.IteratedPrisonersDilemma,
+        # "env": matrix_SSD.IteratedAsymBoS,
         # "env": matrix_SSD.IteratedAsymChicken,
         # "env": coin_game.CoinGame
         # "env": coin_game.AsymCoinGame

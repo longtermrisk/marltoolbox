@@ -19,14 +19,6 @@ def test_add_inequity_aversion_welfare_to_batch_beta():
     # Disvalue higher than opp
     beta = 1.0
 
-    # postprocessing_fn = postprocessing.get_postprocessing_welfare_function(
-    #     add_inequity_aversion_welfare=True,
-    #     inequity_aversion_gamma=gamma,
-    #     inequity_aversion_beta=beta,
-    #     inequity_aversion_lambda=lambda_,
-    #     inequity_aversion_alpha=alpha,
-    # )
-
     sample_batch, opp_ag_batch = generate_batch(own_rew=[0, 1, 0, 10, 1, 0, -2, -888, -888],
                                                 opp_rew=[0, 0, 1, 11, 0.5, -1, -4, -1888, 1888])
     postprocessing._add_inequity_aversion_welfare_to_batch(sample_batch, opp_ag_batch, alpha, beta, gamma, lambda_)
@@ -41,14 +33,6 @@ def test_add_inequity_aversion_welfare_to_batch_alpha():
     alpha = 0.5
     # Disvalue higher than opp
     beta = 0.0
-
-    # postprocessing_fn = postprocessing.get_postprocessing_welfare_function(
-    #     add_inequity_aversion_welfare=True,
-    #     inequity_aversion_gamma=gamma,
-    #     inequity_aversion_beta=beta,
-    #     inequity_aversion_lambda=lambda_,
-    #     inequity_aversion_alpha=alpha,
-    # )
 
     sample_batch, opp_ag_batch = generate_batch(own_rew=[0, 1, 0, 10, 1, 0, -2, -888, -500],
                                                 opp_rew=[0, 0, 1, 11, 0.5, -1, -4, -1888, 1500])
@@ -65,14 +49,6 @@ def test_add_inequity_aversion_welfare_to_batch_lambda():
     # Disvalue higher than opp
     beta = 0.5
 
-    # postprocessing_fn = postprocessing.get_postprocessing_welfare_function(
-    #     add_inequity_aversion_welfare=True,
-    #     inequity_aversion_gamma=gamma,
-    #     inequity_aversion_beta=beta,
-    #     inequity_aversion_lambda=lambda_,
-    #     inequity_aversion_alpha=alpha,
-    # )
-
     sample_batch, opp_ag_batch = generate_batch(
         #  smoothed cumulative rewards [0, 1, 0.9, 1.81]
         own_rew=[0, 1, 0, 1],
@@ -84,10 +60,6 @@ def test_add_inequity_aversion_welfare_to_batch_lambda():
 
 
 def test_add_utilitarian_welfare_to_batch():
-    # postprocessing_fn = postprocessing.get_postprocessing_welfare_function(
-    #     add_utilitarian_welfare=True,
-    # )
-
     sample_batch, opp_ag_batch = generate_batch(own_rew=[0, 1, 0, 10, 1, 0, -2, -888, -888],
                                                 opp_rew=[0, 0, 1, 11, 0.5, -1, -4, -1888, 1888])
     postprocessing._add_utilitarian_welfare_to_batch(sample_batch, [opp_ag_batch])

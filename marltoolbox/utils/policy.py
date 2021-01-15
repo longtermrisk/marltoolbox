@@ -6,6 +6,12 @@ from marltoolbox.utils.restore import LOAD_FROM_CONFIG_KEY
 
 
 def get_tune_policy_class(PolicyClass):
+    """
+    Allow to convert a Tune trainer into a frozen RLLib policy (no training possible).
+
+    :param PolicyClass: The base RLLib policy class to use. Can be needed if you need some statistics or postprocessing.
+    :return: an RLLib policy class that compute actions by calling the Tune trainer.
+    """
     class FrozenPolicyFromTuneTrainer(PolicyClass):
 
         def __init__(self, observation_space: gym.spaces.Space,
@@ -59,7 +65,6 @@ from ray.rllib.agents.dqn.dqn_torch_policy import setup_early_mixins
 def sgd_optimizer(policy: Policy,
                   config: TrainerConfigDict) -> "torch.optim.Optimizer":
     return torch.optim.SGD(policy.model.parameters(), lr=policy.cur_lr)
-
 
 A2CTorchPolicy = A3CTorchPolicy.with_updates(
     optimizer_fn=sgd_optimizer,

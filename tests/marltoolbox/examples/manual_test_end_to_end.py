@@ -1,3 +1,6 @@
+# Run this directly with
+# pytest file_path.py
+
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 def check_learning_achieved(tune_results, reward, max=False, min=False, equal=False):
@@ -27,14 +30,8 @@ def test_ltft_ipd():
     check_learning_achieved(tune_results=tune_analysis_self_play, reward=-42, min=True)
     check_learning_achieved(tune_results=tune_analysis_naive_opponent, reward=-78, max=True)
 
-# def test_ltft_ipd():
-#     from marltoolbox.examples.rllib_api.amtft_various_env import main
-#     results_list, analysis_metrics_per_mode = main(debug=False)
-#     for result in results_list:
-#         check_learning_achieved(tune_results=result, reward=-42, min=True)
-
-
-if __name__ == "__main__":
-    test_pg_ipd()
-    test_ppo_asym_coin_game()
-    test_ltft_ipd()
+def test_amtft_ipd():
+    from marltoolbox.examples.rllib_api.amtft_various_env import main
+    results_list, analysis_metrics_per_mode = main(debug=False, train_n_replicates=1, filter_utilitarian=False)
+    for result in results_list:
+        check_learning_achieved(tune_results=result, reward=-42, min=True)

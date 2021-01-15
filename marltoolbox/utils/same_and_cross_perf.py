@@ -24,8 +24,11 @@ logger = logging.getLogger(__name__)
 
 class SameAndCrossPlayEvaluation:
     """
-    Does support using RLLib policies only or
-    RLLib Policies which use internally a TuneTrainerCLass
+    Utility to run same and cross-play performance evaluation.
+
+    Does support only the RLLib API.
+    Thus if you are working with Tune, then you will need to use the utils.policy.get_tune_policy_class helper
+    to convert your Tune trainer into frozen RLLib policies.
     """
     # TODO add function to list all available metrics
     # TODO docstring
@@ -43,7 +46,26 @@ class SameAndCrossPlayEvaluation:
                  policies_to_load_from_checkpoint: list = ["All"],
                  ):
         """
-        Work for a unique pair of RLLib policies
+        You should take a look at examples using this class.
+        Any training is deactivated here. Only the worker rollout will evaluate your policy on the environment.
+        Any exploration is deactivated.
+
+        Works for a unique pair of RLLib policies.
+
+        :param evaluation_config: Normal config argument provided to tune.run().
+            This RLLib config will be used to run many similar runs.
+            This config will be automatically updated to load the policies from the checkpoints you are going to provide.
+        :param stop_config: Normal stop_config argument provided to tune.run().
+        :param exp_name: Normal exp_name argument provided to tune.run().
+        :param TuneTrainerClass: Will only be needed when you are going to evaluate policies created from a Tune
+            trainer. You need to provide the class of this trainer.
+        :param TrainerClass: (default is the PGTrainer class) Normal 1st argument (run_or_experiment) provided to
+            tune.run(). You should use the one which provides the data flow you need. (Probably a simple PGTrainer will do).
+        :param checkpoint_list_group_idx:
+        :param group_names:
+        :param mix_policy_order:
+        :param policies_to_train:
+        :param policies_to_load_from_checkpoint:
         """
 
         self.mix_policy_order = mix_policy_order
@@ -94,9 +116,9 @@ class SameAndCrossPlayEvaluation:
         if len(set(checkpoint_list_group_idx)) > 1:
             assert group_names is not None
 
+        self.n_checkpoints = len(checkpoint_list)
         self.checkpoint_list = checkpoint_list
         self.checkpoint_list_group_idx = checkpoint_list_group_idx
-        self.n_checkpoints = len(self.checkpoint_list)
         self.group_names = group_names
 
     def _check_policy_to_load(self, policy_id):
@@ -104,6 +126,18 @@ class SameAndCrossPlayEvaluation:
 
     def perf_analysis(self, n_same_play_per_checkpoint: int, n_cross_play_per_checkpoint: int,
                       checkpoint_list: list = None, extract_checkpoints_from_results: list = None):
+        """
+        :param n_same_play_per_checkpoint: (int) How many same-play experiment per checkpoint you want to run.
+            More than 1 mean that you are going to run several times the same experiments.
+        :param n_cross_play_per_checkpoint: (int) How many cross-play experiment per checkpoint you want to run.
+        :param checkpoint_list: Either checkpoint_list or extract_checkpoints_from_results must be provided.
+            With checkpoint_list you will need to directly provided a list of the checkpoints to load Policies from.
+        :param extract_checkpoints_from_results: Either checkpoint_list or extract_checkpoints_from_results
+            must be provided. With extract_checkpoints_from_results you will need to provided a list of the
+            tune_analysis you want to extract the checkpoints from.
+            All the checkpoints in these tune_analysis will be extracted.
+        :return: data formatted in a way ready for plotting by the plot_results method.
+        """
 
         self._init_info_about_checkpoints(checkpoint_list, extract_checkpoints_from_results,
                                           self.checkpoint_list_group_idx, self.group_names)
@@ -240,10 +274,40 @@ class SameAndCrossPlayEvaluation:
     # TODO make the plotting independent to be used in other places
     def plot_results(self, analysis_metrics_per_mode: dict, metrics: Tuple[Tuple[str, str]], metric_mode: str = "avg",
                      alpha=1.0, colors=None, x_limits: Iterable = None, y_limits: Iterable = None,
-                     scale_multipliers: Iterable = None, show=False, save_fig=True,
+                     scale_multipliers: Iterable = None, show: bool = False, save_fig: bool = True,
                      figsize=(6, 6), markersize=5, jitter=None, title_sufix="",
-                     save_matrix=True, xlabel=None, ylabel=None, add_title=True, frameon=None,
-                     show_groups=True, plot_max_n_points=None):
+                     save_matrix: bool = True, xlabel=None, ylabel=None, add_title: bool = True, frameon=None,
+                     show_groups: bool = True, plot_max_n_points: int = None):
+        """
+        :param analysis_metrics_per_mode:
+        :param metrics: iterable containing tuples as follow: (metric_x, metrics_y). those are the names of the
+            metrics to extract from the tune_analysis data.
+        :param metric_mode: one of the metric_mode of RLLib metrics (e.g. "avg", "min", "max", etc.)
+        :param alpha: transparency argument for matplotlib (1.0 is not transparent, 0.0 is fully transparent)
+        :param colors: (optional) you can provide the color to be use for each pair of groups.
+        :param x_limits: Used by plt.xlim(x_limits[metric_i]) Example for one metric: ((x_min, x_max),)
+            This is an Iterable over each metric to plot and this provide for each metric a tuple containing the limits.
+        :param y_limits: Used by plt.ylim(x_limits[metric_i]) Example for one metric: ((y_min, y_max),)
+            This is an Iterable over each metric to plot and for each metric this provides a tuple containing the limits.
+        :param scale_multipliers: Use this to scale the x and y values.
+            (e.g. multiplying by the inverse of the number of steps in one episode).
+            This is an Iterable over each metric to plot and for metric, this contains a tuple of the scaling ratio for x and y.
+            Example for one metric: ( (x_multiplier,y_multiplier),)
+        :param show: boolean to show the figure
+        :param save_fig: boolean to save the figure
+        :param figsize: figure size (tuple)
+        :param markersize: size of the markers in the plot
+        :param jitter: std of jitter to add to the values of both x and y.
+        :param title_sufix: str to add at the end of the title
+        :param save_matrix: boolean to save the data points used in json format
+        :param xlabel: xlabel for matplotlib
+        :param ylabel: ylabel for matplotlib
+        :param add_title: boolean to add the title to the figure
+        :param frameon: frameon argument given to plt.legend(numpoints=1, frameon=frameon)
+        :param show_groups: add the name of the pair of groups to the legend
+        :param plot_max_n_points: (int) maximum number of points per pair of groups to plot
+        :return: None
+        """
 
         colors = list(matplotlib.colors.BASE_COLORS.keys()) if colors is None else colors
         if self.checkpoint_list_group_idx is not None and len(set(self.checkpoint_list_group_idx)) > 1:

@@ -19,8 +19,8 @@ from typing import List
 
 class RolloutManager(RolloutSaver):
     """
-    Modified version of the utility class for storing rollouts
-    even if no output file is provided.
+    Modified version of the utility class for storing rollouts.
+    Modified to allow to store data even if no output file is provided.
     """
 
     def end_rollout(self):
@@ -95,7 +95,6 @@ def internal_rollout(worker,
 
     if policy_agent_mapping is None:
         if worker.multiagent:
-            # policy_agent_mapping = agent.config["multiagent"]["policy_mapping_fn"]
             policy_agent_mapping = worker.policy_config["multiagent"]["policy_mapping_fn"]
         else:
             policy_agent_mapping = default_policy_agent_mapping
@@ -194,8 +193,10 @@ def internal_rollout(worker,
 
 
 def _keep_going(steps, num_steps, episodes, num_episodes):
-    """Modified version.
-    Determine whether we've collected enough data"""
+    """
+    Modified version.
+    Determine whether we've collected enough data
+    """
     if num_episodes and num_steps:
         return episodes < num_episodes and steps < num_steps
     # if num_episodes is set, this overrides num_steps
@@ -217,7 +218,9 @@ def _worker_compute_action(worker, timestep,
                            policy_id: PolicyID = DEFAULT_POLICY_ID,
                            full_fetch: bool = False,
                            explore: bool = None) -> TensorStructType:
-    "Modified version of the Trainer compute_action method"
+    """
+    Modified version of the Trainer compute_action method
+    """
     if state is None:
         state = []
     preprocessed = worker.preprocessors[
