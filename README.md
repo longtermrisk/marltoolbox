@@ -20,16 +20,19 @@ at the cost of some functionalities.
 
 
 ### Quick intro to Tune
-[Tune Key Concepts](https://docs.ray.io/en/master/tune/key-concepts.html)  
+You should read this quick introduction to 
+[Tune's key concepts](https://docs.ray.io/en/master/tune/key-concepts.html)  
 
-To explore `Tune` further please refer to the 
+Later, to explore `Tune` further please refer to the 
+[user guide](https://docs.ray.io/en/latest/tune/user-guide.html) and the
 [examples provided by `Tune`](https://docs.ray.io/en/master/tune/examples/index.html#tune-general-examples)
 
 
 ### Quick intro to RLLib
-[RLlib in 60 seconds](https://docs.ray.io/en/master/rllib.html).  
+You should read this quick introduction to 
+[RLlib](https://docs.ray.io/en/master/rllib.html).  
     
-To explore `RLLib` further please refer to the 
+And later too, to explore `RLLib` further please refer to the 
 [`RLLib` documentation](https://docs.ray.io/en/master/rllib-toc.html).
 Finally, you also can find many 
 [examples provided by `RLLib`](https://github.com/ray-project/ray/tree/master/rllib/examples). 
