@@ -55,5 +55,5 @@ def test_l1br_lola_pg_tune_class_api():
     main(debug=True)
 
 def test_adaptive_mechanism_design_tune_class_api():
-    from marltoolbox.examples.tune_class_api.adaptive_mechanism_design import main
+    from marltoolbox.examples.tune_class_api.amd import main
     main(debug=True)
