@@ -3,12 +3,13 @@
 ##########
 import logging
 import math
-import matplotlib.pyplot as plt
-import numpy as np
 import os
 import random
-from ray import tune
+
+import matplotlib.pyplot as plt
+import numpy as np
 import tensorflow as tf
+from ray import tune
 
 logging.basicConfig(filename='main.log', level=logging.DEBUG, filemode='w')
 
@@ -17,7 +18,6 @@ from marltoolbox.algos.adaptive_mechanism_design.agent import Actor_Critic_Agent
 from marltoolbox.algos.adaptive_mechanism_design.planning_agent import Planning_Agent
 from marltoolbox.envs.matrix_SSD import define_greed_fear_matrix_game
 from marltoolbox.envs.coin_game import CoinGame
-
 
 
 def create_population(env, n_agents, n_units, use_simple_agents=False,
@@ -32,7 +32,7 @@ def create_population(env, n_agents, n_units, use_simple_agents=False,
                           critic_variant=critic_variant,
                           mean_theta=mean_theta,
                           std_theta=std_theta) for i in range(n_agents)
-                          ]
+             ]
     else:
         l = [Actor_Critic_Agent(env,
                                 learning_rate=lr,
@@ -58,7 +58,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
     def _init_algo(self, fear, greed, n_players, use_simple_agents, action_flip_prob,
                    max_reward_strength, value_fn_variant, cost_param, with_redistribution,
                    n_planning_eps, env_config, n_units, n_episodes, env, lr, gamma, weight_decay,
-                   loss_mul_planner, mean_theta, with_planner, std_theta, add_state_grad,planner_momentum,
+                   loss_mul_planner, mean_theta, with_planner, std_theta, add_state_grad, planner_momentum,
                    planner_clip_norm, entropy_coeff, seed, normalize_planner, no_weights_decay_planner,
                    planner_std_theta_mul, use_adam_optimizer, use_softmax_hot, report_every_n, momentum,
                    weight_decay_pl_mul, square_cost, normalize_against_v, use_v_pl,
@@ -67,14 +67,13 @@ class AdaptiveMechanismDesign(tune.Trainable):
         if not use_simple_agents:
             speed_ratio = 5.0
             lr = lr / speed_ratio
-            loss_mul_planner = loss_mul_planner * speed_ratio**2 / 2 / 2
+            loss_mul_planner = loss_mul_planner * speed_ratio ** 2 / 2 / 2
             cost_param = cost_param * 1.5
             if n_units == 64:
                 lr = lr / 8
 
         print("args not used:", kwargs)
         convert_a_to_one_hot = not use_simple_agents
-
 
         np.random.seed(seed)
         tf.set_random_seed(seed)
@@ -92,9 +91,9 @@ class AdaptiveMechanismDesign(tune.Trainable):
                                    lr=lr, gamma=gamma, weight_decay=weight_decay,
                                    mean_theta=mean_theta, std_theta=std_theta, entropy_coeff=entropy_coeff,
                                    use_adam_optimizer=use_adam_optimizer, momentum=momentum)
-        np.random.seed(seed+1)
-        tf.set_random_seed(seed+1)
-        random.seed(seed+1)
+        np.random.seed(seed + 1)
+        tf.set_random_seed(seed + 1)
+        random.seed(seed + 1)
 
         if with_planner:
             std_theta = std_theta * planner_std_theta_mul
@@ -141,7 +140,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
         self.fear = fear
         self.greed = greed
         self.report_every_n = report_every_n
-        self.normalize_vp_separated=normalize_vp_separated
+        self.normalize_vp_separated = normalize_vp_separated
 
         self.avg_planning_rewards_per_round = []
         self.episode_reward = []
@@ -163,6 +162,10 @@ class AdaptiveMechanismDesign(tune.Trainable):
             flag = isinstance(last_s, list)
 
             cum_planning_rs = [0] * len(self.players)
+            planning_reward_when_pick_own_coin = [None] * len(self.players)
+            planning_reward_when_pick_opp_coin = [None] * len(self.players)
+            planning_reward_when_no_picking = [None] * len(self.players)
+            planning_reward_when_specific_action = [[None] * self.env.NUM_ACTIONS] * len(self.players)
             while True:
                 # choose action based on s
                 if flag:
@@ -208,19 +211,31 @@ class AdaptiveMechanismDesign(tune.Trainable):
                     # Training planning agent
                     # TODO using the past rewards is not working since I perturbate the actions
                     (action, loss, g_Vp, g_V, r_players, cost, extra_loss, l1,
-                     mean_v, vp, values, mean_vp)= self.planning_agent.learn(
+                     mean_v, vp, values, mean_vp) = self.planning_agent.learn(
                         last_s, perturbed_actions,
                         coin_game=self.env.NAME == "CoinGame",
                         env_rewards=env_rewards)
 
                 for idx, player in enumerate(self.players):
                     if flag:
-                        critic_loss, advantage = player.learn(last_s[idx], actions[idx], rewards[idx], current_s[idx], last_s,
-                                                         current_s)
+                        critic_loss, advantage = player.learn(last_s[idx], actions[idx], rewards[idx], current_s[idx],
+                                                              last_s,
+                                                              current_s)
                     else:
                         critic_loss, advantage = player.learn(last_s, actions[idx], rewards[idx], current_s)
-                    to_report[f"critic_loss_p_{idx}"] = critic_loss[0,0]
+                    to_report[f"critic_loss_p_{idx}"] = critic_loss[0, 0]
                     to_report[f"advantage_loss_p_{idx}"] = advantage
+
+                    opp_idx = (idx + 1) % 2
+                    if env_rewards[idx] == 1.0 and env_rewards[opp_idx] == 0.0:
+                        planning_reward_when_pick_own_coin[idx] = planning_rs[idx]
+                    if env_rewards[idx] == 1.0 and env_rewards[opp_idx] == -2.0:
+                        planning_reward_when_pick_opp_coin[idx] = planning_rs[idx]
+                    if env_rewards[idx] == 0.0 and env_rewards[opp_idx] == 0.0:
+                        planning_reward_when_no_picking[idx] = planning_rs[idx]
+
+                    planning_reward_when_specific_action[idx][actions[idx]] = planning_rs[idx]
+
                 # swap s
                 last_s = current_s
 
@@ -268,6 +283,17 @@ class AdaptiveMechanismDesign(tune.Trainable):
             to_report[f"actor_weights_norm_p_{idx}"] = ac_weights_norm
             to_report[f"critic_weights_norm_p_{idx}"] = cr_weights_norm
 
+            if planning_reward_when_pick_own_coin[idx] is not None:
+                to_report[f"pl_rw_p{idx}_pick_own_coin"] = planning_reward_when_pick_own_coin[idx]
+            if planning_reward_when_pick_opp_coin[idx] is not None:
+                to_report[f"pl_rw_p{idx}_pick_opp_coin"] = planning_reward_when_pick_opp_coin[idx]
+            if planning_reward_when_no_picking[idx] is not None:
+                to_report[f"pl_rw_p{idx}_no_picking"] = planning_reward_when_no_picking[idx]
+
+            for act_v in range(self.env.NUM_ACTIONS):
+                if planning_reward_when_specific_action[idx][act_v] is not None:
+                    to_report[f"pl_rw_p{idx}_a{act_v}"] = planning_reward_when_specific_action[idx][act_v]
+
         return to_report
 
     def plot(self, avg_rewards_per_round, avg_planning_rewards_per_round, coin_game=False):
@@ -286,8 +312,8 @@ class AdaptiveMechanismDesign(tune.Trainable):
                           exp_factor=0.05)
         if self.planning_agent is not None:
             self.plot_results(avg_planning_rewards_per_round, [str(agent) for agent in self.players], path,
-                          'planning_rewards',
-                          exp_factor=0.05)
+                              'planning_rewards',
+                              exp_factor=0.05)
         actor_a_prob_each_round = np.transpose(np.array([agent.log for agent in self.players]))
         self.plot_results(actor_a_prob_each_round, [str(agent) for agent in self.players], path, \
                           'player_action_probabilities', ylabel='P(Cooperation)')

@@ -192,8 +192,14 @@ class CoinGame(MultiAgentEnv, gym.Env):
         self.flatten_obs = config.get("flatten_obs", False)
 
         if self.flatten_obs:
-            self.NUM_STATES = self.grid_size ** 2 * 2 * self.NUM_AGENTS
-            self.OBSERVATION_SPACE = Discrete(self.NUM_STATES)
+            self.NUM_STATES = self.grid_size ** 2 * (2 * self.NUM_AGENTS + int(self.add_position_in_epi))
+            # self.OBSERVATION_SPACE = Discrete(self.NUM_STATES)
+            self.OBSERVATION_SPACE = gym.spaces.Box(
+                low=0,
+                high=1,
+                shape=(self.NUM_STATES,),
+                dtype='uint8'
+            )
         else:
             self.OBSERVATION_SPACE = gym.spaces.Box(
                 low=0,

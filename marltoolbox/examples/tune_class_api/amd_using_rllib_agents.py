@@ -10,7 +10,7 @@ import time
 from ray import tune
 
 logging.basicConfig(filename='main.log', level=logging.DEBUG, filemode='w')
-from marltoolbox.algos.adaptive_mechanism_design.adaptive_mechanism_design import AdaptiveMechanismDesign
+from marltoolbox.algos.adaptive_mechanism_design.amd_using_rllib_agents import AdaptiveMechanismDesign
 from marltoolbox.utils import log
 
 
@@ -36,7 +36,7 @@ def train(tune_hp):
             "flatten_obs": True,
         }
 
-    ray.init(num_cpus=os.cpu_count(), num_gpus=0)
+    ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=True)
     training_results = tune.run(AdaptiveMechanismDesign, name=tune_hp["exp_name"], config=tune_config, stop=stop)
     ray.shutdown()
     return training_results
@@ -195,11 +195,11 @@ def add_env_hp(hp):
             "entropy_coeff": 0.1,
             "normalize_vp_separated": True,
 
-            "weight_decay_pl_mul": tune.grid_search([3e-7, 1e-7]),
-            "cost_param": tune.grid_search([1e-8, 3e-9]),
-            "planner_clip_norm": tune.grid_search([3e-6, 1e-6]),
-            "add_state_grad": tune.grid_search([True, False]),
-            "normalize_vp_separated": tune.grid_search([True, False]),
+            # "weight_decay_pl_mul": tune.grid_search([3e-7, 1e-7]),
+            # "cost_param": tune.grid_search([1e-8, 3e-9]),
+            # "planner_clip_norm": tune.grid_search([3e-6, 1e-6]),
+            # "add_state_grad": tune.grid_search([True, False]),
+            # "normalize_vp_separated": tune.grid_search([True, False]),
 
         })
 
@@ -235,8 +235,8 @@ def main(debug):
         "action_flip_prob": 0,
         "n_players": 2,
 
-        "with_planner": True,
-        # "with_planner": False,
+        # "with_planner": True,
+        "with_planner": False,
         # "with_planner": tune.grid_search([True, False]),
 
         # "env": "FearGreedMatrix",
