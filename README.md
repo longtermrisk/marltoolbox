@@ -9,13 +9,13 @@ Improve at each new use. Keep it simple. Keep it flexible.
 in MARL.  
 
 **Concrete value of this framework**:  
-- **with less than 1h of practice:**   
+- **with 1h of practice:**   
   track your experiments, 
   log easily in TensorBoard, run hyperparameter search, 
   use the provided environments and run the provided algorithms, 
   mostly agnostic to the deep learning framework, 
   create custom algorithms using the `Tune` API 
-- **with less than 10h of practice:**  
+- **with 10h of practice:**  
   use some of the components of `RLLib` 
   (like using a PPO agent in your custom algorithms), use checkpoints, 
   use the experimentation tools provided here, create new environments, 
