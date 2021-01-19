@@ -280,13 +280,19 @@ And thus, you do not want to invest time in the conversion to `RLLib`.
 
 #### 1) Using components directly provided by `RLLib`  
 
+###### a) Without `RLLib`
+
 Examples using the `Tune` class API:
 - Using an A3C policy: amd_using_rllib_agents.py (toolbox example)
-- Using (custom or not) environments: 
-    - IPD environment: pg_ipd.py (toolbox example)
-    - Asymmetric coin game: ppo_asymmetric_coin_game.py (toolbox example)
+- Using (custom or not) environments:
+    - IPD and coin game environments: amd.py (toolbox example)
+    - Asymmetric coin game environment: lola_pg_official.py (toolbox example)
+
+###### b) With `RLLib`
 
 Examples using the `RLLib` API:
+- IPD environments: pg_ipd.py (toolbox example)
+- Asymmetric coin game environment: ppo_asymmetric_coin_game.py (toolbox example)
 - APEX_DDPG and the water world environment:
 [`multi_agent_independent_learning.py`](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py)
 - MADDPG and the two step game environment:
