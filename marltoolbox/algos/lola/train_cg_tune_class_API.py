@@ -5,6 +5,7 @@
 """
 Training function for the Coin Game.
 """
+import copy
 import json
 import os
 from collections import Iterable
@@ -13,6 +14,11 @@ from collections import deque
 import numpy as np
 import tensorflow as tf
 from ray import tune
+from ray.rllib.agents.dqn import DQNTFPolicy, DEFAULT_CONFIG
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
+from ray.rllib.evaluation.sample_batch_builder import MultiAgentSampleBatchBuilder
+from ray.rllib.agents.callbacks import DefaultCallbacks
 
 import marltoolbox.algos.lola_dice.envs as lola_dice_envs
 from marltoolbox.algos.lola.corrections import corrections_func
@@ -37,6 +43,11 @@ def clone_update(mainPN_clone):
         mainPN_clone[i].update = mainPN_clone[i].clone_trainer.minimize(
             -mainPN_clone[i].log_pi_clone, var_list=mainPN_clone[i].parameters)
 
+def add_data_in_dqn_data_buffer():
+    raise NotImplementedError()
+
+def train_dqn_policy(dqn_data_buffer, dqn_exploiter):
+    raise NotImplementedError()
 
 class LOLAPGCG(tune.Trainable):
 
@@ -50,7 +61,7 @@ class LOLAPGCG(tune.Trainable):
                    clip_lola_correction_norm=False,
                    clip_lola_actor_norm=False, use_critic=False,
                    lr_decay=False, correction_reward_baseline_per_step=False,
-                   against_exploiter = False,
+                   against_exploiter = False, debug=False,
                    **kwargs):
 
         print("args not used:", kwargs)
@@ -153,6 +164,10 @@ class LOLAPGCG(tune.Trainable):
                              entropy_coeff=entropy_coeff, weigth_decay=weigth_decay,
                              use_critic=use_critic))
 
+                if self.against_exploiter and agent == 1:
+                    self.create_dqn_exploiter()
+
+
             # Clones of the opponents
             if opp_model:
                 self.mainPN_clone = []
@@ -239,6 +254,86 @@ class LOLAPGCG(tune.Trainable):
         print("_init_lola", config)
         self._init_lola(**config)
 
+    def create_dqn_exploiter(self):
+        # Create the dqn policy for the exploiter
+        dqn_config = copy.deepcopy(DEFAULT_CONFIG)
+        dqn_config.update({
+            "prioritized_replay": False,
+            "double_q": False,
+            "dueling": False,
+            "learning_starts": int((self.batch_size - 1) * (self.trace_length - 1)),
+            "model": {
+                "dim": self.grid_size,
+                "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],  # [Channel, [Kernel, Kernel], Stride]]
+                "fcnet_hiddens": [self.env.NUM_ACTIONS],
+                "max_seq_len": self.trace_length,
+            # },
+                # Number of hidden layers for fully connected net
+                "fcnet_hiddens": [64],
+                # Nonlinearity for fully connected net (tanh, relu)
+                "fcnet_activation": "relu",
+            },
+            # Update the replay buffer with this many samples at once. Note that
+            # this setting applies per-worker if num_workers > 1.
+            "rollout_fragment_length": 1,
+            # Size of a batch sampled from replay buffer for training. Note that
+            # if async_updates is set, then each worker returns gradients for a
+            # batch of this size.
+            "train_batch_size": int((self.batch_size) * (self.trace_length))
+            if int((self.batch_size) * (self.trace_length)) < 64 else 64,
+            "explore":False,
+            "grad_clip": 1,
+            "lr":0.1,
+        })
+        print("dqn_config", dqn_config)
+
+        self.local_replay_buffer = LocalReplayBuffer(
+            num_shards=1,
+            learning_starts=dqn_config["learning_starts"],
+            buffer_size=dqn_config["buffer_size"],
+            replay_batch_size=dqn_config["train_batch_size"],
+            replay_mode=dqn_config["multiagent"]["replay_mode"],
+            replay_sequence_length=dqn_config["replay_sequence_length"])
+
+        with tf.variable_scope(f"dqn_exploiter"):
+            self.dqn_exploiter = DQNTFPolicy(obs_space=self.env.OBSERVATION_SPACE,
+                                             action_space=self.env.ACTION_SPACE,
+                                             config=dqn_config)
+
+        self.multi_agent_batch_builders = [MultiAgentSampleBatchBuilder(
+            policy_map={"player_blue": self.dqn_exploiter},
+            clip_rewards=False,
+            callbacks=DefaultCallbacks()
+        ) for _ in range(self.batch_size)
+        ]
+
+    def add_data_in_rllib_batch_builder(self, s, s1P, trainBatch1, d):
+        for i in range(self.batch_size):
+            step_player_values = {
+                "eps_id": self.timestep,
+                "obs": s[i],
+                "new_obs": s1P[i],
+                "actions": trainBatch1[1][-1][i],
+                "prev_actions": trainBatch1[1][-2][i] if len(trainBatch1[1]) > 1 else 0,
+                "rewards": trainBatch1[2][-1][i],
+                "prev_rewards": trainBatch1[2][-2][i] if len(trainBatch1[2]) > 1 else 0,
+                "dones": d[0], # done is the same for for every episodes in the batch
+            }
+            self.multi_agent_batch_builders[i].add_values(agent_id="player_blue", policy_id="player_blue",
+                                                          **step_player_values)
+            self.multi_agent_batch_builders[i].count += 1
+
+    def train_dqn_policy(self):
+        # Add episodes in replay buffer
+        for i in range(self.batch_size):
+            multiagent_batch = self.multi_agent_batch_builders[i].build_and_reset()
+            self.local_replay_buffer.add_batch(multiagent_batch)
+            # self.store_to_replay_buffer(multiagent_batch)
+        # Generate training batch and train
+        replay_batch = self.local_replay_buffer.replay()
+        stats = self.dqn_exploiter.learn_on_batch(replay_batch.policy_batches["player_blue"])
+        return stats
+
     def step(self):
         self.timestep += 1
 
@@ -287,6 +382,12 @@ class LOLAPGCG(tune.Trainable):
             a_all = []
             lstm_state = []
             for agent_role, agent in enumerate(these_agents):
+
+                use_exploiter = False
+                if agent_role == 1 and self.against_exploiter:
+                    if self.timestep > self.against_exploiter:
+                        use_exploiter = True
+
                 a, lstm_s = self.sess.run(
                     [
                         self.mainPN_step[agent].predict,
@@ -299,6 +400,11 @@ class LOLAPGCG(tune.Trainable):
                     }
                 )
                 lstm_state.append(lstm_s)
+
+                if use_exploiter:
+                    action, _, _ = self.dqn_exploiter.compute_actions()
+                    a = action
+
                 a_all.append(a)
 
             trainBatch0[0].append(s)
@@ -334,10 +440,13 @@ class LOLAPGCG(tune.Trainable):
             trainBatch1[2].append(r[1])
             trainBatch0[3].append(s1)
             trainBatch1[3].append(s1)
-            trainBatch0[4].append(d)
-            trainBatch1[4].append(d)
-            trainBatch0[5].append(lstm_state[0])
-            trainBatch1[5].append(lstm_state[1])
+            # trainBatch0[4].append(d)
+            # trainBatch1[4].append(d)
+            # trainBatch0[5].append(lstm_state[0])
+            # trainBatch1[5].append(lstm_state[1])
+
+            if self.against_exploiter:
+                self.add_data_in_rllib_batch_builder(s, s1P, trainBatch1, d)
 
             self.total_steps += 1
             for agent_role, agent in enumerate(these_agents):
@@ -552,6 +661,9 @@ class LOLAPGCG(tune.Trainable):
 
         update(self.mainPN, self.lr, update1 / self.bs_mul, update2 / self.bs_mul)
 
+        if self.against_exploiter:
+            dqn_exploiter_stats = self.train_dqn_policy()
+
         updated = True
         print('update params')
 
@@ -613,6 +725,8 @@ class LOLAPGCG(tune.Trainable):
         to_report.update(last_info)
         to_report.update(training_info)
         to_report.update(actions_freq)
+        if self.against_exploiter:
+            to_report.update(dqn_exploiter_stats)
         return to_report
 
     def save_checkpoint(self, checkpoint_dir):

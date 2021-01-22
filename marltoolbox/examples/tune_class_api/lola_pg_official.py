@@ -162,6 +162,7 @@ def main(debug):
     exp_name, _ = log.log_in_current_day_dir("LOLA_PG")
 
     tune_hparams = {
+        "debug":debug,
         "exp_name": exp_name,
         "train_n_replicates": train_n_replicates,
 
@@ -174,7 +175,7 @@ def main(debug):
         "trace_length": 3 if debug else 20,
         "lr": None,
         "gamma": 0.5,
-        "batch_size": 5 if debug else 512,
+        "batch_size": 8 if debug else 512,
 
         # "env": IteratedPrisonersDilemma,
         # "env": IteratedBoS,
@@ -223,10 +224,12 @@ def main(debug):
         "correction_reward_baseline_per_step": False,
 
         "use_critic": False,
+
+        "against_exploiter": 1000,
     }
 
     if tune_hparams["load_plot_data"] is None:
-        ray.init(num_cpus=os.cpu_count(), num_gpus=0)
+        ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=True)
 
         full_config, stop, env_config = get_tune_config(tune_hparams)
         training_results = train(full_config, stop, tune_hp=tune_hparams)
