@@ -3,7 +3,7 @@
 ##########
 
 """
-Training funcion for the Coin Game.
+Training function for the Coin Game.
 """
 import json
 import os
@@ -50,11 +50,13 @@ class LOLAPGCG(tune.Trainable):
                    clip_lola_correction_norm=False,
                    clip_lola_actor_norm=False, use_critic=False,
                    lr_decay=False, correction_reward_baseline_per_step=False,
-                   # is_training = True,
+                   against_exploiter = False,
                    **kwargs):
 
         print("args not used:", kwargs)
-        # print("is_training",is_training)
+        if opp_model:
+            # Opponent modeling not tested nor supported when improving the stability of the algorithm
+            raise NotImplementedError()
 
         corrections = lola_update
 
@@ -111,28 +113,21 @@ class LOLAPGCG(tune.Trainable):
         self.lr_decay = lr_decay
         self.correction_reward_baseline_per_step = correction_reward_baseline_per_step
         self.use_critic = use_critic
+        self.against_exploiter = against_exploiter
 
         self.obs_batch = deque(maxlen=self.batch_size)
 
         # Setting the training parameters
         self.y = gamma
-        # num_episodes = num_episodes  # How many episodes of game environment to train network with.
-        # load_model = False  # Whether to load a saved model.
-        # path = "./drqn"  # The path to save our model to.
         self.n_agents = self.env.NUM_AGENTS
         self.total_n_agents = self.n_agents
         self.h_size = [hidden] * self.total_n_agents
         self.max_epLength = trace_length + 1  # The max allowed length of our episode.
-        # summary_len = 20 #Number of episodes to periodically save for analysis
-
-        # print("tf.reset_default_graph()")
-        # tf.reset_default_graph()
 
         graph = tf.Graph()
 
         with graph.as_default() as g:
             self.sess = tf.Session()
-            # self.sess = tf.InteractiveSession()
 
             self.mainPN = []
             self.mainPN_step = []
@@ -181,7 +176,8 @@ class LOLAPGCG(tune.Trainable):
                                  clip_lola_update_norm=clip_lola_update_norm,
                                  lola_correction_multiplier=self.lola_correction_multiplier,
                                  clip_lola_correction_norm=clip_lola_correction_norm,
-                                 clip_lola_actor_norm=clip_lola_actor_norm
+                                 clip_lola_actor_norm=clip_lola_actor_norm,
+                                 against_exploiter=self.against_exploiter
                                  )
             else:
                 corrections_func([self.mainPN[0], self.mainPN_clone[1]],
@@ -189,7 +185,7 @@ class LOLAPGCG(tune.Trainable):
                                  clip_lola_update_norm=clip_lola_update_norm,
                                  lola_correction_multiplier=self.lola_correction_multiplier,
                                  clip_lola_correction_norm=clip_lola_correction_norm,
-                                 clip_lola_actor_norm=clip_lola_actor_norm
+                                 clip_lola_actor_norm=clip_lola_actor_norm,
                                  )
                 corrections_func([self.mainPN[1], self.mainPN_clone[0]],
                                  batch_size, trace_length, corrections, self.cube,
@@ -202,9 +198,7 @@ class LOLAPGCG(tune.Trainable):
 
             self.init = tf.global_variables_initializer()
 
-            # self.saver = tf.train.Saver(max_to_keep=5)
             self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=5)
-            # + tf.get_collection_ref("batch_norm_non_trainable_variables_co‌​llection")
 
             self.trainables = tf.trainable_variables()
 
@@ -217,10 +211,6 @@ class LOLAPGCG(tune.Trainable):
 
             self.total_steps = 0
 
-            # Make a path for our model to be saved in.
-            # if not os.path.exists(path):
-            #     os.makedirs(path)
-
             self.episodes_run = np.zeros(self.total_n_agents)
             self.episodes_run_counter = np.zeros(self.total_n_agents)
             self.episodes_reward = np.zeros((self.total_n_agents, batch_size))
@@ -232,11 +222,6 @@ class LOLAPGCG(tune.Trainable):
             self.discount = np.expand_dims(discount, 0)
             self.discount_array = np.reshape(discount_array, [1, -1])
 
-            # with tf.Session() as sess:
-            # if load_model == True:
-            #     print( 'Loading Model...')
-            #     ckpt = tf.train.get_checkpoint_state(path)
-            #     saver.restore(sess, ckpt.model_checkpoint_path)
             self.sess.run(self.init)
             if not self.mem_efficient:
                 self.sess.run(self.cube_ops)
@@ -302,10 +287,6 @@ class LOLAPGCG(tune.Trainable):
             a_all = []
             lstm_state = []
             for agent_role, agent in enumerate(these_agents):
-                # print("s.shape", s.shape)
-                # print("s", s)
-                # print("lstm_state_old[agent].shape", lstm_state_old[agent].shape)
-                # print("lstm_state_old[agent]", lstm_state_old[agent])
                 a, lstm_s = self.sess.run(
                     [
                         self.mainPN_step[agent].predict,
@@ -334,7 +315,6 @@ class LOLAPGCG(tune.Trainable):
                 d = np.array([d for _ in range(self.batch_size)])
                 s1P = obs[0]
                 last_info.update(info)
-                # print("s1P,r,d", s1P,r,d)
             else:
                 actions = {"player_red": a_all[0],
                            "player_blue": a_all[1]}
@@ -365,67 +345,6 @@ class LOLAPGCG(tune.Trainable):
 
             for index in range(self.batch_size):
                 r_pb = [r[0][index], r[1][index]]
-                # # if np.array(r_pb).any():
-                # #     if r_pb[0] == 1 and r_pb[1] == 0:
-                # #         rAll[0] += 1
-                # #     elif r_pb[0] == 0 and r_pb[1] == 1:
-                # #         rAll[1] += 1
-                # #     elif r_pb[0] == 1 and r_pb[1] == -2:
-                # #         rAll[2] += 1
-                # #     elif r_pb[0] == -2 and r_pb[1] == 1:
-                # #         rAll[3] += 1
-                # if not self.asymmetry:
-                #     if np.array(r_pb).any():
-                #         # player 1 pick coin 1
-                #         if r_pb[0] == 1 and r_pb[1] == 0:
-                #             rAll[0] += 1
-                #         # player 2 pick coin 2
-                #         elif r_pb[0] == 0 and r_pb[1] == 1:
-                #             rAll[1] += 1
-                #         # player 1 pick coin 2
-                #         elif r_pb[0] == 1 and r_pb[1] == -2:
-                #             rAll[2] += 1
-                #         # player 2 pick coin 1
-                #         elif r_pb[0] == -2 and r_pb[1] == 1:
-                #             rAll[3] += 1
-                #         # player 1 pick coin 2 and player 2 pick coin 2
-                #         elif r_pb[0] == 1 and r_pb[1] == -1:
-                #             rAll[4] += 1
-                #         # player 1 pick coin 1 and player 2 pick coin 1
-                #         elif r_pb[0] == -1 and r_pb[1] == 1:
-                #             rAll[5] += 1
-                #         else:
-                #             raise ValueError(f"r_pb_{r_pb}")
-                #     # Total reward for both agents
-                #     rAll[6] += r_pb[0] + r_pb[1]
-                #     # Count n steps in env
-                #     rAll[7] += 1
-                # else:
-                #     if np.array(r_pb).any():
-                #         # player 1 pick coin 1
-                #         if r_pb[0] == 2 and r_pb[1] == 0:
-                #             rAll[0] += 1
-                #         # player 2 pick coin 2
-                #         elif r_pb[0] == 0 and r_pb[1] == 1:
-                #             rAll[1] += 1
-                #         # player 1 pick coin 2
-                #         elif r_pb[0] == 1 and r_pb[1] == -2:
-                #             rAll[2] += 1
-                #         # player 2 pick coin 1
-                #         elif r_pb[0] == -1 and r_pb[1] == 1:
-                #             rAll[3] += 1
-                #         # player 1 pick coin 2 and player 2 pick coin 2
-                #         elif r_pb[0] == 1 and r_pb[1] == -1:
-                #             rAll[4] += 1
-                #         # player 1 pick coin 1 and player 2 pick coin 1
-                #         elif r_pb[0] == 1 and r_pb[1] == 1:
-                #             rAll[5] += 1
-                #         else:
-                #             raise ValueError(f"r_pb_{r_pb}")
-                #     # Total reward for both agents
-                #     rAll[6] += r_pb[0] + r_pb[1]
-                #     # Count n steps in env
-                #     rAll[7] += 1
                 # Total reward for both agents
                 rAll[6] += r_pb[0] + r_pb[1]
                 # Count n steps in env
@@ -433,9 +352,6 @@ class LOLAPGCG(tune.Trainable):
 
                 aAll[a_all[index, 0]] += 1
                 aAll[a_all[index, 1] + 4] += 1
-
-            # aAll[a_all[0]] += 1
-            # aAll[a_all[1] + 4] += 1
 
             s_old = s
             s = s1
@@ -526,17 +442,6 @@ class LOLAPGCG(tune.Trainable):
             theta_2_vals = self.mainPN[1].getparams()
             theta_1_vals_clone = self.mainPN_clone[0].getparams()
             theta_2_vals_clone = self.mainPN_clone[1].getparams()
-
-            # if len(self.rList) % self.summary_len == 0:
-            #     print('params check before optimization')
-            #     print('theta_1_vals', theta_1_vals)
-            #     print('theta_2_vals_clone', theta_2_vals_clone)
-            #     print('theta_2_vals', theta_2_vals)
-            #     print('theta_1_vals_clone', theta_1_vals_clone)
-            #     print('diff between theta_1 and theta_2_vals_clone',
-            #           np.linalg.norm(theta_1_vals - theta_2_vals_clone))
-            #     print('diff between theta_2 and theta_1_vals_clone',
-            #           np.linalg.norm(theta_2_vals - theta_1_vals_clone))
 
         if self.lr_decay:
             lr_decay = (self.num_episodes - self.timestep) / self.num_episodes
@@ -725,10 +630,6 @@ class LOLAPGCG(tune.Trainable):
         # TF v1
         save_path = self.saver.save(self.sess, f"{tf_checkpoint_path}.ckpt")
 
-        # RLLib method
-        # self._variables = ray.experimental.tf_utils.TensorFlowVariables(self._loss, self._sess)
-        # self._variables.get_weights()
-
         return path
 
     def load_checkpoint(self, checkpoint_path):
@@ -741,21 +642,12 @@ class LOLAPGCG(tune.Trainable):
 
         # Support VM and local (manual) loading
         tf_checkpoint_dir, _ = os.path.split(checkpoint_path)
-        # tail, head = os.path.split(checkpoint["tf_checkpoint_dir"])
-        # tf_checkpoint_dir = os.path.join(tail_json, head)
         print("tf_checkpoint_dir", tf_checkpoint_dir)
         ckpt = tf.train.get_checkpoint_state(tf_checkpoint_dir,
                                              latest_filename=f'{checkpoint["tf_checkpoint_filename"]}')
-        # print("ckpt",ckpt)
         tail, head = os.path.split(ckpt.model_checkpoint_path)
         ckpt.model_checkpoint_path = os.path.join(tf_checkpoint_dir, head)
-        # print("ckpt after",ckpt.__dict__)
         self.saver.restore(self.sess, ckpt.model_checkpoint_path)
-
-        # RLLib method
-        # self._variables.set_weights(weights)
-
-        # TODO need to set in eval like batchnorm fixed
 
     def cleanup(self):
         self.sess.close()
@@ -782,8 +674,6 @@ class LOLAPGCG(tune.Trainable):
         return single_obs
 
     def _post_process_action(self, action):
-        # print("action", action)
-
         # Compensate for the batch norm not in evaluation mode
         if isinstance(action, Iterable):
             action = action[-1]

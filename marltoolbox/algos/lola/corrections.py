@@ -11,7 +11,7 @@ def corrections_func(mainPN, batch_size, trace_length,
                      corrections=False, cube=None, clip_lola_update_norm=False,
                      lola_correction_multiplier=1.0,
                      clip_lola_correction_norm=False,
-                     clip_lola_actor_norm=False):
+                     clip_lola_actor_norm=False, against_exploiter=False):
     """Computes corrections for policy gradients.
 
     Args:
@@ -75,27 +75,14 @@ def corrections_func(mainPN, batch_size, trace_length,
 
     mainPN[0].v_0_log = v_0
     mainPN[1].v_1_log = v_1
-    # print_op_15 = tf.print("v_0", tf.math.reduce_sum(v_0))
-    # print_op_16 = tf.print("v_1", tf.math.reduce_sum(v_1))
-    # print_op_17 = tf.print("mainPN[0].target", tf.math.reduce_sum(mainPN[0].target))
-    # print_op_18 = tf.print("mainPN[1].target", tf.math.reduce_sum(mainPN[1].target))
-    # print_op_19 = tf.print("mainPN[0].value", tf.math.reduce_sum(mainPN[0].value))
-    # print_op_20 = tf.print("mainPN[1].value", tf.math.reduce_sum(mainPN[1].value))
-    # print_op_21 = tf.print("mainPN[0].gamma_array", tf.math.reduce_sum(mainPN[0].gamma_array))
-    # print_op_22 = tf.print("mainPN[1].gamma_array", tf.math.reduce_sum(mainPN[1].gamma_array))
-    # with tf.control_dependencies([print_op_15, print_op_16, print_op_17, print_op_18, print_op_19, print_op_20,
-    #                               print_op_21, print_op_22]):
     actor_target_error_0 = (mainPN[0].target-tf.stop_gradient(mainPN[0].value))
-    # actor_target_error_0 = (mainPN[0].target)
-    # actor_target_error_0 = (mainPN[0].target-tf.math.reduce_mean(mainPN[0].target, axis=0))
     v_0_pi_0 = 2*tf.reduce_sum((actor_target_error_0* mainPN[0].gamma_array) * mainPN[0].log_pi_action_bs_t) / \
                batch_size
     v_0_pi_1 = 2*tf.reduce_sum((actor_target_error_0 * mainPN[1].gamma_array) * mainPN[1].log_pi_action_bs_t) / \
                batch_size
 
     actor_target_error_1 = (mainPN[1].target-tf.stop_gradient(mainPN[1].value))
-    # actor_target_error_1 = (mainPN[1].target)
-    # actor_target_error_1 = (mainPN[1].target-tf.math.reduce_mean(mainPN[1].target, axis=0))
+
     v_1_pi_0 = 2*tf.reduce_sum((actor_target_error_1 * mainPN[0].gamma_array) * mainPN[0].log_pi_action_bs_t) / batch_size
     v_1_pi_1 = 2*tf.reduce_sum((actor_target_error_1 * mainPN[1].gamma_array) * mainPN[1].log_pi_action_bs_t) / batch_size
 
@@ -105,43 +92,24 @@ def corrections_func(mainPN, batch_size, trace_length,
     mainPN[1].actor_loss = v_1_pi_1
     mainPN[0].value_used_for_correction = v_0
     mainPN[1].value_used_for_correction = v_1
-    # print_op_77 = tf.print("mainPN[0].log_pi_action_bs_t", tf.math.reduce_sum(mainPN[0].log_pi_action_bs_t))
-    # print_op_78 = tf.print("mainPN[1].log_pi_action_bs_t", tf.math.reduce_sum(mainPN[1].log_pi_action_bs_t))
-    # print_op_7 = tf.print("v_1_pi_0", tf.math.reduce_sum(v_1_pi_0))
-    # print_op_8 = tf.print("v_1_pi_1", tf.math.reduce_sum(v_1_pi_1))
-    # print_op_13 = tf.print("v_0_pi_0", tf.math.reduce_sum(v_0_pi_0))
-    # print_op_14 = tf.print("v_0_pi_1", tf.math.reduce_sum(v_0_pi_1))
-    # with tf.control_dependencies([print_op_7, print_op_8, print_op_13, print_op_14,
-    #                               print_op_77, print_op_78]):
+
     v_0_grad_theta_0 = flatgrad(v_0_pi_0, mainPN[0].parameters)
     v_0_grad_theta_1 = flatgrad(v_0_pi_1, mainPN[1].parameters)
 
     v_1_grad_theta_0 = flatgrad(v_1_pi_0, mainPN[0].parameters)
     v_1_grad_theta_1 = flatgrad(v_1_pi_1, mainPN[1].parameters)
 
-    # print_op_9 = tf.print("v_1_grad_theta_0", tf.math.reduce_sum(v_1_grad_theta_0))
-    # print_op_10 = tf.print("v_1_grad_theta_1", tf.math.reduce_sum(v_1_grad_theta_1))
-    # print_op_11 = tf.print("v_0_grad_theta_0", tf.math.reduce_sum(v_0_grad_theta_0))
-    # print_op_12 = tf.print("v_0_grad_theta_1", tf.math.reduce_sum(v_0_grad_theta_1))
-
     mainPN[0].grad = v_0_grad_theta_0
     mainPN[1].grad = v_1_grad_theta_1
     mainPN[0].grad_sum = tf.math.reduce_sum(v_0_grad_theta_0)
     mainPN[1].grad_sum = tf.math.reduce_sum(v_1_grad_theta_1)
 
-    # extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    # with tf.control_dependencies(extra_update_ops):
     mainPN[0].grad_v_1 = v_1_grad_theta_0
     mainPN[1].grad_v_0 = v_0_grad_theta_1
 
     if corrections:
-        # with tf.control_dependencies([print_op_9, print_op_10, print_op_11, print_op_12]):
         v_0_grad_theta_0_wrong = flatgrad(v_0, mainPN[0].parameters)
         v_1_grad_theta_1_wrong = flatgrad(v_1, mainPN[1].parameters)
-
-        # print_op_5 = tf.print("v_0_grad_theta_0_wrong", tf.math.reduce_sum(v_0_grad_theta_0_wrong))
-        # print_op_6 = tf.print("v_1_grad_theta_1_wrong", tf.math.reduce_sum(v_1_grad_theta_1_wrong))
-        # with tf.control_dependencies([print_op_5,print_op_6]):
 
         param_len = v_0_grad_theta_0_wrong.get_shape()[0].value
 
@@ -154,9 +122,6 @@ def corrections_func(mainPN, batch_size, trace_length,
             tf.reshape(v_0_grad_theta_0_wrong, [param_len, 1])
         )
 
-        # print_op_3 = tf.print("multiply0", tf.math.reduce_sum(multiply0))
-        # print_op_4 = tf.print("multiply1", tf.math.reduce_sum(multiply1))
-        # with tf.control_dependencies([print_op_3,print_op_4]):
         second_order0 = flatgrad(multiply0, mainPN[0].parameters)
         second_order1 = flatgrad(multiply1, mainPN[1].parameters)
 
@@ -164,15 +129,6 @@ def corrections_func(mainPN, batch_size, trace_length,
         mainPN[1].v_1_grad_10 = second_order1
         mainPN[0].second_order = tf.math.reduce_sum(second_order0)
         mainPN[1].second_order = tf.math.reduce_sum(second_order1)
-
-        # print_op_1 = tf.print("second_order0", tf.math.reduce_sum(second_order0))
-        # print_op_2 = tf.print("second_order1", tf.math.reduce_sum(second_order1))
-        # print_op_23 = tf.print("mainPN[0].loss", tf.math.reduce_sum(mainPN[0].loss))
-        # print_op_24 = tf.print("mainPN[1].loss", tf.math.reduce_sum(mainPN[1].loss))
-        # print_op_25 = tf.print("mainPN[0].next_v", tf.math.reduce_sum(mainPN[0].next_v))
-        # print_op_26 = tf.print("mainPN[1].next_v", tf.math.reduce_sum(mainPN[1].next_v))
-        # with tf.control_dependencies([print_op_1,print_op_2, print_op_23, print_op_24,
-        #                               print_op_25, print_op_26]):
 
         second_order0 = (second_order0 * lola_correction_multiplier)
         second_order1 = (second_order1 * lola_correction_multiplier)
@@ -185,14 +141,13 @@ def corrections_func(mainPN, batch_size, trace_length,
 
 
         delta_0 = v_0_grad_theta_0 + second_order0
-        delta_1 = v_1_grad_theta_1 + second_order1
+        if against_exploiter:
+            # The exploiter is not a LOLA agent
+            delta_1 = v_1_grad_theta_1
+        else:
+            delta_1 = v_1_grad_theta_1 + second_order1
 
         if clip_lola_update_norm:
-            # delta_0_l2sum = math_ops.reduce_sum(delta_0 * delta_0, None, keepdims=True)
-            # delta_1_l2sum = math_ops.reduce_sum(delta_1 * delta_1, None, keepdims=True)
-            # print_op_1 = tf.print("delta_0_l2sum", delta_0_l2sum)
-            # print_op_2 = tf.print("delta_1_l2sum", delta_1_l2sum)
-            # with tf.control_dependencies([print_op_1, print_op_2]):
             delta_0 = tf.clip_by_norm(delta_0, clip_lola_update_norm, axes=None, name=None)
             delta_1 = tf.clip_by_norm(delta_1, clip_lola_update_norm, axes=None, name=None)
 

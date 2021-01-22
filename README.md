@@ -108,10 +108,9 @@ sudo apt-get install -y libglu1-mesa-dev libgl1-mesa-dev libosmesa6-dev xvfb ffm
 
 ## Install marltoolbox
 git clone https://github.com/longtermrisk/marltoolbox.git
-## Here, you may need to provide github authentication (email and password)
 cd marltoolbox
 
-## Here are different installation to support different algorithms
+## Here are different installation instructions to support different algorithms
 ### Vanilla
 pip install -e .
 ### LOLA: If you are planning to use LOLA then run instead:
