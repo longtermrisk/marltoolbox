@@ -11,7 +11,7 @@ import time
 from ray import tune
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 
-from lola_dice.train_tune_class_API import LOLADICE
+from marltoolbox.algos.lola_dice.train_tune_class_API import LOLADICE
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma, IteratedMatchingPennies, IteratedAsymBoS
 from marltoolbox.utils import policy, log, same_and_cross_perf

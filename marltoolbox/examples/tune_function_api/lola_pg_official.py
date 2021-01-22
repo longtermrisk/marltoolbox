@@ -7,9 +7,9 @@ import os
 import ray
 from ray import tune
 
-import lola.envs
-import lola_dice.envs
-from lola import train_cg, train_exact, train_pg
+import marltoolbox.algos.lola.envs as lola_envs
+import marltoolbox.algos.lola_dice.envs as lola_dice_envs
+from marltoolbox.algos.lola import train_cg, train_exact, train_pg
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 from marltoolbox.utils import log
 
@@ -22,9 +22,9 @@ def trainer_fn(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
          weigth_decay, **kwargs):
     # Instantiate the environment
     if exp_name == "IPD":
-        env = lola.envs.IPD(trace_length)
+        env = lola_envs.IPD(trace_length)
     elif exp_name == "IMP":
-        env = lola.envs.IMP(trace_length)
+        env = lola_envs.IMP(trace_length)
     elif exp_name == "CoinGame":
         if use_toolbox_env:
             env = CoinGame(config={
@@ -35,7 +35,7 @@ def trainer_fn(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
                 "add_position_in_epi": False,
             })
         else:
-            env = lola_dice.envs.CG(trace_length, batch_size, grid_size)
+            env = lola_dice_envs.CG(trace_length, batch_size, grid_size)
         env.seed(seed)
     elif exp_name == "AsymCoinGame":
         if use_toolbox_env:
@@ -47,7 +47,7 @@ def trainer_fn(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
                 "add_position_in_epi": False,
             })
         else:
-            env = lola_dice.envs.AsymCG(trace_length, batch_size, grid_size)
+            env = lola_dice_envs.AsymCG(trace_length, batch_size, grid_size)
         env.seed(seed)
     else:
         raise ValueError(f"exp_name: {exp_name}")

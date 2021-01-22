@@ -12,9 +12,9 @@ import tensorflow as tf
 from datetime import datetime
 from ray import tune
 
-import lola_dice.envs
-from lola_dice.policy import SimplePolicy, MLPPolicy, ConvPolicy
-from lola_dice.rpg import train
+import marltoolbox.algos.lola_dice.envs as lola_dice_envs
+from marltoolbox.algos.lola_dice.policy import SimplePolicy, MLPPolicy, ConvPolicy
+from marltoolbox.algos.lola_dice.rpg import train
 from marltoolbox.utils import log
 
 
@@ -44,15 +44,15 @@ def trainer_fn(use_dice, use_opp_modeling, epochs, batch_size, env_name, trace_l
                value_epochs, om_batch_size, om_epochs, use_baseline, policy_maker, make_optim, **kwargs):
     # Instantiate the environment
     if env_name == "IPD":
-        env = lola_dice.envs.IPD(max_steps=trace_length, batch_size=batch_size)
+        env = lola_dice_envs.IPD(max_steps=trace_length, batch_size=batch_size)
     elif env_name == "IMP":
-        env = lola_dice.envs.IMP(trace_length)
+        env = lola_dice_envs.IMP(trace_length)
     elif env_name == "CoinGame":
-        env = lola_dice.envs.CG(trace_length, batch_size, grid_size)
+        env = lola_dice_envs.CG(trace_length, batch_size, grid_size)
         timestamp = datetime.now().timestamp()
         env.seed(int(timestamp))
     elif env_name == "AsymCoinGame":
-        env = lola_dice.envs.AsymCG(trace_length, batch_size, grid_size)
+        env = lola_dice_envs.AsymCG(trace_length, batch_size, grid_size)
         timestamp = datetime.now().timestamp()
         env.seed(int(timestamp))
     else:

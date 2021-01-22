@@ -15,8 +15,8 @@ from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy, build_q_stats, after_init
 from ray.rllib.utils.schedules import PiecewiseSchedule
 
-from lola.train_cg_tune_class_API import LOLAPGCG
-from lola.train_pg_tune_class_API import LOLAPGMatrice
+from marltoolbox.algos.lola.train_cg_tune_class_API import LOLAPGCG
+from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
 from marltoolbox.algos import population
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma, IteratedBoS, IteratedAsymChicken, IteratedAsymBoS

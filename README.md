@@ -105,11 +105,18 @@ pip install --upgrade pip
 conda install psutil
 ### (optional) To be able to use most of the gym environments
 sudo apt-get install -y libglu1-mesa-dev libgl1-mesa-dev libosmesa6-dev xvfb ffmpeg curl patchelf libglfw3 libglfw3-dev cmake zlib1g zlib1g-dev swig
+
 ## Install marltoolbox
 git clone https://github.com/longtermrisk/marltoolbox.git
 ## Here, you may need to provide github authentication (email and password)
 cd marltoolbox
+
+## Here are different installation to support different algorithms
+### Vanilla
 pip install -e .
+### LOLA: If you are planning to use LOLA then run instead:
+conda install python=3.6
+pip install -e .[lola]
 ```
 **Test the installation**
 ```bash
