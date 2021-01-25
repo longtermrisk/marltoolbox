@@ -225,7 +225,7 @@ def main(debug):
 
         "use_critic": False,
 
-        "against_exploiter": 1000,
+        "against_exploiter": 2 if debug else 1500,
     }
 
     if tune_hparams["load_plot_data"] is None:

@@ -14,7 +14,7 @@ from collections import deque
 import numpy as np
 import tensorflow as tf
 from ray import tune
-from ray.rllib.agents.dqn import DQNTFPolicy, DEFAULT_CONFIG
+from ray.rllib.agents.dqn import DQNTFPolicy, DEFAULT_CONFIG, DQNTorchPolicy
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.evaluation.sample_batch_builder import MultiAgentSampleBatchBuilder
@@ -192,7 +192,7 @@ class LOLAPGCG(tune.Trainable):
                                  lola_correction_multiplier=self.lola_correction_multiplier,
                                  clip_lola_correction_norm=clip_lola_correction_norm,
                                  clip_lola_actor_norm=clip_lola_actor_norm,
-                                 against_exploiter=self.against_exploiter
+                                 # against_exploiter=self.against_exploiter
                                  )
             else:
                 corrections_func([self.mainPN[0], self.mainPN_clone[1]],
@@ -255,6 +255,7 @@ class LOLAPGCG(tune.Trainable):
         self._init_lola(**config)
 
     def create_dqn_exploiter(self):
+        # with tf.variable_scope(f"dqn_exploiter"):
         # Create the dqn policy for the exploiter
         dqn_config = copy.deepcopy(DEFAULT_CONFIG)
         dqn_config.update({
@@ -265,9 +266,8 @@ class LOLAPGCG(tune.Trainable):
             "model": {
                 "dim": self.grid_size,
                 "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],  # [Channel, [Kernel, Kernel], Stride]]
-                "fcnet_hiddens": [self.env.NUM_ACTIONS],
+                # "fcnet_hiddens": [self.env.NUM_ACTIONS],
                 "max_seq_len": self.trace_length,
-            # },
                 # Number of hidden layers for fully connected net
                 "fcnet_hiddens": [64],
                 # Nonlinearity for fully connected net (tanh, relu)
@@ -295,16 +295,18 @@ class LOLAPGCG(tune.Trainable):
             replay_mode=dqn_config["multiagent"]["replay_mode"],
             replay_sequence_length=dqn_config["replay_sequence_length"])
 
-        with tf.variable_scope(f"dqn_exploiter"):
-            self.dqn_exploiter = DQNTFPolicy(obs_space=self.env.OBSERVATION_SPACE,
-                                             action_space=self.env.ACTION_SPACE,
-                                             config=dqn_config)
+        # self.dqn_exploiter = DQNTFPolicy(obs_space=self.env.OBSERVATION_SPACE,
+        #                                  action_space=self.env.ACTION_SPACE,
+        #                                  config=dqn_config)
+        self.dqn_exploiter = DQNTorchPolicy(obs_space=self.env.OBSERVATION_SPACE,
+                                         action_space=self.env.ACTION_SPACE,
+                                         config=dqn_config)
 
         self.multi_agent_batch_builders = [MultiAgentSampleBatchBuilder(
-            policy_map={"player_blue": self.dqn_exploiter},
-            clip_rewards=False,
-            callbacks=DefaultCallbacks()
-        ) for _ in range(self.batch_size)
+                policy_map={"player_blue": self.dqn_exploiter},
+                clip_rewards=False,
+                callbacks=DefaultCallbacks()
+            ) for _ in range(self.batch_size)
         ]
 
     def add_data_in_rllib_batch_builder(self, s, s1P, trainBatch1, d):
@@ -332,6 +334,7 @@ class LOLAPGCG(tune.Trainable):
         # Generate training batch and train
         replay_batch = self.local_replay_buffer.replay()
         stats = self.dqn_exploiter.learn_on_batch(replay_batch.policy_batches["player_blue"])
+        print("dqn policy stats", stats)
         return stats
 
     def step(self):
@@ -402,8 +405,9 @@ class LOLAPGCG(tune.Trainable):
                 lstm_state.append(lstm_s)
 
                 if use_exploiter:
-                    action, _, _ = self.dqn_exploiter.compute_actions()
+                    action, a2, a3 = self.dqn_exploiter.compute_actions(obs_batch=s)
                     a = action
+                    # print("dqn action", action, a2, a3)
 
                 a_all.append(a)
 
@@ -726,7 +730,7 @@ class LOLAPGCG(tune.Trainable):
         to_report.update(training_info)
         to_report.update(actions_freq)
         if self.against_exploiter:
-            to_report.update(dqn_exploiter_stats)
+            to_report.update(dqn_exploiter_stats["learner_stats"])
         return to_report
 
     def save_checkpoint(self, checkpoint_dir):
