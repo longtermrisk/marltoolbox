@@ -13,16 +13,11 @@ from collections import deque
 
 import numpy as np
 import tensorflow as tf
-import torch
 from ray import tune
-from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.agents.dqn import DEFAULT_CONFIG, DQNTorchPolicy
-from ray.rllib.evaluation.sample_batch_builder import MultiAgentSampleBatchBuilder
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 
 import marltoolbox.algos.lola_dice.envs as lola_dice_envs
 from marltoolbox.algos.lola.corrections import corrections_func
-from marltoolbox.algos.lola.networks import Pnetwork
+from marltoolbox.algos.lola.networks import Pnetwork, DQNExploiter
 from marltoolbox.algos.lola.utils import get_monte_carlo, make_cube
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 
@@ -58,7 +53,7 @@ class LOLAPGCG(tune.Trainable):
                    lola_update, opp_model, grid_size, gamma, hidden, bs_mul, lr,
                    mem_efficient=True, asymmetry=False, warmup=False,
                    changed_config=False, ac_lr=1.0, summary_len=20, use_MAE=False,
-                   use_toolbox_env=False,
+                   # use_toolbox_env=False,
                    clip_lola_update_norm=False, clip_loss_norm=False,
                    entropy_coeff=0.0, weigth_decay=0.0, lola_correction_multiplier=1.0,
                    clip_lola_correction_norm=False,
@@ -78,26 +73,26 @@ class LOLAPGCG(tune.Trainable):
 
         # Instantiate the environment
         if env == CoinGame:
-            if use_toolbox_env:
-                self.env = CoinGame(config={
-                    "batch_size": batch_size,
-                    "max_steps": trace_length,
-                    "grid_size": grid_size,
-                    "get_additional_info": True,
-                })
-            else:
-                self.env = lola_dice_envs.CG(trace_length, batch_size, grid_size)
+            # if use_toolbox_env:
+            self.env = CoinGame(config={
+                "batch_size": batch_size,
+                "max_steps": trace_length,
+                "grid_size": grid_size,
+                "get_additional_info": True,
+            })
+            # else:
+            #     self.env = lola_dice_envs.CG(trace_length, batch_size, grid_size)
             self.env.seed(seed)
         elif env == AsymCoinGame:
-            if use_toolbox_env:
-                self.env = AsymCoinGame(config={
-                    "batch_size": batch_size,
-                    "max_steps": trace_length,
-                    "grid_size": grid_size,
-                    "get_additional_info": True,
-                })
-            else:
-                self.env = lola_dice_envs.AsymCG(trace_length, batch_size, grid_size)
+            # if use_toolbox_env:
+            self.env = AsymCoinGame(config={
+                "batch_size": batch_size,
+                "max_steps": trace_length,
+                "grid_size": grid_size,
+                "get_additional_info": True,
+            })
+            # else:
+            #     self.env = lola_dice_envs.AsymCG(trace_length, batch_size, grid_size)
             self.env.seed(seed)
         else:
             raise ValueError(f"exp_name: {env}")
@@ -121,7 +116,7 @@ class LOLAPGCG(tune.Trainable):
         self.ac_lr = ac_lr
         self.summary_len = summary_len
         self.use_MAE = use_MAE
-        self.use_toolbox_env = use_toolbox_env
+        # self.use_toolbox_env = use_toolbox_env
         self.clip_lola_update_norm = clip_lola_update_norm
         self.clip_loss_norm = clip_loss_norm
         self.entropy_coeff = entropy_coeff
@@ -130,8 +125,7 @@ class LOLAPGCG(tune.Trainable):
         self.correction_reward_baseline_per_step = correction_reward_baseline_per_step
         self.use_critic = use_critic
         self.playing_against_exploiter = playing_against_exploiter
-        self.train_exploiter_n_times_per_epi = train_exploiter_n_times_per_epi
-        self.exploiter_stop_training_after_n_epi = exploiter_stop_training_after_n_epi
+
 
         self.obs_batch = deque(maxlen=self.batch_size)
 
@@ -156,7 +150,7 @@ class LOLAPGCG(tune.Trainable):
                     Pnetwork(f'main_{agent}', self.h_size[agent], agent, self.env,
                              trace_length=trace_length, batch_size=batch_size,
                              changed_config=changed_config, ac_lr=ac_lr,
-                             use_MAE=use_MAE, use_toolbox_env=use_toolbox_env,
+                             use_MAE=use_MAE, #use_toolbox_env=use_toolbox_env,
                              clip_loss_norm=clip_loss_norm, sess=self.sess,
                              entropy_coeff=entropy_coeff, weigth_decay=weigth_decay,
                              use_critic=use_critic))
@@ -166,13 +160,18 @@ class LOLAPGCG(tune.Trainable):
                              trace_length=trace_length, batch_size=batch_size,
                              reuse=True, step=True, use_MAE=use_MAE,
                              changed_config=changed_config, ac_lr=ac_lr,
-                             use_toolbox_env=use_toolbox_env,
+                             # use_toolbox_env=use_toolbox_env,
                              clip_loss_norm=clip_loss_norm, sess=self.sess,
                              entropy_coeff=entropy_coeff, weigth_decay=weigth_decay,
                              use_critic=use_critic))
 
                 if self.playing_against_exploiter and agent == 1:
-                    self.create_dqn_exploiter(exploiter_base_lr, exploiter_decay_lr_in_n_epi, exploiter_rolling_avg)
+                    self.exploiter = DQNExploiter(
+                        self.env, self.batch_size, self.trace_length, self.grid_size,
+                        exploiter_base_lr, exploiter_decay_lr_in_n_epi, exploiter_rolling_avg,
+                        exploiter_stop_training_after_n_epi, train_exploiter_n_times_per_epi
+                    )
+                    # self.create_dqn_exploiter(exploiter_base_lr, exploiter_decay_lr_in_n_epi, exploiter_rolling_avg)
 
             # Clones of the opponents
             if opp_model:
@@ -182,7 +181,7 @@ class LOLAPGCG(tune.Trainable):
                         Pnetwork(f'clone_{agent}', self.h_size[agent], agent, self.env,
                                  trace_length=trace_length, batch_size=batch_size,
                                  changed_config=changed_config, ac_lr=ac_lr,
-                                 use_MAE=use_MAE, use_toolbox_env=use_toolbox_env,
+                                 use_MAE=use_MAE, #use_toolbox_env=use_toolbox_env,
                                  clip_loss_norm=clip_loss_norm, sess=self.sess,
                                  entropy_coeff=entropy_coeff,
                                  use_critic=use_critic))
@@ -260,124 +259,6 @@ class LOLAPGCG(tune.Trainable):
         print("_init_lola", config)
         self._init_lola(**config)
 
-    def create_dqn_exploiter(self, exploiter_base_lr, exploiter_decay_lr_in_n_epi, exploiter_rolling_avg):
-        # with tf.variable_scope(f"dqn_exploiter"):
-        # Create the dqn policy for the exploiter
-        dqn_config = copy.deepcopy(DEFAULT_CONFIG)
-        dqn_config.update({
-            "prioritized_replay": False,
-            "double_q": True,
-            "buffer_size": 50000,
-            "dueling": False,
-            "learning_starts": min(int((self.batch_size - 1) * (self.trace_length - 1)),64),
-            "model": {
-                "dim": self.grid_size,
-                "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],  # [Channel, [Kernel, Kernel], Stride]]
-                # "fcnet_hiddens": [self.env.NUM_ACTIONS],
-                "max_seq_len": self.trace_length,
-                # Number of hidden layers for fully connected net
-                "fcnet_hiddens": [64],
-                # Nonlinearity for fully connected net (tanh, relu)
-                "fcnet_activation": "relu",
-            },
-            # Update the replay buffer with this many samples at once. Note that
-            # this setting applies per-worker if num_workers > 1.
-            "rollout_fragment_length": 1,
-            # Size of a batch sampled from replay buffer for training. Note that
-            # if async_updates is set, then each worker returns gradients for a
-            # batch of this size.
-            "train_batch_size": min(int((self.batch_size) * (self.trace_length)), 64),
-            "explore": False,
-            "grad_clip": 1,
-            "gamma": 0.5,
-            "lr": exploiter_base_lr,
-            # Learning rate schedule
-            "lr_schedule": [
-                (0, exploiter_base_lr / 1000),
-                (100, exploiter_base_lr),
-                (exploiter_decay_lr_in_n_epi, exploiter_base_lr / 1e9)],
-            "sgd_momentum": 0.9,
-        })
-        print("dqn_config", dqn_config)
-
-        self.local_replay_buffer = LocalReplayBuffer(
-            num_shards=1,
-            learning_starts=dqn_config["learning_starts"],
-            buffer_size=dqn_config["buffer_size"],
-            replay_batch_size=dqn_config["train_batch_size"],
-            replay_mode=dqn_config["multiagent"]["replay_mode"],
-            replay_sequence_length=dqn_config["replay_sequence_length"])
-
-        # self.dqn_exploiter = DQNTFPolicy(obs_space=self.env.OBSERVATION_SPACE,
-        #                                  action_space=self.env.ACTION_SPACE,
-        #                                  config=dqn_config)
-
-        def sgd_optimizer_dqn(policy, config) -> "torch.optim.Optimizer":
-            return torch.optim.SGD(policy.q_func_vars, lr=policy.cur_lr, momentum=config["sgd_momentum"])
-        MyDQNTorchPolicy = DQNTorchPolicy.with_updates(optimizer_fn=sgd_optimizer_dqn)
-        self.dqn_exploiter = MyDQNTorchPolicy(obs_space=self.env.OBSERVATION_SPACE,
-                                            action_space=self.env.ACTION_SPACE,
-                                            config=dqn_config)
-
-        self.multi_agent_batch_builders = [MultiAgentSampleBatchBuilder(
-            policy_map={"player_blue": self.dqn_exploiter},
-            clip_rewards=False,
-            callbacks=DefaultCallbacks()
-        )
-            # for _ in range(self.batch_size)
-        ]
-
-        self.exploiter_rolling_avg_factor = exploiter_rolling_avg
-        self.exploiter_rolling_avg_r_coop = 0.0
-        self.exploiter_rolling_avg_r_selfish = 0.0
-
-    def add_data_in_rllib_batch_builder(self, s, s1P, trainBatch1, d):
-        if self.timestep <= self.exploiter_stop_training_after_n_epi:
-            # for i in range(self.batch_size):
-            i = 0
-            step_player_values = {
-                "eps_id": self.timestep,
-                "obs": s[i],
-                "new_obs": s1P[i],
-                "actions": trainBatch1[1][-1][i],
-                "prev_actions": trainBatch1[1][-2][i] if len(trainBatch1[1]) > 1 else 0,
-                "rewards": trainBatch1[2][-1][i],
-                "prev_rewards": trainBatch1[2][-2][i] if len(trainBatch1[2]) > 1 else 0,
-                "dones": d[0],  # done is the same for for every episodes in the batch
-            }
-            self.multi_agent_batch_builders[i].add_values(agent_id="player_blue", policy_id="player_blue",
-                                                          **step_player_values)
-            self.multi_agent_batch_builders[i].count += 1
-
-    def train_dqn_policy(self):
-        stats = {"learner_stats": {}}
-        if self.timestep <= self.exploiter_stop_training_after_n_epi:
-            # Add episodes in replay buffer
-            # for i in range(self.batch_size):
-            i = 0
-            multiagent_batch = self.multi_agent_batch_builders[i].build_and_reset()
-            self.local_replay_buffer.add_batch(multiagent_batch)
-
-            # update lr in scheduler & in optimizer
-            self.dqn_exploiter.on_global_var_update({
-                "timestep": self.timestep
-            })
-            self.dqn_exploiter.optimizer()
-            if hasattr(self.dqn_exploiter, "cur_lr"):
-                for opt in self.dqn_exploiter._optimizers:
-                    for p in opt.param_groups:
-                        p["lr"] = self.dqn_exploiter.cur_lr
-            # Generate training batch and train
-            for _ in range(self.train_exploiter_n_times_per_epi):
-                replay_batch = self.local_replay_buffer.replay()
-                if replay_batch is not None: # is None when there is not enough step in the data buffer
-                    stats = self.dqn_exploiter.learn_on_batch(replay_batch.policy_batches["player_blue"])
-
-        stats["learner_stats"]["exploiter_lr_cur"] = self.dqn_exploiter.cur_lr
-        for j, opt in enumerate(self.dqn_exploiter._optimizers):
-            stats["learner_stats"]["exploiter_lr_from_params"] = [p["lr"] for p in opt.param_groups][0]
-        return stats
-
     def step(self):
         self.timestep += 1
 
@@ -393,16 +274,16 @@ class LOLAPGCG(tune.Trainable):
         if self.warmup_step_n < self.warmup:
             self.warmup_step_n += 1
 
-        if not self.use_toolbox_env:
-            # using coin game from lola.envs
-            # Reset environment and get first new observation
-            # sP = env.reset()
-            # using coin game from lola_dice.envs
-            obs, _ = self.env.reset()
-            sP = obs[0]
-        else:
-            obs = self.env.reset()
-            sP = obs["player_red"]
+        # if not self.use_toolbox_env:
+        #     # using coin game from lola.envs
+        #     # Reset environment and get first new observation
+        #     # sP = env.reset()
+        #     # using coin game from lola_dice.envs
+        #     obs, _ = self.env.reset()
+        #     sP = obs[0]
+        # else:
+        obs = self.env.reset()
+        sP = obs["player_red"]
 
         s = sP
 
@@ -446,7 +327,8 @@ class LOLAPGCG(tune.Trainable):
                 lstm_state.append(lstm_s)
 
                 if use_exploiter:
-                    action, a2, a3 = self.dqn_exploiter.compute_actions(obs_batch=s)
+                    action, a2, a3 = self.exploiter.compute_actions(obs_batch=s)
+                    # action, a2, a3 = self.dqn_exploiter.compute_actions(obs_batch=s)
                     a = action
                     # print("dqn action", action, a2, a3)
 
@@ -457,26 +339,26 @@ class LOLAPGCG(tune.Trainable):
             trainBatch0[1].append(a_all[0])
             trainBatch1[1].append(a_all[1])
 
-            if not self.use_toolbox_env:
-                # using coin game from lola.envs
-                # a_all = np.transpose(np.vstack(a_all))
-                # s1P,r,d = env.step(actions=a_all)
-                # using coin game from lola_dice.envs
-                obs, r, d, info = self.env.step(a_all)
-                d = np.array([d for _ in range(self.batch_size)])
-                s1P = obs[0]
-                last_info.update(info)
-            else:
-                actions = {"player_red": a_all[0],
-                           "player_blue": a_all[1]}
-                obs, r, d, info = self.env.step(actions)
-                d = np.array([d["__all__"] for _ in range(self.batch_size)])
-                s1P = obs["player_red"]
-                if 'player_red' in info.keys():
-                    last_info.update({f"player_red_{k}": v for k, v in info['player_red'].items()})
-                if 'player_blue' in info.keys():
-                    last_info.update({f"player_blue_{k}": v for k, v in info['player_blue'].items()})
-                r = [r['player_red'], r['player_blue']]
+            # if not self.use_toolbox_env:
+            #     # using coin game from lola.envs
+            #     # a_all = np.transpose(np.vstack(a_all))
+            #     # s1P,r,d = env.step(actions=a_all)
+            #     # using coin game from lola_dice.envs
+            #     obs, r, d, info = self.env.step(a_all)
+            #     d = np.array([d for _ in range(self.batch_size)])
+            #     s1P = obs[0]
+            #     last_info.update(info)
+            # else:
+            actions = {"player_red": a_all[0],
+                       "player_blue": a_all[1]}
+            obs, r, d, info = self.env.step(actions)
+            d = np.array([d["__all__"] for _ in range(self.batch_size)])
+            s1P = obs["player_red"]
+            if 'player_red' in info.keys():
+                last_info.update({f"player_red_{k}": v for k, v in info['player_red'].items()})
+            if 'player_blue' in info.keys():
+                last_info.update({f"player_blue_{k}": v for k, v in info['player_blue'].items()})
+            r = [r['player_red'], r['player_blue']]
 
             a_all = np.transpose(np.vstack(a_all))
             s1 = s1P
@@ -491,7 +373,7 @@ class LOLAPGCG(tune.Trainable):
             # trainBatch1[5].append(lstm_state[1])
 
             if self.playing_against_exploiter:
-                self.add_data_in_rllib_batch_builder(s, s1P, trainBatch1, d)
+                self.exploiter.add_data_in_rllib_batch_builder(s, s1P, trainBatch1, d, self.timestep)
 
             self.total_steps += 1
             for agent_role, agent in enumerate(these_agents):
@@ -551,17 +433,17 @@ class LOLAPGCG(tune.Trainable):
         actions0 = np.concatenate(trainBatch0[1], axis=0)
         actions1 = np.concatenate(trainBatch1[1], axis=0)
 
-        if self.use_toolbox_env:
-            ob_space_shape = list(self.env.OBSERVATION_SPACE.shape)
-            last_state = np.reshape(
-                np.concatenate(trainBatch1[3], axis=0),
-                [self.batch_size, self.trace_length, ob_space_shape[0],
-                 ob_space_shape[1], ob_space_shape[2]])[:, -1, :, :, :]
-        else:
-            last_state = np.reshape(
-                np.concatenate(trainBatch1[3], axis=0),
-                [self.batch_size, self.trace_length, self.env.ob_space_shape[0],
-                 self.env.ob_space_shape[1], self.env.ob_space_shape[2]])[:, -1, :, :, :]
+        # if self.use_toolbox_env:
+        ob_space_shape = list(self.env.OBSERVATION_SPACE.shape)
+        last_state = np.reshape(
+            np.concatenate(trainBatch1[3], axis=0),
+            [self.batch_size, self.trace_length, ob_space_shape[0],
+             ob_space_shape[1], ob_space_shape[2]])[:, -1, :, :, :]
+        # else:
+        #     last_state = np.reshape(
+        #         np.concatenate(trainBatch1[3], axis=0),
+        #         [self.batch_size, self.trace_length, self.env.ob_space_shape[0],
+        #          self.env.ob_space_shape[1], self.env.ob_space_shape[2]])[:, -1, :, :, :]
 
         value_0_next, value_1_next = self.sess.run(
             [self.mainPN_step[0].value, self.mainPN_step[1].value],
@@ -710,7 +592,7 @@ class LOLAPGCG(tune.Trainable):
         update(self.mainPN, self.lr, update1 / self.bs_mul, update2 / self.bs_mul)
 
         if self.playing_against_exploiter:
-            dqn_exploiter_stats = self.train_dqn_policy()
+            dqn_exploiter_stats = self.exploiter.train_dqn_policy(self.timestep)
 
         updated = True
         print('update params')

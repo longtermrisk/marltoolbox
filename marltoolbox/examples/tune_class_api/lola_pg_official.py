@@ -211,7 +211,7 @@ def main(debug):
         "summary_len": 1,
         "use_MAE": False,
 
-        "use_toolbox_env": True,
+        # "use_toolbox_env": True,
 
         "clip_loss_norm": False,
         "clip_lola_update_norm": False,
@@ -231,8 +231,8 @@ def main(debug):
 
         "use_critic": False,
 
-        "playing_against_exploiter": False,
-        # "playing_against_exploiter": 2 if debug else 1500,
+        # "playing_against_exploiter": False,
+        "playing_against_exploiter": 2 if debug else 1500,
         "train_exploiter_n_times_per_epi": 3,
         "exploiter_base_lr": 0.1,
         "exploiter_decay_lr_in_n_epi": 1500,
