@@ -11,10 +11,10 @@
 ##########
 
 import copy
-
 import os
-import ray
 import time
+
+import ray
 from ray import tune
 from ray.rllib.agents.dqn import DQNTorchPolicy
 
@@ -24,7 +24,7 @@ from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 from marltoolbox.utils import policy, log, same_and_cross_perf
 
 
-def get_tune_config(tune_hparams: dict) -> dict:
+def get_tune_config(tune_hparams: dict, stop_on_epi_number:bool=False) -> dict:
     tune_config = copy.deepcopy(tune_hparams)
 
     assert not tune_config['exact']
@@ -69,7 +69,10 @@ def get_tune_config(tune_hparams: dict) -> dict:
     tune_hparams["scale_multipliers"] = ((1 / tune_config['trace_length'], 1 / tune_config['trace_length']),)
     tune_hparams["group_names"] = ["lola"]
 
-    stop = {"episodes_total": tune_config['num_episodes']}
+    if stop_on_epi_number:
+        stop = {"episodes_total": tune_config['num_episodes']}
+    else:
+        stop = {"finished": True}
 
     return tune_config, stop, env_config
 
@@ -133,7 +136,8 @@ def evaluate_same_and_cross_perf(training_results, rllib_config, stop, env_confi
 
     if rllib_hp["load_plot_data"] is None:
         analysis_metrics_per_mode = evaluator.perf_analysis(n_same_play_per_checkpoint=1,
-                                                            n_cross_play_per_checkpoint=min(5, rllib_hp["train_n_replicates"] - 1),
+                                                            n_cross_play_per_checkpoint=min(5, rllib_hp[
+                                                                "train_n_replicates"] - 1),
                                                             extract_checkpoints_from_results=[training_results],
                                                             )
     else:
@@ -155,14 +159,14 @@ def evaluate_same_and_cross_perf(training_results, rllib_config, stop, env_confi
 
 
 def main(debug):
-    train_n_replicates = 1 if debug else 40
+    train_n_replicates = 1 if debug else 5
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
 
     exp_name, _ = log.log_in_current_day_dir("LOLA_PG")
 
     tune_hparams = {
-        "debug":debug,
+        "debug": debug,
         "exp_name": exp_name,
         "train_n_replicates": train_n_replicates,
 
@@ -172,7 +176,8 @@ def main(debug):
 
         # Dynamically set
         "num_episodes": 3 if debug else 2000,
-        "trace_length": 3 if debug else 20,
+        # "num_episodes": tune.grid_search([2000, 4000, 6000]),
+        "trace_length": 20,
         "lr": None,
         "gamma": 0.5,
         "batch_size": 8 if debug else 512,
@@ -218,6 +223,7 @@ def main(debug):
         "weigth_decay": 0.03,
 
         "lola_correction_multiplier": 1,
+        # "lola_correction_multiplier": tune.grid_search([1, 0.75, 0.5, 0.25]),
 
         "lr_decay": True,
 
@@ -225,11 +231,17 @@ def main(debug):
 
         "use_critic": False,
 
-        "against_exploiter": 2 if debug else 1500,
+        "playing_against_exploiter": False,
+        # "playing_against_exploiter": 2 if debug else 1500,
+        "train_exploiter_n_times_per_epi": 3,
+        "exploiter_base_lr": 0.1,
+        "exploiter_decay_lr_in_n_epi": 1500,
+        "exploiter_stop_training_after_n_epi": 1500,
+        "exploiter_rolling_avg": 0.9,
     }
 
     if tune_hparams["load_plot_data"] is None:
-        ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=True)
+        ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
 
         full_config, stop, env_config = get_tune_config(tune_hparams)
         training_results = train(full_config, stop, tune_hp=tune_hparams)
@@ -237,7 +249,7 @@ def main(debug):
         rllib_hparams = copy.deepcopy(tune_hparams)
         rllib_hparams["seed"] = 2020
         rllib_hparams["num_episodes"] = 1 if debug else 100
-        eval_tune_config, stop, env_config = get_tune_config(rllib_hparams)
+        eval_tune_config, stop, env_config = get_tune_config(rllib_hparams, stop_on_epi_number=True)
         env_config["batch_size"] = 1
         eval_tune_config['TuneTrainerClass'] = LOLAPGCG
         evaluate_same_and_cross_perf(training_results, eval_tune_config, stop, env_config, rllib_hparams)
@@ -247,13 +259,15 @@ def main(debug):
         rllib_hparams = copy.deepcopy(tune_hparams)
         rllib_hparams["seed"] = 2020
         rllib_hparams["num_episodes"] = 1 if debug else 100
-        eval_tune_config, stop, env_config = get_tune_config(rllib_hparams)
+        eval_tune_config, stop, env_config = get_tune_config(rllib_hparams, stop_on_epi_number=True)
         env_config["batch_size"] = 1
         eval_tune_config['TuneTrainerClass'] = LOLAPGCG
         evaluate_same_and_cross_perf(None, eval_tune_config, stop, env_config, rllib_hparams)
 
         ray.shutdown()
 
+
 if __name__ == "__main__":
     debug_mode = True
+    # debug_mode = False
     main(debug_mode)

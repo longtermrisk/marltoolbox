@@ -13,12 +13,12 @@ from collections import deque
 
 import numpy as np
 import tensorflow as tf
+import torch
 from ray import tune
-from ray.rllib.agents.dqn import DQNTFPolicy, DEFAULT_CONFIG, DQNTorchPolicy
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
-from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
-from ray.rllib.evaluation.sample_batch_builder import MultiAgentSampleBatchBuilder
 from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.agents.dqn import DEFAULT_CONFIG, DQNTorchPolicy
+from ray.rllib.evaluation.sample_batch_builder import MultiAgentSampleBatchBuilder
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 
 import marltoolbox.algos.lola_dice.envs as lola_dice_envs
 from marltoolbox.algos.lola.corrections import corrections_func
@@ -43,11 +43,14 @@ def clone_update(mainPN_clone):
         mainPN_clone[i].update = mainPN_clone[i].clone_trainer.minimize(
             -mainPN_clone[i].log_pi_clone, var_list=mainPN_clone[i].parameters)
 
+
 def add_data_in_dqn_data_buffer():
     raise NotImplementedError()
 
+
 def train_dqn_policy(dqn_data_buffer, dqn_exploiter):
     raise NotImplementedError()
+
 
 class LOLAPGCG(tune.Trainable):
 
@@ -61,7 +64,9 @@ class LOLAPGCG(tune.Trainable):
                    clip_lola_correction_norm=False,
                    clip_lola_actor_norm=False, use_critic=False,
                    lr_decay=False, correction_reward_baseline_per_step=False,
-                   against_exploiter = False, debug=False,
+                   playing_against_exploiter=False, debug=False, train_exploiter_n_times_per_epi=1,
+                   exploiter_base_lr=0.1, exploiter_decay_lr_in_n_epi=1500,
+                   exploiter_stop_training_after_n_epi=1500, exploiter_rolling_avg=0.0,
                    **kwargs):
 
         print("args not used:", kwargs)
@@ -124,7 +129,9 @@ class LOLAPGCG(tune.Trainable):
         self.lr_decay = lr_decay
         self.correction_reward_baseline_per_step = correction_reward_baseline_per_step
         self.use_critic = use_critic
-        self.against_exploiter = against_exploiter
+        self.playing_against_exploiter = playing_against_exploiter
+        self.train_exploiter_n_times_per_epi = train_exploiter_n_times_per_epi
+        self.exploiter_stop_training_after_n_epi = exploiter_stop_training_after_n_epi
 
         self.obs_batch = deque(maxlen=self.batch_size)
 
@@ -164,9 +171,8 @@ class LOLAPGCG(tune.Trainable):
                              entropy_coeff=entropy_coeff, weigth_decay=weigth_decay,
                              use_critic=use_critic))
 
-                if self.against_exploiter and agent == 1:
-                    self.create_dqn_exploiter()
-
+                if self.playing_against_exploiter and agent == 1:
+                    self.create_dqn_exploiter(exploiter_base_lr, exploiter_decay_lr_in_n_epi, exploiter_rolling_avg)
 
             # Clones of the opponents
             if opp_model:
@@ -192,7 +198,7 @@ class LOLAPGCG(tune.Trainable):
                                  lola_correction_multiplier=self.lola_correction_multiplier,
                                  clip_lola_correction_norm=clip_lola_correction_norm,
                                  clip_lola_actor_norm=clip_lola_actor_norm,
-                                 # against_exploiter=self.against_exploiter
+                                 # playing_against_exploiter=self.playing_against_exploiter
                                  )
             else:
                 corrections_func([self.mainPN[0], self.mainPN_clone[1]],
@@ -254,15 +260,16 @@ class LOLAPGCG(tune.Trainable):
         print("_init_lola", config)
         self._init_lola(**config)
 
-    def create_dqn_exploiter(self):
+    def create_dqn_exploiter(self, exploiter_base_lr, exploiter_decay_lr_in_n_epi, exploiter_rolling_avg):
         # with tf.variable_scope(f"dqn_exploiter"):
         # Create the dqn policy for the exploiter
         dqn_config = copy.deepcopy(DEFAULT_CONFIG)
         dqn_config.update({
             "prioritized_replay": False,
-            "double_q": False,
+            "double_q": True,
+            "buffer_size": 50000,
             "dueling": False,
-            "learning_starts": int((self.batch_size - 1) * (self.trace_length - 1)),
+            "learning_starts": min(int((self.batch_size - 1) * (self.trace_length - 1)),64),
             "model": {
                 "dim": self.grid_size,
                 "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],  # [Channel, [Kernel, Kernel], Stride]]
@@ -279,11 +286,17 @@ class LOLAPGCG(tune.Trainable):
             # Size of a batch sampled from replay buffer for training. Note that
             # if async_updates is set, then each worker returns gradients for a
             # batch of this size.
-            "train_batch_size": int((self.batch_size) * (self.trace_length))
-            if int((self.batch_size) * (self.trace_length)) < 64 else 64,
-            "explore":False,
+            "train_batch_size": min(int((self.batch_size) * (self.trace_length)), 64),
+            "explore": False,
             "grad_clip": 1,
-            "lr":0.1,
+            "gamma": 0.5,
+            "lr": exploiter_base_lr,
+            # Learning rate schedule
+            "lr_schedule": [
+                (0, exploiter_base_lr / 1000),
+                (100, exploiter_base_lr),
+                (exploiter_decay_lr_in_n_epi, exploiter_base_lr / 1e9)],
+            "sgd_momentum": 0.9,
         })
         print("dqn_config", dqn_config)
 
@@ -298,19 +311,30 @@ class LOLAPGCG(tune.Trainable):
         # self.dqn_exploiter = DQNTFPolicy(obs_space=self.env.OBSERVATION_SPACE,
         #                                  action_space=self.env.ACTION_SPACE,
         #                                  config=dqn_config)
-        self.dqn_exploiter = DQNTorchPolicy(obs_space=self.env.OBSERVATION_SPACE,
-                                         action_space=self.env.ACTION_SPACE,
-                                         config=dqn_config)
+
+        def sgd_optimizer_dqn(policy, config) -> "torch.optim.Optimizer":
+            return torch.optim.SGD(policy.q_func_vars, lr=policy.cur_lr, momentum=config["sgd_momentum"])
+        MyDQNTorchPolicy = DQNTorchPolicy.with_updates(optimizer_fn=sgd_optimizer_dqn)
+        self.dqn_exploiter = MyDQNTorchPolicy(obs_space=self.env.OBSERVATION_SPACE,
+                                            action_space=self.env.ACTION_SPACE,
+                                            config=dqn_config)
 
         self.multi_agent_batch_builders = [MultiAgentSampleBatchBuilder(
-                policy_map={"player_blue": self.dqn_exploiter},
-                clip_rewards=False,
-                callbacks=DefaultCallbacks()
-            ) for _ in range(self.batch_size)
+            policy_map={"player_blue": self.dqn_exploiter},
+            clip_rewards=False,
+            callbacks=DefaultCallbacks()
+        )
+            # for _ in range(self.batch_size)
         ]
 
+        self.exploiter_rolling_avg_factor = exploiter_rolling_avg
+        self.exploiter_rolling_avg_r_coop = 0.0
+        self.exploiter_rolling_avg_r_selfish = 0.0
+
     def add_data_in_rllib_batch_builder(self, s, s1P, trainBatch1, d):
-        for i in range(self.batch_size):
+        if self.timestep <= self.exploiter_stop_training_after_n_epi:
+            # for i in range(self.batch_size):
+            i = 0
             step_player_values = {
                 "eps_id": self.timestep,
                 "obs": s[i],
@@ -319,22 +343,39 @@ class LOLAPGCG(tune.Trainable):
                 "prev_actions": trainBatch1[1][-2][i] if len(trainBatch1[1]) > 1 else 0,
                 "rewards": trainBatch1[2][-1][i],
                 "prev_rewards": trainBatch1[2][-2][i] if len(trainBatch1[2]) > 1 else 0,
-                "dones": d[0], # done is the same for for every episodes in the batch
+                "dones": d[0],  # done is the same for for every episodes in the batch
             }
             self.multi_agent_batch_builders[i].add_values(agent_id="player_blue", policy_id="player_blue",
                                                           **step_player_values)
             self.multi_agent_batch_builders[i].count += 1
 
     def train_dqn_policy(self):
-        # Add episodes in replay buffer
-        for i in range(self.batch_size):
+        stats = {"learner_stats": {}}
+        if self.timestep <= self.exploiter_stop_training_after_n_epi:
+            # Add episodes in replay buffer
+            # for i in range(self.batch_size):
+            i = 0
             multiagent_batch = self.multi_agent_batch_builders[i].build_and_reset()
             self.local_replay_buffer.add_batch(multiagent_batch)
-            # self.store_to_replay_buffer(multiagent_batch)
-        # Generate training batch and train
-        replay_batch = self.local_replay_buffer.replay()
-        stats = self.dqn_exploiter.learn_on_batch(replay_batch.policy_batches["player_blue"])
-        print("dqn policy stats", stats)
+
+            # update lr in scheduler & in optimizer
+            self.dqn_exploiter.on_global_var_update({
+                "timestep": self.timestep
+            })
+            self.dqn_exploiter.optimizer()
+            if hasattr(self.dqn_exploiter, "cur_lr"):
+                for opt in self.dqn_exploiter._optimizers:
+                    for p in opt.param_groups:
+                        p["lr"] = self.dqn_exploiter.cur_lr
+            # Generate training batch and train
+            for _ in range(self.train_exploiter_n_times_per_epi):
+                replay_batch = self.local_replay_buffer.replay()
+                if replay_batch is not None: # is None when there is not enough step in the data buffer
+                    stats = self.dqn_exploiter.learn_on_batch(replay_batch.policy_batches["player_blue"])
+
+        stats["learner_stats"]["exploiter_lr_cur"] = self.dqn_exploiter.cur_lr
+        for j, opt in enumerate(self.dqn_exploiter._optimizers):
+            stats["learner_stats"]["exploiter_lr_from_params"] = [p["lr"] for p in opt.param_groups][0]
         return stats
 
     def step(self):
@@ -387,8 +428,8 @@ class LOLAPGCG(tune.Trainable):
             for agent_role, agent in enumerate(these_agents):
 
                 use_exploiter = False
-                if agent_role == 1 and self.against_exploiter:
-                    if self.timestep > self.against_exploiter:
+                if agent_role == 1 and self.playing_against_exploiter:
+                    if self.timestep > self.playing_against_exploiter:
                         use_exploiter = True
 
                 a, lstm_s = self.sess.run(
@@ -449,7 +490,7 @@ class LOLAPGCG(tune.Trainable):
             # trainBatch0[5].append(lstm_state[0])
             # trainBatch1[5].append(lstm_state[1])
 
-            if self.against_exploiter:
+            if self.playing_against_exploiter:
                 self.add_data_in_rllib_batch_builder(s, s1P, trainBatch1, d)
 
             self.total_steps += 1
@@ -458,9 +499,12 @@ class LOLAPGCG(tune.Trainable):
 
             for index in range(self.batch_size):
                 r_pb = [r[0][index], r[1][index]]
-                # Total reward for both agents
+
+                rAll[0] += r_pb[0]
+                rAll[1] += r_pb[1]
+                # Total reward for both agents over the episode
                 rAll[6] += r_pb[0] + r_pb[1]
-                # Count n steps in env
+                # Count n steps in env (episode length)
                 rAll[7] += 1
 
                 aAll[a_all[index, 0]] += 1
@@ -665,7 +709,7 @@ class LOLAPGCG(tune.Trainable):
 
         update(self.mainPN, self.lr, update1 / self.bs_mul, update2 / self.bs_mul)
 
-        if self.against_exploiter:
+        if self.playing_against_exploiter:
             dqn_exploiter_stats = self.train_dqn_policy()
 
         updated = True
@@ -680,7 +724,11 @@ class LOLAPGCG(tune.Trainable):
 
         to_plot = {}
         for ii in range(len(rlog)):
-            if ii == 6:
+            if ii == 0:
+                to_plot['total_reward_player_red'] = rlog[ii]
+            elif ii == 1:
+                to_plot['total_reward_player_blue'] = rlog[ii]
+            elif ii == 6:
                 to_plot['total_reward'] = rlog[ii]
             elif ii == 7:
                 to_plot['n_steps_per_summary'] = rlog[ii]
@@ -694,22 +742,14 @@ class LOLAPGCG(tune.Trainable):
         last_info.pop("available_actions", None)
 
         training_info = {
-            "player_1_values": values,
-            "player_2_values": values_1,
-            "player_1_target": player_1_target,
-            "player_2_target": player_2_target,
             "player_1_loss": player_1_loss,
             "player_2_loss": player_2_loss,
             "v_0_log": v_0_log,
             "v_1_log": v_1_log,
             "entropy_p_0": entropy_p_0,
             "entropy_p_1": entropy_p_1,
-            "sample_reward0": sample_reward0,
-            "sample_reward1": sample_reward1,
             "actor_loss_0": actor_loss_0,
             "actor_loss_1": actor_loss_1,
-            "sample_return0": sample_return0,
-            "sample_return1": sample_return1,
             "parameters_norm_0": parameters_norm_0,
             "parameters_norm_1": parameters_norm_1,
             "second_order0_sum": second_order0_sum,
@@ -720,16 +760,28 @@ class LOLAPGCG(tune.Trainable):
             "actor_grad_sum_1": actor_grad_sum_1,
             "lr_decay_ratio": (self.num_episodes - self.timestep) / self.num_episodes,
         }
+        # Logging distribution (can be a speed bottleneck)
+        # training_info.update({
+        #     "sample_return0": sample_return0,
+        #     "sample_return1": sample_return1,
+        #     "sample_reward0": sample_reward0,
+        #     "sample_reward1": sample_reward1,
+        #     "player_1_values": values,
+        #     "player_2_values": values_1,
+        #     "player_1_target": player_1_target,
+        #     "player_2_target": player_2_target,
+        # })
 
         self.update1_list.clear()
         self.update2_list.clear()
 
         to_report = {"episodes_total": self.timestep}
+        to_report["finished"] = False if self.timestep < self.num_episodes else True
         to_report.update(to_plot)
         to_report.update(last_info)
         to_report.update(training_info)
         to_report.update(actions_freq)
-        if self.against_exploiter:
+        if self.playing_against_exploiter:
             to_report.update(dqn_exploiter_stats["learner_stats"])
         return to_report
 
