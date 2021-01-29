@@ -17,16 +17,17 @@ from ray import tune
 
 import marltoolbox.algos.lola_dice.envs as lola_dice_envs
 from marltoolbox.algos.lola.corrections import corrections_func
-from marltoolbox.algos.lola.networks import Pnetwork, DQNExploiter
+from marltoolbox.algos.lola.networks import Pnetwork, DQNAgent
 from marltoolbox.algos.lola.utils import get_monte_carlo, make_cube
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 
 
-def update(mainPN, lr, final_delta_1_v, final_delta_2_v):
+def update(mainPN, lr, final_delta_1_v, final_delta_2_v, use_actions_from_exploiter = False):
     update_theta_1 = mainPN[0].setparams(
         mainPN[0].getparams() + lr * np.squeeze(final_delta_1_v))
-    update_theta_2 = mainPN[1].setparams(
-        mainPN[1].getparams() + lr * np.squeeze(final_delta_2_v))
+    if not use_actions_from_exploiter:
+        update_theta_2 = mainPN[1].setparams(
+            mainPN[1].getparams() + lr * np.squeeze(final_delta_2_v))
 
 
 def clone_update(mainPN_clone):
@@ -62,6 +63,7 @@ class LOLAPGCG(tune.Trainable):
                    playing_against_exploiter=False, debug=False, train_exploiter_n_times_per_epi=1,
                    exploiter_base_lr=0.1, exploiter_decay_lr_in_n_epi=1500,
                    exploiter_stop_training_after_n_epi=1500, exploiter_rolling_avg=0.0,
+                   exploiter_thresholds=None,
                    **kwargs):
 
         print("args not used:", kwargs)
@@ -125,7 +127,12 @@ class LOLAPGCG(tune.Trainable):
         self.correction_reward_baseline_per_step = correction_reward_baseline_per_step
         self.use_critic = use_critic
         self.playing_against_exploiter = playing_against_exploiter
-
+        self.exploiter_rolling_avg_factor = exploiter_rolling_avg
+        self.exploiter_rolling_avg_r_coop = 0.0
+        self.exploiter_rolling_avg_r_selfish = 0.0
+        self.exploiter_thresholds = exploiter_thresholds
+        self.last_batch_opp_coop = 0.0
+        self.last_batch_used_exploiter = False
 
         self.obs_batch = deque(maxlen=self.batch_size)
 
@@ -166,9 +173,9 @@ class LOLAPGCG(tune.Trainable):
                              use_critic=use_critic))
 
                 if self.playing_against_exploiter and agent == 1:
-                    self.exploiter = DQNExploiter(
+                    self.exploiter = DQNAgent(
                         self.env, self.batch_size, self.trace_length, self.grid_size,
-                        exploiter_base_lr, exploiter_decay_lr_in_n_epi, exploiter_rolling_avg,
+                        exploiter_base_lr, exploiter_decay_lr_in_n_epi,
                         exploiter_stop_training_after_n_epi, train_exploiter_n_times_per_epi
                     )
                     # self.create_dqn_exploiter(exploiter_base_lr, exploiter_decay_lr_in_n_epi, exploiter_rolling_avg)
@@ -261,6 +268,7 @@ class LOLAPGCG(tune.Trainable):
 
     def step(self):
         self.timestep += 1
+        to_report = {"episodes_total": self.timestep}
 
         episodeBuffer = []
         for ii in range(self.n_agents):
@@ -308,11 +316,12 @@ class LOLAPGCG(tune.Trainable):
             lstm_state = []
             for agent_role, agent in enumerate(these_agents):
 
-                use_exploiter = False
-                if agent_role == 1 and self.playing_against_exploiter:
-                    if self.timestep > self.playing_against_exploiter:
-                        use_exploiter = True
+                # use_exploiter = False
+                # if agent_role == 1 and self.playing_against_exploiter:
+                #     if self.timestep > self.playing_against_exploiter:
+                #         use_exploiter = True
 
+                # Batch of observations => batch of actions
                 a, lstm_s = self.sess.run(
                     [
                         self.mainPN_step[agent].predict,
@@ -326,18 +335,42 @@ class LOLAPGCG(tune.Trainable):
                 )
                 lstm_state.append(lstm_s)
 
-                if use_exploiter:
-                    action, a2, a3 = self.exploiter.compute_actions(obs_batch=s)
+                if agent_role == 1 and self.playing_against_exploiter:
+                    expl_actions, _, _ = self.exploiter.compute_actions(obs_batch=s)
                     # action, a2, a3 = self.dqn_exploiter.compute_actions(obs_batch=s)
-                    a = action
-                    # print("dqn action", action, a2, a3)
-
+                    # if use_exploiter:
+                    #     a = action
+                    # else:
+                    a_all_exploiter = copy.deepcopy(a_all)
+                    a_all_exploiter.append(expl_actions)
                 a_all.append(a)
+
 
             trainBatch0[0].append(s)
             trainBatch1[0].append(s)
-            trainBatch0[1].append(a_all[0])
-            trainBatch1[1].append(a_all[1])
+
+            if self.exploiter_thresholds is None:
+                use_actions_from_exploiter = self.exploiter_rolling_avg_r_selfish > self.exploiter_rolling_avg_r_coop \
+                                                and self.timestep > self.playing_against_exploiter
+            else:
+                if self.last_batch_used_exploiter:
+                    if self.last_batch_opp_coop < self.exploiter_thresholds[0]:
+                        use_actions_from_exploiter = False
+                    else:
+                        use_actions_from_exploiter = True
+                else:
+                    if self.last_batch_opp_coop > self.exploiter_thresholds[1]:
+                        use_actions_from_exploiter = True
+                    else:
+                        use_actions_from_exploiter = False
+                self.last_batch_used_exploiter = use_actions_from_exploiter
+
+            if use_actions_from_exploiter:
+                trainBatch0[1].append(a_all_exploiter[0])
+                trainBatch1[1].append(a_all_exploiter[1])
+            else:
+                trainBatch0[1].append(a_all[0])
+                trainBatch1[1].append(a_all[1])
 
             # if not self.use_toolbox_env:
             #     # using coin game from lola.envs
@@ -349,6 +382,8 @@ class LOLAPGCG(tune.Trainable):
             #     s1P = obs[0]
             #     last_info.update(info)
             # else:
+            if self.playing_against_exploiter:
+                env_full_state_before_lola_act = self.env._get_env_state()
             actions = {"player_red": a_all[0],
                        "player_blue": a_all[1]}
             obs, r, d, info = self.env.step(actions)
@@ -359,8 +394,47 @@ class LOLAPGCG(tune.Trainable):
             if 'player_blue' in info.keys():
                 last_info.update({f"player_blue_{k}": v for k, v in info['player_blue'].items()})
             r = [r['player_red'], r['player_blue']]
-
             a_all = np.transpose(np.vstack(a_all))
+
+
+            if self.playing_against_exploiter:
+                cooperative_rewards = r
+                actions = {"player_red": a_all_exploiter[0],
+                           "player_blue": a_all_exploiter[1]}
+                to_report.update({
+                    "expl_rolavg_r_selfish": self.exploiter_rolling_avg_r_selfish,
+                    "expl_rolavg_r_coop": self.exploiter_rolling_avg_r_coop,
+                    "expl_used": 0,
+                })
+
+                if use_actions_from_exploiter:
+                    to_report["expl_used"] = 1
+                    # Overwrite actions from LOLA agents
+                    self.env._set_env_state(env_full_state_before_lola_act)
+                    obs, r, d, info = self.env.step(actions)
+                    d = np.array([d["__all__"] for _ in range(self.batch_size)])
+                    s1P = obs["player_red"]
+                    if 'player_red' in info.keys():
+                        last_info.update({f"player_red_{k}": v for k, v in info['player_red'].items()})
+                    if 'player_blue' in info.keys():
+                        last_info.update({f"player_blue_{k}": v for k, v in info['player_blue'].items()})
+                    r = [r['player_red'], r['player_blue']]
+                    selfish_rewards = r
+                    a_all = np.transpose(np.vstack(a_all_exploiter))
+                else:
+                    # Only perform a virtual step in the env
+                    env_full_state_after_lola_act = self.env._get_env_state()
+                    self.env._set_env_state(env_full_state_before_lola_act)
+                    _, virtual_rewards, _, _ = self.env.step(actions)
+                    self.env._set_env_state(env_full_state_after_lola_act)
+                    selfish_rewards = [virtual_rewards['player_red'], virtual_rewards['player_blue']]
+                self.exploiter_rolling_avg_r_coop = (
+                        self.exploiter_rolling_avg_r_coop * self.exploiter_rolling_avg_factor +
+                        sum(cooperative_rewards[1])/len(cooperative_rewards[1]))
+                self.exploiter_rolling_avg_r_selfish = (
+                        self.exploiter_rolling_avg_r_selfish * self.exploiter_rolling_avg_factor +
+                        sum(selfish_rewards[1])/len(selfish_rewards[1]))
+
             s1 = s1P
 
             trainBatch0[2].append(r[0])
@@ -526,55 +600,59 @@ class LOLAPGCG(tune.Trainable):
                 self.mainPN_clone[1].gamma_array: np.reshape(discount, [1, -1]),
             })
 
-        (values, values_1, updateModel_1, updateModel_2,
-         update1, update2,
-         player_1_value, player_2_value, player_1_target, player_2_target,
-         player_1_loss, player_2_loss, entropy_p_0, entropy_p_1, v_0_log, v_1_log,
-         actor_target_error_0, actor_target_error_1, actor_loss_0, actor_loss_1,
-         parameters_norm_0, parameters_norm_1,  # value_params_norm_0, value_params_norm_1,
-         second_order0, second_order1, v_0_grad_theta_0, v_1_grad_theta_1,
-         second_order0_sum, second_order1_sum,
-         actor_grad_sum_0, actor_grad_sum_1) = self.sess.run(
-            [
-                self.mainPN[0].value,
+        lola_training_list = [
+            self.mainPN[0].value,
+            self.mainPN[0].updateModel,
+            self.mainPN[0].delta,
+            self.mainPN[0].value,
+            self.mainPN[0].target,
+            self.mainPN[0].loss,
+            self.mainPN[0].entropy,
+            self.mainPN[0].v_0_log,
+            self.mainPN[0].actor_target_error,
+            self.mainPN[0].actor_loss,
+            self.mainPN[0].weigths_norm,
+            self.mainPN[0].v_0_grad_01,
+            self.mainPN[0].grad,
+            self.mainPN[0].second_order,
+            self.mainPN[0].grad_sum,
+        ]
+        if use_actions_from_exploiter:
+            (values, updateModel_1, update1, player_1_value, player_1_target,
+             player_1_loss, entropy_p_0, v_0_log, actor_target_error_0,  actor_loss_0,
+             parameters_norm_0, second_order0, v_0_grad_theta_0,
+             second_order0_sum, actor_grad_sum_0) = self.sess.run(lola_training_list, feed_dict=feed_dict)
+            (values_1, updateModel_2, update2, player_2_value, player_2_target, player_2_loss,
+             entropy_p_1, v_1_log, actor_target_error_1, actor_loss_1, parameters_norm_1, second_order1,
+             v_1_grad_theta_1, second_order1_sum, actor_grad_sum_1) = [0]*15
+        else:
+            lola_training_list.extend([
                 self.mainPN[1].value,
-                self.mainPN[0].updateModel,
                 self.mainPN[1].updateModel,
-                self.mainPN[0].delta,
                 self.mainPN[1].delta,
-
-                self.mainPN[0].value,
                 self.mainPN[1].value,
-                self.mainPN[0].target,
                 self.mainPN[1].target,
-                self.mainPN[0].loss,
                 self.mainPN[1].loss,
-                self.mainPN[0].entropy,
                 self.mainPN[1].entropy,
-
-                self.mainPN[0].v_0_log,
                 self.mainPN[1].v_1_log,
-
-                self.mainPN[0].actor_target_error,
                 self.mainPN[1].actor_target_error,
-                self.mainPN[0].actor_loss,
                 self.mainPN[1].actor_loss,
-
-                self.mainPN[0].weigths_norm,
                 self.mainPN[1].weigths_norm,
-
-                self.mainPN[0].v_0_grad_01,
                 self.mainPN[1].v_1_grad_10,
-
-                self.mainPN[0].grad,
                 self.mainPN[1].grad,
-
-                self.mainPN[0].second_order,
                 self.mainPN[1].second_order,
-                self.mainPN[0].grad_sum,
                 self.mainPN[1].grad_sum,
-            ],
-            feed_dict=feed_dict)
+            ])
+
+            (values, updateModel_1, update1, player_1_value, player_1_target,
+             player_1_loss, entropy_p_0, v_0_log, actor_target_error_0, actor_loss_0,
+             parameters_norm_0, second_order0, v_0_grad_theta_0, second_order0_sum,
+             actor_grad_sum_0,
+
+             values_1, updateModel_2, update2, player_2_value, player_2_target, player_2_loss,
+             entropy_p_1, v_1_log, actor_target_error_1, actor_loss_1, parameters_norm_1, second_order1,
+             v_1_grad_theta_1, second_order1_sum, actor_grad_sum_1
+             ) = self.sess.run(lola_training_list, feed_dict=feed_dict)
 
         if self.warmup:
             update1 = update1 * self.warmup_step_n / self.warmup
@@ -585,11 +663,13 @@ class LOLAPGCG(tune.Trainable):
 
         update1_to_log = update1 / self.bs_mul
         update2_to_log = update2 / self.bs_mul
-        print(len(update1), len(update2), "update1, update2", sum(update1_to_log), sum(update2_to_log))
         self.update1_list.append(sum(update1_to_log))
-        self.update2_list.append(sum(update2_to_log))
+        if use_actions_from_exploiter:
+            self.update2_list.append(0.0)
+        else:
+            self.update2_list.append(sum(update2_to_log))
 
-        update(self.mainPN, self.lr, update1 / self.bs_mul, update2 / self.bs_mul)
+        update(self.mainPN, self.lr, update1 / self.bs_mul, update2 / self.bs_mul, use_actions_from_exploiter)
 
         if self.playing_against_exploiter:
             dqn_exploiter_stats = self.exploiter.train_dqn_policy(self.timestep)
@@ -657,11 +737,12 @@ class LOLAPGCG(tune.Trainable):
         self.update1_list.clear()
         self.update2_list.clear()
 
-        to_report = {"episodes_total": self.timestep}
         to_report["finished"] = False if self.timestep < self.num_episodes else True
         to_report.update(to_plot)
         to_report.update(last_info)
         to_report.update(training_info)
+        if self.exploiter_thresholds is not None:
+            self.last_batch_opp_coop = to_report["player_red_pick_own"]
         to_report.update(actions_freq)
         if self.playing_against_exploiter:
             to_report.update(dqn_exploiter_stats["learner_stats"])

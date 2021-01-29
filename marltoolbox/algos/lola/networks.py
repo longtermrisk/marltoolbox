@@ -366,15 +366,12 @@ class ExperienceBuffer:
         sampledTraces = np.array(sampledTraces)
         return np.reshape(sampledTraces,[batch_size*trace_length,6])
 
-class DQNExploiter:
+class DQNAgent:
 
     def __init__(self, env, batch_size, trace_length, grid_size, exploiter_base_lr, exploiter_decay_lr_in_n_epi,
-                 exploiter_rolling_avg, exploiter_stop_training_after_n_epi, train_exploiter_n_times_per_epi):
+                 exploiter_stop_training_after_n_epi, train_exploiter_n_times_per_epi):
 
-        self.exploiter_rolling_avg_factor = exploiter_rolling_avg
-        self.exploiter_rolling_avg_r_coop = 0.0
-        self.exploiter_rolling_avg_r_selfish = 0.0
-        self.exploiter_stop_training_after_n_epi = exploiter_stop_training_after_n_epi
+        self.stop_training_after_n_epi = exploiter_stop_training_after_n_epi
         self.train_exploiter_n_times_per_epi = train_exploiter_n_times_per_epi
 
         # with tf.variable_scope(f"dqn_exploiter"):
@@ -431,12 +428,12 @@ class DQNExploiter:
         def sgd_optimizer_dqn(policy, config) -> "torch.optim.Optimizer":
             return torch.optim.SGD(policy.q_func_vars, lr=policy.cur_lr, momentum=config["sgd_momentum"])
         MyDQNTorchPolicy = DQNTorchPolicy.with_updates(optimizer_fn=sgd_optimizer_dqn)
-        self.dqn_exploiter = MyDQNTorchPolicy(obs_space=env.OBSERVATION_SPACE,
-                                            action_space=env.ACTION_SPACE,
-                                            config=dqn_config)
+        self.dqn_policy = MyDQNTorchPolicy(obs_space=env.OBSERVATION_SPACE,
+                                           action_space=env.ACTION_SPACE,
+                                           config=dqn_config)
 
         self.multi_agent_batch_builders = [MultiAgentSampleBatchBuilder(
-            policy_map={"player_blue": self.dqn_exploiter},
+            policy_map={"player_blue": self.dqn_policy},
             clip_rewards=False,
             callbacks=DefaultCallbacks()
         )
@@ -446,11 +443,11 @@ class DQNExploiter:
 
 
     def compute_actions(self, obs_batch):
-        action, a2, a3 = self.dqn_exploiter.compute_actions(obs_batch=obs_batch)
+        action, a2, a3 = self.dqn_policy.compute_actions(obs_batch=obs_batch)
         return action, a2, a3
 
     def add_data_in_rllib_batch_builder(self, s, s1P, trainBatch1, d, timestep):
-        if timestep <= self.exploiter_stop_training_after_n_epi:
+        if timestep <= self.stop_training_after_n_epi:
             # for i in range(self.batch_size):
             i = 0
             step_player_values = {
@@ -469,7 +466,7 @@ class DQNExploiter:
 
     def train_dqn_policy(self, timestep):
         stats = {"learner_stats": {}}
-        if timestep <= self.exploiter_stop_training_after_n_epi:
+        if timestep <= self.stop_training_after_n_epi:
             # Add episodes in replay buffer
             # for i in range(self.batch_size):
             i = 0
@@ -477,21 +474,21 @@ class DQNExploiter:
             self.local_replay_buffer.add_batch(multiagent_batch)
 
             # update lr in scheduler & in optimizer
-            self.dqn_exploiter.on_global_var_update({
+            self.dqn_policy.on_global_var_update({
                 "timestep": timestep
             })
-            self.dqn_exploiter.optimizer()
-            if hasattr(self.dqn_exploiter, "cur_lr"):
-                for opt in self.dqn_exploiter._optimizers:
+            self.dqn_policy.optimizer()
+            if hasattr(self.dqn_policy, "cur_lr"):
+                for opt in self.dqn_policy._optimizers:
                     for p in opt.param_groups:
-                        p["lr"] = self.dqn_exploiter.cur_lr
+                        p["lr"] = self.dqn_policy.cur_lr
             # Generate training batch and train
             for _ in range(self.train_exploiter_n_times_per_epi):
                 replay_batch = self.local_replay_buffer.replay()
                 if replay_batch is not None: # is None when there is not enough step in the data buffer
-                    stats = self.dqn_exploiter.learn_on_batch(replay_batch.policy_batches["player_blue"])
+                    stats = self.dqn_policy.learn_on_batch(replay_batch.policy_batches["player_blue"])
 
-        stats["learner_stats"]["exploiter_lr_cur"] = self.dqn_exploiter.cur_lr
-        for j, opt in enumerate(self.dqn_exploiter._optimizers):
+        stats["learner_stats"]["exploiter_lr_cur"] = self.dqn_policy.cur_lr
+        for j, opt in enumerate(self.dqn_policy._optimizers):
             stats["learner_stats"]["exploiter_lr_from_params"] = [p["lr"] for p in opt.param_groups][0]
         return stats

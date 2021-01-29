@@ -165,6 +165,9 @@ def main(debug):
 
     exp_name, _ = log.log_in_current_day_dir("LOLA_PG")
 
+    high_coop_speed_hp = False
+    # high_coop_speed_hp = True
+
     tune_hparams = {
         "debug": debug,
         "exp_name": exp_name,
@@ -175,7 +178,7 @@ def main(debug):
         # Example: "load_plot_data": ".../SameAndCrossPlay_save.p",
 
         # Dynamically set
-        "num_episodes": 3 if debug else 2000,
+        "num_episodes": 3 if debug else 4000 if high_coop_speed_hp else 2000,
         # "num_episodes": tune.grid_search([2000, 4000, 6000]),
         "trace_length": 20,
         "lr": None,
@@ -232,12 +235,14 @@ def main(debug):
         "use_critic": False,
 
         # "playing_against_exploiter": False,
-        "playing_against_exploiter": 2 if debug else 1500,
+        "playing_against_exploiter": 1 if debug else 3000 if high_coop_speed_hp else 1500,
         "train_exploiter_n_times_per_epi": 3,
         "exploiter_base_lr": 0.1,
-        "exploiter_decay_lr_in_n_epi": 1500,
-        "exploiter_stop_training_after_n_epi": 1500,
+        "exploiter_decay_lr_in_n_epi": 3000 if high_coop_speed_hp else 1500,
+        "exploiter_stop_training_after_n_epi": 3000 if high_coop_speed_hp else 1500,
         "exploiter_rolling_avg": 0.9,
+        "exploiter_thresholds": None,
+        # "exploiter_thresholds": [0.8,0.95],
     }
 
     if tune_hparams["load_plot_data"] is None:
