@@ -1,5 +1,7 @@
-import numpy as np
+import copy
 import random
+
+import numpy as np
 
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 
@@ -418,3 +420,52 @@ def test_logged_info__pick_half_the_time_half_blue_half_red():
         assert_info(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=0.5, blue_speed=0.5, red_own=0.5, blue_own=0.5)
+
+
+def test_get_and_set_env_state():
+    max_steps, batch_size, grid_size = 20, 100, 3
+    n_steps = int(max_steps * 8.25)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
+
+    for env in [coin_game, asymm_coin_game]:
+        obs = env.reset()
+        initial_env_state = env._get_env_state()
+        initial_env_state_saved = copy.deepcopy(initial_env_state)
+        env_initial = copy.deepcopy(env)
+
+        step_i = 0
+        for _ in range(n_steps):
+            step_i += 1
+            actions = {policy_id: [random.randint(0, env.NUM_ACTIONS - 1) for _ in range(batch_size)]
+                       for policy_id in env.players_ids}
+            obs, reward, done, info = env.step(actions)
+
+            assert all([v == initial_env_state_saved[k]
+                        if not isinstance(v, np.ndarray)
+                        else (v == initial_env_state_saved[k]).all()
+                        for k, v in initial_env_state.items()])
+            env_state_after_step = env._get_env_state()
+            env_after_step = copy.deepcopy(env)
+
+            env._set_env_state(initial_env_state)
+            env_vars, env_initial_vars = vars(env), vars(env_initial)
+            env_vars.pop("np_random", None)
+            env_initial_vars.pop("np_random", None)
+            assert all([v == env_initial_vars[k]
+                        if not isinstance(v, np.ndarray)
+                        else (v == env_initial_vars[k]).all()
+                        for k, v in env_vars.items()])
+
+            env._set_env_state(env_state_after_step)
+            env_vars, env_after_step_vars = vars(env), vars(env_after_step)
+            env_vars.pop("np_random", None)
+            env_after_step_vars.pop("np_random", None)
+            assert all([v == env_after_step_vars[k]
+                        if not isinstance(v, np.ndarray)
+                        else (v == env_after_step_vars[k]).all()
+                        for k, v in env_vars.items()])
+
+            if done["__all__"]:
+                obs = env.reset()
+                step_i = 0

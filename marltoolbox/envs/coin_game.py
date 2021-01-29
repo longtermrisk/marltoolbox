@@ -1,7 +1,7 @@
 ##########
 # Code modified from: https://github.com/julianstastny/openspiel-social-dilemmas/blob/master/games/coin_game_gym.py
 ##########
-
+import copy
 from collections import Iterable
 
 import gym
@@ -360,6 +360,8 @@ class CoinGame(MultiAgentEnv, gym.Env):
         self.blue_pick_own.clear()
 
     def _compute_rewards(self, state, actions):
+        """Works only for flatten state"""
+        assert self.flatten_obs
         assert self.batch_size == 1
         save_env_state = self._get_env_state()
         self._state_to_env_state(state)
@@ -411,12 +413,19 @@ class CoinGame(MultiAgentEnv, gym.Env):
 
     def _get_env_state(self):
         env_state = {
-            "batch_size": self.batch_size, "red_pos": self.red_pos, "blue_pos": self.blue_pos,
-            "coin_pos": self.coin_pos, "red_coin": self.red_coin, "MOVES": self.MOVES,
-            "grid_size": self.grid_size, "asymmetric": self.asymmetric, "add_position_in_epi": self.add_position_in_epi,
-            "step_count": self.step_count, "max_steps": self.max_steps
+            "red_pos": self.red_pos, "blue_pos": self.blue_pos,
+            "coin_pos": self.coin_pos, "red_coin": self.red_coin,
+            "grid_size": self.grid_size, "asymmetric": self.asymmetric,
+            "batch_size": self.batch_size,
+            "add_position_in_epi": self.add_position_in_epi,
+            "step_count": self.step_count,
+            "max_steps": self.max_steps,
+            "red_pick": self.red_pick,
+            "red_pick_own": self.red_pick_own,
+            "blue_pick": self.blue_pick,
+            "blue_pick_own": self.blue_pick_own,
         }
-        return env_state
+        return copy.deepcopy(env_state)
 
     def _set_env_state(self, env_state):
         for k, v in env_state.items():
