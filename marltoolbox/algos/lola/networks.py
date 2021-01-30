@@ -20,7 +20,7 @@ class Pnetwork:
     def __init__(self, myScope, h_size, agent, env, trace_length, batch_size,
                  reuse=None, step=False, changed_config= False, ac_lr=1.0, use_MAE=False,
                  use_toolbox_env=False, clip_loss_norm=False, sess=None, entropy_coeff=1.0,
-                 weigth_decay=0.01, use_critic=False):
+                 weigth_decay=0.01, use_critic=False, use_destabilizer_in_policy=False):
         self.sess = sess
 
         # if use_toolbox_env:

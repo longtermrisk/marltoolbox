@@ -159,7 +159,7 @@ def evaluate_same_and_cross_perf(training_results, rllib_config, stop, env_confi
 
 
 def main(debug):
-    train_n_replicates = 1 if debug else 5
+    train_n_replicates = 1 if debug else 3
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
 
@@ -234,15 +234,37 @@ def main(debug):
 
         "use_critic": False,
 
+        # Exploiter HP
         # "playing_against_exploiter": False,
-        "playing_against_exploiter": 1 if debug else 3000 if high_coop_speed_hp else 1500,
+        "playing_against_exploiter": True,
+        "start_using_exploiter_at_update_n": 1 if debug else 3000 if high_coop_speed_hp else 1500,
+        # "use_exploiter_on_fraction_of_batch": 0.5 if debug else 1.0,
+        "use_exploiter_on_fraction_of_batch": 0.5 if debug else 0.1,
+
+        # DQN exploiter
+        "use_DQN_exploiter": False,
+        # "use_DQN_exploiter": True,
         "train_exploiter_n_times_per_epi": 3,
         "exploiter_base_lr": 0.1,
         "exploiter_decay_lr_in_n_epi": 3000 if high_coop_speed_hp else 1500,
         "exploiter_stop_training_after_n_epi": 3000 if high_coop_speed_hp else 1500,
         "exploiter_rolling_avg": 0.9,
-        "exploiter_thresholds": None,
-        # "exploiter_thresholds": [0.8,0.95],
+        "always_train_PG": True,
+        # (is not None) DQN exploiter use thresholds on opp cooperation to switch between policies
+        # otherwise the DQN exploiter will use the best policy (from simulated reward)
+        # "exploiter_thresholds": None,
+        "exploiter_thresholds": [0.0, 0.0] if debug else [0.80, 0.95],
+
+        # PG exploiter (DQN or PG exploiter: excluding options)
+        # "use_PG_exploiter": False,
+        "use_PG_exploiter": True,
+        "every_n_updates_copy_weights": 1 if debug else 100,
+        "adding_scaled_weights": False,
+        # "adding_scaled_weights": 0.33,
+
+        # Destabilizer exploiter
+        # "use_destabilizer": True,
+        "use_destabilizer": False,
     }
 
     if tune_hparams["load_plot_data"] is None:

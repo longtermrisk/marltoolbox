@@ -140,6 +140,7 @@ def corrections_func(mainPN, batch_size, trace_length,
             v_1_grad_theta_1 = tf.clip_by_norm(v_1_grad_theta_1, clip_lola_actor_norm, axes=None, name=None)
 
 
+
         delta_0 = v_0_grad_theta_0 + second_order0
         if against_exploiter:
             # The exploiter is not a LOLA agent
@@ -162,4 +163,78 @@ def corrections_func(mainPN, batch_size, trace_length,
         mainPN[1].v_1_grad_10 = tf.reduce_sum(v_0_grad_theta_0) * 0.0
 
 
+
+
+
+def simple_actor_training_func(policy_network, opp_policy_network, batch_size, trace_length, cube=None):
+                               # corrections=False, , clip_lola_update_norm=False,
+                     # lola_correction_multiplier=1.0,
+                     # clip_lola_correction_norm=False,
+                     # clip_lola_actor_norm=False, against_exploiter=False):
+    # not mem_efficient
+    if cube is not None:
+        ac_logp0 = tf.reshape(policy_network.log_pi_action_bs_t,
+                              [batch_size, 1, trace_length])
+        ac_logp1 = tf.reshape(opp_policy_network.log_pi_action_bs_t,
+                              [batch_size, trace_length, 1])
+        mat_1 = tf.reshape(tf.squeeze(tf.matmul(ac_logp1, ac_logp0)),
+                           [batch_size, 1, trace_length * trace_length])
+
+        v_0 = tf.matmul(tf.reshape(policy_network.sample_reward, [batch_size, trace_length, 1]), mat_1)
+        v_0 = tf.reshape(v_0, [batch_size, trace_length, trace_length, trace_length])
+
+        v_1 = tf.matmul(tf.reshape(opp_policy_network.sample_reward, [batch_size, trace_length, 1]), mat_1)
+        v_1 = tf.reshape(v_1, [batch_size, trace_length, trace_length, trace_length])
+
+        v_0 = 2 * tf.reduce_sum(v_0 * cube) / batch_size
+        v_1 = 2 * tf.reduce_sum(v_1 * cube) / batch_size
+    # wt mem_efficient
+    else:
+        ac_logp0 = tf.reshape(policy_network.log_pi_action_bs_t,
+                              [batch_size, trace_length])
+        ac_logp1 = tf.reshape(opp_policy_network.log_pi_action_bs_t,
+                              [batch_size, trace_length])
+
+        # Static exclusive cumsum
+        ac_logp0_cumsum = [tf.constant(0.)]
+        ac_logp1_cumsum = [tf.constant(0.)]
+        for i in range(trace_length - 1):
+            ac_logp0_cumsum.append(tf.add(ac_logp0_cumsum[-1], ac_logp0[:, i]))
+            ac_logp1_cumsum.append(tf.add(ac_logp1_cumsum[-1], ac_logp1[:, i]))
+
+        # Compute v_0 and v_1
+        mat_cumsum = ac_logp0[:, 0] * ac_logp1[:, 0]
+        v_0 = mat_cumsum * policy_network.sample_reward[:, 0]
+        v_1 = mat_cumsum * opp_policy_network.sample_reward[:, 0]
+        for i in range(1, trace_length):
+            mat_cumsum = tf.add(mat_cumsum, ac_logp0[:, i] * ac_logp1[:, i])
+            mat_cumsum = tf.add(mat_cumsum, ac_logp0_cumsum[i] * ac_logp1[:, i])
+            mat_cumsum = tf.add(mat_cumsum, ac_logp1_cumsum[i] * ac_logp0[:, i])
+            v_0 = tf.add(v_0, mat_cumsum * policy_network.sample_reward[:, i])
+            v_1 = tf.add(v_1, mat_cumsum * opp_policy_network.sample_reward[:, i])
+        v_0 = 2 * tf.reduce_sum(v_0) / batch_size
+        v_1 = 2 * tf.reduce_sum(v_1) / batch_size
+
+    policy_network.v_0_log = v_0
+    actor_target_error_0 = (policy_network.target-tf.stop_gradient(policy_network.value))
+    v_0_pi_0 = 2*tf.reduce_sum((actor_target_error_0* policy_network.gamma_array) * policy_network.log_pi_action_bs_t) / \
+               batch_size
+    # v_1_pi_0 = 2*tf.reduce_sum((actor_target_error_1 * policy_network.gamma_array) * policy_network.log_pi_action_bs_t) / batch_size
+
+    policy_network.actor_target_error = actor_target_error_0
+    policy_network.actor_loss = v_0_pi_0
+    policy_network.value_used_for_correction = v_0
+
+    v_0_grad_theta_0 = flatgrad(v_0_pi_0, policy_network.parameters)
+
+    # v_1_grad_theta_0 = flatgrad(v_1_pi_0, policy_network.parameters)
+
+    policy_network.grad = v_0_grad_theta_0
+    policy_network.grad_sum = tf.math.reduce_sum(v_0_grad_theta_0)
+
+    # policy_network.grad_v_1 = v_1_grad_theta_0
+
+    policy_network.delta = v_0_grad_theta_0
+    # To prevent some logic about logging stuff
+    policy_network.v_0_grad_01 = tf.reduce_sum(v_0_grad_theta_0) * 0.0
 
