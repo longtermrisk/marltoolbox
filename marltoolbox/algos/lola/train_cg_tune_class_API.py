@@ -712,12 +712,14 @@ class LOLAPGCG(tune.Trainable):
             self.mainPN[0].second_order,
             self.mainPN[0].grad_sum,
             self.mainPN[0].v_0_grad_01,
+            self.mainPN[0].multiply0,
         ]
         if self.use_DQN_exploiter and use_actions_from_exploiter and not self.always_train_PG:
             (values, updateModel_1, update1, player_1_value, player_1_target,
              player_1_loss, entropy_p_0, v_0_log, actor_target_error_0, actor_loss_0,
              parameters_norm_0, second_order0, v_0_grad_theta_0,
-             second_order0_sum, actor_grad_sum_0, v_0_grad_01) = self.sess.run(lola_training_list, feed_dict=feed_dict)
+             second_order0_sum, actor_grad_sum_0, v_0_grad_01, multiply0) = self.sess.run(lola_training_list,
+                                                                                 feed_dict=feed_dict)
             (values_1, updateModel_2, update2, player_2_value, player_2_target, player_2_loss,
              entropy_p_1, v_1_log, actor_target_error_1, actor_loss_1, parameters_norm_1, second_order1,
              v_1_grad_theta_1, second_order1_sum, actor_grad_sum_1) = [0] * 15
@@ -744,7 +746,7 @@ class LOLAPGCG(tune.Trainable):
                 values, updateModel_1, update1, player_1_value, player_1_target,
                 player_1_loss, entropy_p_0, v_0_log, actor_target_error_0, actor_loss_0,
                 parameters_norm_0, second_order0, v_0_grad_theta_0, second_order0_sum,
-                actor_grad_sum_0, v_0_grad_01,
+                actor_grad_sum_0, v_0_grad_01, multiply0,
                 # Player_blue
                 values_1, updateModel_2, update2, player_2_value, player_2_target, player_2_loss,
                 entropy_p_1, v_1_log, actor_target_error_1, actor_loss_1, parameters_norm_1, second_order1,
@@ -771,9 +773,12 @@ class LOLAPGCG(tune.Trainable):
                 update2 = update2 * 0.0
                 update(self.mainPN, self.lr, update1 / self.bs_mul, update2 / self.bs_mul, use_actions_from_exploiter)
                 # Add second_order0_sum to reward
-                log_diff = np.log(sum(np.abs(v_0_grad_01 - self.last_v_0_grad_01))) / 100
+                log_diff = np.log(sum(np.abs(v_0_grad_01))) / 10
+                # log_diff = np.log(sum(np.abs(v_0_grad_01 - self.last_v_0_grad_01))) / 10
+                # log_diff = np.log(sum(np.abs(multiply0 - self.last_v_0_grad_01))) / 10
                 reward_for_destabilization = trainBatch1[2] + log_diff
                 self.last_v_0_grad_01 = v_0_grad_01
+                # self.last_v_0_grad_01 = multiply0
                 sample_return1, sample_reward1, sample_reward1_bis = self.compute_centered_discounted_r(
                     rewards=reward_for_destabilization, discount=discount)
 
@@ -784,7 +789,7 @@ class LOLAPGCG(tune.Trainable):
                     values, updateModel_1, update1, player_1_value, player_1_target,
                     player_1_loss, entropy_p_0, v_0_log, actor_target_error_0, actor_loss_0,
                     parameters_norm_0, second_order0, v_0_grad_theta_0, second_order0_sum,
-                    actor_grad_sum_0, v_0_grad_01,
+                    actor_grad_sum_0, v_0_grad_01, multiply0,
                     # Player_blue
                     values_1, updateModel_2, update2, player_2_value, player_2_target, player_2_loss,
                     entropy_p_1, v_1_log, actor_target_error_1, actor_loss_1, parameters_norm_1, second_order1,

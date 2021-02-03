@@ -165,7 +165,9 @@ def main(debug):
 
     exp_name, _ = log.log_in_current_day_dir("LOLA_PG")
 
-    high_coop_speed_hp = False
+    use_best_exploiter = True
+
+    high_coop_speed_hp = True if use_best_exploiter else False
     # high_coop_speed_hp = True
 
     tune_hparams = {
@@ -197,7 +199,7 @@ def main(debug):
         "opp_model": False,
         "mem_efficient": True,
         "lr_correction": 1,
-        "bs_mul": 1 / 10,
+        "bs_mul": 1 / 10 * 3 if use_best_exploiter else 1 / 10,
         "simple_net": True,
         "hidden": 32,
         "reg": 0,
@@ -257,7 +259,7 @@ def main(debug):
 
         # PG exploiter (DQN or PG exploiter: excluding options)
         # "use_PG_exploiter": False,
-        "use_PG_exploiter": True,
+        "use_PG_exploiter": True if use_best_exploiter else False,
         "every_n_updates_copy_weights": 1 if debug else 100,
         "adding_scaled_weights": False,
         # "adding_scaled_weights": 0.33,

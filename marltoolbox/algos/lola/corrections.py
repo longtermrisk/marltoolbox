@@ -125,6 +125,7 @@ def corrections_func(mainPN, batch_size, trace_length,
         second_order0 = flatgrad(multiply0, mainPN[0].parameters)
         second_order1 = flatgrad(multiply1, mainPN[1].parameters)
 
+        mainPN[0].multiply0 = multiply0
         mainPN[0].v_0_grad_01 = second_order0
         mainPN[1].v_1_grad_10 = second_order1
         mainPN[0].second_order = tf.math.reduce_sum(second_order0)
