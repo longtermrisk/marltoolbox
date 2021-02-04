@@ -18,7 +18,7 @@ from ray import tune
 from marltoolbox.algos.lola.corrections import corrections_func, simple_actor_training_func
 from marltoolbox.algos.lola.networks import Pnetwork, DQNAgent
 from marltoolbox.algos.lola.utils import get_monte_carlo, make_cube
-from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
+from marltoolbox.envs.vectorized_coin_game import CoinGame, AsymCoinGame
 
 
 def update(mainPN, lr, final_delta_1_v, final_delta_2_v, use_actions_from_exploiter=False):

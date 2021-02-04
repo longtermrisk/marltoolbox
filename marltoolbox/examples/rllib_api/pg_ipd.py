@@ -4,7 +4,7 @@ import ray
 from ray import tune
 from ray.rllib.agents.pg import PGTrainer
 
-from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma
+from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersDilemma
 from marltoolbox.utils import log, miscellaneous
 
 parser = argparse.ArgumentParser()
@@ -26,7 +26,6 @@ def main(debug, stop_iters=200, tf=False):
     env_config = {
         "players_ids": ["player_row", "player_col"],
         "max_steps": 20,
-        "reward_randomness": None,
         "get_additional_info": True,
     }
 

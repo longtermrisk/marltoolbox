@@ -12,7 +12,7 @@ from ray import tune
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 
 from marltoolbox.algos.lola.train_exact_tune_class_API import LOLAExact
-from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma, IteratedMatchingPennies, IteratedAsymBoS
+from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersDilemma, IteratedMatchingPennies, IteratedAsymBoS
 from marltoolbox.utils import policy, log, same_and_cross_perf
 
 

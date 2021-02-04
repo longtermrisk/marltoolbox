@@ -24,6 +24,7 @@ def convert_from_rllib_env_format(data, player_ids, state: bool = False, n_state
             obs_one_hot[obs] = 1
             return obs_one_hot
         else:
+            obs = np.reshape(obs, (-1,))
             return obs
 
     formated_data = []
@@ -71,7 +72,7 @@ class Agent(object):
         self.sess = tf.Session()
         self.env = env
         self.n_actions = env.NUM_ACTIONS
-        self.n_features = env.NUM_STATES
+        self.n_features = env.n_features
         self.learning_rate = learning_rate
         self.gamma = gamma
         self.agent_idx = agent_idx
@@ -150,15 +151,15 @@ class Actor(object):
     def __init__(self, env, n_units=20, learning_rate=0.001, agent_idx=0, weight_decay=0.0, training=True,
                  std_theta=0.1, entropy_coeff=0.001, mean_theta=0.0, use_adam_optimizer=True,
                  momentum=0.9):
-        self.s = tf.placeholder(tf.float32, [1, env.NUM_STATES], "state_ag")
+        self.s = tf.placeholder(tf.float32, [1, env.n_features], "state_ag")
         self.a = tf.placeholder(tf.int32, None, "act")
         self.td_error = tf.placeholder(tf.float32, None, "td_error")  # TD_error
         self.env_name = env.NAME
         with tf.variable_scope(f'Actor_{agent_idx}'):
             if not isinstance(n_units, list):
-                units = [env.NUM_STATES, n_units,  env.NUM_ACTIONS]
+                units = [env.n_features, n_units, env.NUM_ACTIONS]
             else:
-                units = [env.NUM_STATES] + n_units + [env.NUM_ACTIONS]
+                units = [env.n_features] + n_units + [env.NUM_ACTIONS]
             print("units", units)
             var_list = []
             input_ = self.s
@@ -228,7 +229,7 @@ class Critic(object):
         self.critic_variant = critic_variant
         self.env = env
 
-        self.s = tf.placeholder(tf.float32, [1, env.NUM_STATES], "state_critic")
+        self.s = tf.placeholder(tf.float32, [1, env.n_features], "state_critic")
         self.v_ = tf.placeholder(tf.float32, [1, 1], "v_next")
         self.r = tf.placeholder(tf.float32, None, 'r')
 
@@ -242,14 +243,14 @@ class Critic(object):
 
             if self.critic_variant is Critic_Variant.CENTRALIZED:
                 if not isinstance(n_units, list):
-                    units = [env.NUM_STATES + env.NUM_ACTIONS * env.NUM_AGENTS, n_units, 1]
+                    units = [env.n_features + env.NUM_ACTIONS * env.NUM_AGENTS, n_units, 1]
                 else:
-                    units = [env.NUM_STATES + env.NUM_ACTIONS * env.NUM_AGENTS] + n_units + [1]
+                    units = [env.n_features + env.NUM_ACTIONS * env.NUM_AGENTS] + n_units + [1]
             else:
                 if not isinstance(n_units, list):
-                    units = [env.NUM_STATES, n_units,  1]
+                    units = [env.n_features, n_units, 1]
                 else:
-                    units = [env.NUM_STATES] + n_units + [1]
+                    units = [env.n_features] + n_units + [1]
             print("units", units)
             var_list = []
             input_ = self.nn_inputs
@@ -344,7 +345,7 @@ class Simple_Agent(Agent):  # plays games with 2 actions, using a single paramet
     def __init__(self, env, learning_rate=0.001, n_units_critic=20, gamma=0.95, agent_idx=0,
                  critic_variant=Critic_Variant.INDEPENDENT, mean_theta=-2.0, std_theta=0.5):
         super().__init__(env, learning_rate, gamma, agent_idx)
-        self.s = tf.placeholder(tf.float32, [1, env.NUM_STATES], "state")  # dummy variable
+        self.s = tf.placeholder(tf.float32, [1, env.n_features], "state")  # dummy variable
         self.a = tf.placeholder(tf.int32, None, "act")
         self.td_error = tf.placeholder(tf.float32, None, "td_error")  # TD_error
 

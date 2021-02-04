@@ -46,7 +46,7 @@ class Planning_Agent(Agent):
         self.loss_mul_planner = loss_mul_planner
 
         with tf.variable_scope('Planner'):
-            self.s = tf.placeholder(tf.float32, [1, env.NUM_STATES], "state_pl")
+            self.s = tf.placeholder(tf.float32, [1, env.n_features], "state_pl")
             self.a_players = tf.placeholder(tf.float32, [1, n_players], "player_actions")
 
             self.convertion_to_one_hot(use_softmax_hot)
@@ -75,9 +75,9 @@ class Planning_Agent(Agent):
                     ma_action_space_dim = env.NUM_ACTIONS
 
                 if not isinstance(n_units, list):
-                    units = [env.NUM_STATES + ma_action_space_dim, n_units, n_players]
+                    units = [env.n_features + ma_action_space_dim, n_units, n_players]
                 else:
-                    units = [env.NUM_STATES + ma_action_space_dim] + n_units + [n_players]
+                    units = [env.n_features + ma_action_space_dim] + n_units + [n_players]
 
                 self.create_multi_layer_fc(units, mean_theta, std_theta)
 
@@ -106,7 +106,7 @@ class Planning_Agent(Agent):
 
             with tf.variable_scope('cost_function'):
                 if value_fn_variant == 'estimated':
-                    self.g_log_pi = tf.placeholder(tf.float32, [env.NUM_STATES, n_players], "player_gradients")
+                    self.g_log_pi = tf.placeholder(tf.float32, [env.n_features, n_players], "player_gradients")
                 cost_list = []
                 for underlying_agent in underlying_agents:
                     # policy gradient theorem

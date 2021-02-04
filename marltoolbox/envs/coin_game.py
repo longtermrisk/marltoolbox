@@ -8,11 +8,12 @@ from gym.utils import seeding
 from numba.typed import List
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
+from envs.utils.interfaces import InfoAccumulationInterface
 
-class CoinGame(MultiAgentEnv, gym.Env):
+
+class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
     """
     Coin Game environment.
-    Note: slightly deviates from the Gym API.
     """
     NAME = "CoinGame"
     NUM_AGENTS = 2
@@ -48,11 +49,7 @@ class CoinGame(MultiAgentEnv, gym.Env):
         self.step_count = None
 
         if self.get_additional_info:
-            self.red_pick = []
-            self.red_pick_own = []
-            self.blue_pick = []
-            self.blue_pick_own = []
-
+            self._init_info()
 
     def reset(self):
         self.step_count = 0
@@ -60,7 +57,7 @@ class CoinGame(MultiAgentEnv, gym.Env):
         if self.get_additional_info:
             self._reset_info()
 
-        # Reset coin color & players and coin positions
+        # Reset coin color and the players and coin positions
         self.red_coin = np.random.randint(low=0, high=2)
         self.red_pos = np.random.randint(low=0, high=self.grid_size, size=(2,))
         self.blue_pos = np.random.randint(low=0, high=self.grid_size, size=(2,))
@@ -78,13 +75,12 @@ class CoinGame(MultiAgentEnv, gym.Env):
             self.player_blue_id: observation
         }
 
-
     def step(self, actions: Dict):
         """
         :param actions: Dict containing both actions for player_1 and player_2
         :return: state, reward, done, info
         """
-        actions = self._from_dict_to_list(actions)
+        actions = self._from_RLLib_API_to_list(actions)
 
         self.step_count += 1
         self._move_players(actions)
@@ -93,8 +89,7 @@ class CoinGame(MultiAgentEnv, gym.Env):
             self._generate_coin()
         observation = self._generate_observation()
 
-        return self._format_to_rllib_API(observation, reward_list)
-
+        return self._to_RLLib_API(observation, reward_list)
 
     def seed(self, seed=None):
         """Seed the PRNG of this space. """
@@ -144,10 +139,7 @@ class CoinGame(MultiAgentEnv, gym.Env):
         reward_list = [reward_red, reward_blue]
 
         if self.get_additional_info:
-            self.red_pick.append(red_pick_any)
-            self.red_pick_own.append(red_pick_red)
-            self.blue_pick.append(blue_pick_any)
-            self.blue_pick_own.append(blue_pick_blue)
+            self._accumulate_info(red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue)
 
         return reward_list, generate_new_coin
 
@@ -159,9 +151,8 @@ class CoinGame(MultiAgentEnv, gym.Env):
         success = 0
         while success < self.NUM_AGENTS:
             self.coin_pos = self.np_random.randint(self.grid_size, size=2)
-            success = 1 - self._same_pos(self.red_pos,self.coin_pos)
-            success += 1 - self._same_pos(self.blue_pos,self.coin_pos)
-
+            success = 1 - self._same_pos(self.red_pos, self.coin_pos)
+            success += 1 - self._same_pos(self.blue_pos, self.coin_pos)
 
     def _generate_observation(self):
         state = np.zeros((self.grid_size, self.grid_size, 4))
@@ -173,8 +164,7 @@ class CoinGame(MultiAgentEnv, gym.Env):
             state[self.coin_pos[0], self.coin_pos[1], 3] = 1
         return state
 
-
-    def _from_dict_to_list(self, actions):
+    def _from_RLLib_API_to_list(self, actions):
         """
         Format actions from dict of players to list of lists
         """
@@ -182,7 +172,7 @@ class CoinGame(MultiAgentEnv, gym.Env):
         actions = [ac_red, ac_blue]
         return actions
 
-    def _format_to_rllib_API(self, observation, reward):
+    def _to_RLLib_API(self, observation, reward):
         state = {
             self.player_red_id: observation,
             self.player_blue_id: observation,
@@ -200,7 +190,7 @@ class CoinGame(MultiAgentEnv, gym.Env):
         }
 
         if epi_is_done and self.get_additional_info:
-            info_red, info_blue = self._get_info_summary()
+            info_red, info_blue = self._get_episode_info()
             info = {
                 self.player_red_id: info_red,
                 self.player_blue_id: info_blue,
@@ -210,7 +200,7 @@ class CoinGame(MultiAgentEnv, gym.Env):
 
         return state, reward, done, info
 
-    def _get_info_summary(self):
+    def _get_episode_info(self):
         """
         Output the following information:
         pick_speed is the fraction of steps during which the player picked a coin
@@ -238,6 +228,17 @@ class CoinGame(MultiAgentEnv, gym.Env):
         self.blue_pick.clear()
         self.blue_pick_own.clear()
 
+    def _accumulate_info(self, red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue):
+        self.red_pick.append(red_pick_any)
+        self.red_pick_own.append(red_pick_red)
+        self.blue_pick.append(blue_pick_any)
+        self.blue_pick_own.append(blue_pick_blue)
+
+    def _init_info(self):
+        self.red_pick = []
+        self.red_pick_own = []
+        self.blue_pick = []
+        self.blue_pick_own = []
 
 
 class AsymCoinGame(CoinGame):

@@ -13,11 +13,11 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 torch, nn = try_import_torch()
 
-from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma
+from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersDilemma
 from marltoolbox.algos.learning_tit_for_tat.ltft import LTFT_DEFAULT_CONFIG_UPDATE, LTFT, LTFTCallbacks
 from marltoolbox.algos.supervised_learning import SPLTorchPolicy
 from marltoolbox.utils import log, miscellaneous, exploration
-
+from marltoolbox.envs.utils.wrappers import add_RewardUncertaintyEnvClassWrapper
 
 def sgd_optimizer_dqn(policy: Policy, config: TrainerConfigDict) -> "torch.optim.Optimizer":
     return torch.optim.SGD(
@@ -37,7 +37,6 @@ def get_rllib_config(hp: dict):
     env_config = {
         "players_ids": ["player_row", "player_col"],
         "max_steps": hp["n_steps_per_epi"],
-        "reward_randomness": 0.1,
     }
 
     MyDQNTorchPolicy = DQNTorchPolicy.with_updates(
@@ -76,8 +75,12 @@ def get_rllib_config(hp: dict):
         }
     )
 
+    MyUncertainIPD = add_RewardUncertaintyEnvClassWrapper(
+        IteratedPrisonersDilemma,
+        reward_uncertainty_std=0.1)
+
     rllib_config = {
-        "env": IteratedPrisonersDilemma,
+        "env": MyUncertainIPD,
         "env_config": env_config,
         "multiagent": {
             "policies": {

@@ -430,7 +430,7 @@ def test_get_and_set_env_state():
 
     for env in [coin_game, asymm_coin_game]:
         obs = env.reset()
-        initial_env_state = env._get_env_state()
+        initial_env_state = env._save_env()
         initial_env_state_saved = copy.deepcopy(initial_env_state)
         env_initial = copy.deepcopy(env)
 
@@ -445,10 +445,10 @@ def test_get_and_set_env_state():
                         if not isinstance(v, np.ndarray)
                         else (v == initial_env_state_saved[k]).all()
                         for k, v in initial_env_state.items()])
-            env_state_after_step = env._get_env_state()
+            env_state_after_step = env._save_env()
             env_after_step = copy.deepcopy(env)
 
-            env._set_env_state(initial_env_state)
+            env._load_env(initial_env_state)
             env_vars, env_initial_vars = vars(env), vars(env_initial)
             env_vars.pop("np_random", None)
             env_initial_vars.pop("np_random", None)
@@ -457,7 +457,7 @@ def test_get_and_set_env_state():
                         else (v == env_initial_vars[k]).all()
                         for k, v in env_vars.items()])
 
-            env._set_env_state(env_state_after_step)
+            env._load_env(env_state_after_step)
             env_vars, env_after_step_vars = vars(env), vars(env_after_step)
             env_vars.pop("np_random", None)
             env_after_step_vars.pop("np_random", None)

@@ -25,7 +25,6 @@ def train(tune_hp):
         tune_config["env_config"] = {
             "players_ids": ["player_row", "player_col"],
             "max_steps": tune_hp["n_steps_per_epi"],
-            "reward_randomness": 0.0,
             "get_additional_info": True,
         }
     elif tune_hp["env"] == "CoinGame":
@@ -254,5 +253,5 @@ def main(debug):
 
 
 if __name__ == "__main__":
-    debug_mode = False
+    debug_mode = True
     main(debug_mode)

@@ -1,6 +1,7 @@
 """
 The magic corrections of LOLA.
 """
+from functools import partial
 import tensorflow as tf
 from tensorflow.python.ops import math_ops
 
@@ -11,7 +12,7 @@ def corrections_func(mainPN, batch_size, trace_length,
                      corrections=False, cube=None, clip_lola_update_norm=False,
                      lola_correction_multiplier=1.0,
                      clip_lola_correction_norm=False,
-                     clip_lola_actor_norm=False, against_exploiter=False):
+                     clip_lola_actor_norm=False, against_destabilizer_exploiter=False):
     """Computes corrections for policy gradients.
 
     Args:
@@ -71,7 +72,11 @@ def corrections_func(mainPN, batch_size, trace_length,
             v_0 = tf.add(v_0, mat_cumsum * mainPN[0].sample_reward[:, i])
             v_1 = tf.add(v_1, mat_cumsum * mainPN[1].sample_reward[:, i])
         v_0 = 2 * tf.reduce_sum(v_0) / batch_size
-        v_1 = 2 * tf.reduce_sum(v_1) / batch_size
+
+        if against_destabilizer_exploiter:
+            v_1 = 2 * v_1 / batch_size
+        else:
+            v_1 = 2 * tf.reduce_sum(v_1) / batch_size
 
     mainPN[0].v_0_log = v_0
     mainPN[1].v_1_log = v_1
@@ -109,20 +114,43 @@ def corrections_func(mainPN, batch_size, trace_length,
 
     if corrections:
         v_0_grad_theta_0_wrong = flatgrad(v_0, mainPN[0].parameters)
-        v_1_grad_theta_1_wrong = flatgrad(v_1, mainPN[1].parameters)
+        if against_destabilizer_exploiter:
+            # v_1_grad_theta_1_wrong_splits = [ flatgrad(v_1[i], mainPN[1].parameters) for i in range(batch_size)]
+            # v_1_grad_theta_1_wrong = tf.stack(v_1_grad_theta_1_wrong_splits, axis=1)
+
+            v_1_grad_theta_1_wrong = tf.vectorized_map(partial(flatgrad, var_list=mainPN[1].parameters), v_1)
+        else:
+            v_1_grad_theta_1_wrong = flatgrad(v_1, mainPN[1].parameters)
 
         param_len = v_0_grad_theta_0_wrong.get_shape()[0].value
+        # param_len = -1
 
-        multiply0 = tf.matmul(
-            tf.reshape(tf.stop_gradient(v_0_grad_theta_1), [1, param_len]),
-            tf.reshape(v_1_grad_theta_1_wrong, [param_len, 1])
-        )
+        if against_destabilizer_exploiter:
+            multiply0 = tf.matmul(
+                tf.reshape(tf.stop_gradient(v_0_grad_theta_1), [1, param_len]),
+                tf.reshape(v_1_grad_theta_1_wrong, [param_len, batch_size])
+            )
+        else:
+            multiply0 = tf.matmul(
+                tf.reshape(tf.stop_gradient(v_0_grad_theta_1), [1, param_len]),
+                tf.reshape(v_1_grad_theta_1_wrong, [param_len, 1])
+            )
         multiply1 = tf.matmul(
             tf.reshape(tf.stop_gradient(v_1_grad_theta_0), [1, param_len]),
             tf.reshape(v_0_grad_theta_0_wrong, [param_len, 1])
         )
 
-        second_order0 = flatgrad(multiply0, mainPN[0].parameters)
+        if against_destabilizer_exploiter:
+            second_order0 = flatgrad(multiply0, mainPN[0].parameters)
+            second_order0 = second_order0[:, None]
+
+            # second_order0_splits = [flatgrad(multiply0[:, i], mainPN[0].parameters) for i in range(batch_size)]
+            # second_order0 = tf.stack(second_order0_splits, axis=1)
+
+            # second_order0 = tf.vectorized_map(partial(flatgrad, var_list=mainPN[0].parameters), multiply0[0, :])
+            # second_order0 = tf.reshape(second_order0, [param_len, batch_size])
+        else:
+            second_order0 = flatgrad(multiply0, mainPN[0].parameters)
         second_order1 = flatgrad(multiply1, mainPN[1].parameters)
 
         mainPN[0].multiply0 = multiply0
@@ -130,6 +158,9 @@ def corrections_func(mainPN, batch_size, trace_length,
         mainPN[1].v_1_grad_10 = second_order1
         mainPN[0].second_order = tf.math.reduce_sum(second_order0)
         mainPN[1].second_order = tf.math.reduce_sum(second_order1)
+
+        if against_destabilizer_exploiter:
+            second_order0 = tf.math.reduce_sum(second_order0, axis=1)
 
         second_order0 = (second_order0 * lola_correction_multiplier)
         second_order1 = (second_order1 * lola_correction_multiplier)
@@ -143,11 +174,7 @@ def corrections_func(mainPN, batch_size, trace_length,
 
 
         delta_0 = v_0_grad_theta_0 + second_order0
-        if against_exploiter:
-            # The exploiter is not a LOLA agent
-            delta_1 = v_1_grad_theta_1
-        else:
-            delta_1 = v_1_grad_theta_1 + second_order1
+        delta_1 = v_1_grad_theta_1 + second_order1
 
         if clip_lola_update_norm:
             delta_0 = tf.clip_by_norm(delta_0, clip_lola_update_norm, axes=None, name=None)

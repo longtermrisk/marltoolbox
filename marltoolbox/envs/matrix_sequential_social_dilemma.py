@@ -9,23 +9,23 @@ from abc import ABC
 from gym.spaces import Discrete
 from gym.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from envs.utils.mixins import TwoPlayersTwoActionsInfoMixin, NPlayersNDiscreteActionsInfoMixin
+from envs.utils.interfaces import InfoAccumulationInterface
 
 
-# Abstract class
-class MatrixSequentialSocialDilemma(MultiAgentEnv, ABC):
+class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, ABC):
     """
-    A multi-agent base class environment for matrix games.
-
+    A multi-agent abstract class for matrix games.
     """
 
     def __init__(self, config: dict):
         """
         PAYOUT_MATRIX: Numpy array. Along dim N the action of the Nth player change.
-        reward_randomness: add a Normal(mean=0,std=reward_randomness) variation to each reward
         max_steps: episode length
         players_ids: agent ids for each player
         """
 
+        assert "reward_randomness" not in config.keys()
         assert self.PAYOUT_MATRIX is not None
         if "players_ids" in config:
             assert isinstance(config["players_ids"], Iterable) and len(config["players_ids"]) == self.NUM_AGENTS
@@ -33,9 +33,6 @@ class MatrixSequentialSocialDilemma(MultiAgentEnv, ABC):
         self.players_ids = config.get("players_ids", ["player_row", "player_col"])
         self.player_row_id, self.player_col_id = self.players_ids
         self.max_steps = config.get("max_steps", 20)
-        self.reward_randomness = config.get("reward_randomness", 0.0)
-        self.reward_randomness = 0.0 if self.reward_randomness is None else self.reward_randomness
-        self.reward_randomness = 0.0 if self.reward_randomness is False else self.reward_randomness
         self.get_additional_info = config.get("get_additional_info", True)
 
         self.step_count = None
@@ -58,10 +55,6 @@ class MatrixSequentialSocialDilemma(MultiAgentEnv, ABC):
             self.player_col_id: self.NUM_STATES - 1
         }
 
-    def _compute_rewards(self, *actions):
-        return {player_id: self.PAYOUT_MATRIX[actions[0]][actions[1]][i]
-                for i, player_id in enumerate(self.players_ids)}
-
     def step(self, action):
         self.step_count += 1
         ac0, ac1 = action[self.player_row_id], action[self.player_col_id]
@@ -69,28 +62,28 @@ class MatrixSequentialSocialDilemma(MultiAgentEnv, ABC):
         # Store info
         if self.get_additional_info:
             self._accumulate_info(ac0, ac1)
-        rewards = self._compute_rewards(ac0, ac1)
 
-        if self.reward_randomness != 0.0:
-            rewards = self._add_randomness_to_reward(rewards)
+        return self._to_RLLib_API(ac0, ac1)
+
+    def _to_RLLib_API(self, ac0, ac1):
 
         observations = {
             self.player_row_id: ac0 * self.NUM_ACTIONS + ac1,
             self.player_col_id: ac1 * self.NUM_ACTIONS + ac0
         }
 
-        if self.step_count == self.max_steps:
-            epi_is_done = True
-            if self.get_additional_info:
-                info_for_this_epi = self._get_info_summary()
-                info = {
-                    self.player_row_id: info_for_this_epi,
-                    self.player_col_id: info_for_this_epi
-                }
-            else:
-                info = {}
+        rewards = {player_id: self.PAYOUT_MATRIX[ac0][ac1][i]
+                        for i, player_id in enumerate(self.players_ids)}
+
+        epi_is_done = self.step_count == self.max_steps
+
+        if epi_is_done and self.get_additional_info:
+            info_for_this_epi = self._get_episode_info()
+            info = {
+                self.player_row_id: info_for_this_epi,
+                self.player_col_id: info_for_this_epi
+            }
         else:
-            epi_is_done = False
             info = {}
 
         done = {
@@ -98,61 +91,13 @@ class MatrixSequentialSocialDilemma(MultiAgentEnv, ABC):
             self.player_col_id: epi_is_done,
             "__all__": epi_is_done,
         }
+
         return observations, rewards, done, info
-
-    def _add_randomness_to_reward(self, rewards: dict) -> dict:
-        if not hasattr(self, "np_random"):
-            self.seed()
-        for key in rewards.keys():
-            rewards[key] += float(self.np_random.normal(loc=0, scale=self.reward_randomness))
-        return rewards
-
-    def _init_info(self):
-        raise NotImplementedError()
-
-    def _reset_info(self):
-        raise NotImplementedError()
-
-    def _get_info_summary(self):
-        raise NotImplementedError()
-
-    def _accumulate_info(self, ac0, ac1):
-        raise NotImplementedError()
 
     def __str__(self):
         return self.NAME
 
-
-class TwoPlayersTwoActionsInfo:
-
-    def _init_info(self):
-        self.cc_count = []
-        self.dd_count = []
-        self.cd_count = []
-        self.dc_count = []
-
-    def _reset_info(self):
-        self.cc_count.clear()
-        self.dd_count.clear()
-        self.cd_count.clear()
-        self.dc_count.clear()
-
-    def _get_info_summary(self):
-        return {
-            "CC": sum(self.cc_count) / len(self.cc_count),
-            "DD": sum(self.dd_count) / len(self.dd_count),
-            "CD": sum(self.cd_count) / len(self.cd_count),
-            "DC": sum(self.dc_count) / len(self.dc_count),
-        }
-
-    def _accumulate_info(self, ac0, ac1):
-        self.cc_count.append(ac0 == 0 and ac1 == 0)
-        self.cd_count.append(ac0 == 0 and ac1 == 1)
-        self.dc_count.append(ac0 == 1 and ac1 == 0)
-        self.dd_count.append(ac0 == 1 and ac1 == 1)
-
-
-class IteratedMatchingPennies(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
+class IteratedMatchingPennies(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Matching Pennies game.
     """
@@ -166,7 +111,7 @@ class IteratedMatchingPennies(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDi
     NAME = "IMP"
 
 
-class IteratedPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
+class IteratedPrisonersDilemma(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Prisoner's Dilemma game.
     """
@@ -181,7 +126,7 @@ class IteratedPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSequentialSocialD
     NAME = "IPD"
 
 
-class IteratedAsymPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
+class IteratedAsymPrisonersDilemma(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Prisoner's Dilemma game.
     """
@@ -196,7 +141,7 @@ class IteratedAsymPrisonersDilemma(TwoPlayersTwoActionsInfo, MatrixSequentialSoc
     NAME = "IPD"
 
 
-class IteratedStagHunt(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
+class IteratedStagHunt(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Stag Hunt game.
     """
@@ -211,7 +156,7 @@ class IteratedStagHunt(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
     NAME = "IteratedStagHunt"
 
 
-class IteratedChicken(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
+class IteratedChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Chicken game.
     """
@@ -226,7 +171,7 @@ class IteratedChicken(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
     NAME = "IteratedChicken"
 
 
-class IteratedAsymChicken(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
+class IteratedAsymChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Chicken game.
     """
@@ -241,7 +186,7 @@ class IteratedAsymChicken(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemm
     NAME = "AsymmetricIteratedChicken"
 
 
-class IteratedBoS(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
+class IteratedBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the BoS game.
     """
@@ -256,7 +201,7 @@ class IteratedBoS(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
     NAME = "IteratedBoS"
 
 
-class IteratedAsymBoS(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
+class IteratedAsymBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the BoS game.
     """
@@ -272,10 +217,7 @@ class IteratedAsymBoS(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
 
 
 def define_greed_fear_matrix_game(greed, fear):
-    class GreedFearGame(TwoPlayersTwoActionsInfo, MatrixSequentialSocialDilemma):
-        """
-        A two-agent environment for the BoS game.
-        """
+    class GreedFearGame(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
 
         NUM_AGENTS = 2
         NUM_ACTIONS = 2
@@ -296,32 +238,7 @@ def define_greed_fear_matrix_game(greed, fear):
     return GreedFearGame
 
 
-class NPlayersDiscreteActionsInfo:
-
-    def _init_info(self):
-        self.info_counters = {"n_steps_accumulated": 0}
-
-    def _reset_info(self):
-        self.info_counters = {"n_steps_accumulated": 0}
-
-    def _get_info_summary(self):
-        info = {}
-        if self.info_counters["n_steps_accumulated"] > 0:
-            for k, v in self.info_counters.items():
-                if k != "n_steps_accumulated":
-                    info[k] = v / self.info_counters["n_steps_accumulated"]
-
-        return info
-
-    def _accumulate_info(self, *actions):
-        id = "_".join([str(a) for a in actions])
-        if id not in self.info_counters:
-            self.info_counters[id] = 0
-        self.info_counters[id] += 1
-        self.info_counters["n_steps_accumulated"] += 1
-
-
-class IteratedBoSAndPD(NPlayersDiscreteActionsInfo, MatrixSequentialSocialDilemma):
+class IteratedBoSAndPD(NPlayersNDiscreteActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the BOTS + PD game.
     """

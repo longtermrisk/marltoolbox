@@ -12,19 +12,19 @@ from ray.rllib.utils.schedules import PiecewiseSchedule
 
 torch, nn = try_import_torch()
 
-from marltoolbox.envs import matrix_SSD, coin_game
+from marltoolbox.envs import matrix_sequential_social_dilemma, coin_game
 from marltoolbox.algos import amTFT
 from marltoolbox.utils import same_and_cross_perf, exploration, log, \
     postprocessing, policy, miscellaneous
 
 
 def modify_hp_for_selected_env(hp):
-    if hp["env"] == matrix_SSD.IteratedPrisonersDilemma:
+    if hp["env"] == matrix_sequential_social_dilemma.IteratedPrisonersDilemma:
         hp["n_epi"] = 10 if hp["debug"] else 400
         hp["base_lr"] = 0.01
         hp["x_limits"] = ((-3.5, 0.5),)
         hp["y_limits"] = ((-3.5, 0.5),)
-    elif hp["env"] == matrix_SSD.IteratedAsymChicken:
+    elif hp["env"] == matrix_sequential_social_dilemma.IteratedAsymChicken:
         hp["n_epi"] = 10 if hp["debug"] else 400
         hp["debit_threshold"] = 2.0
         hp["x_limits"] = ((-11.0, 4.5),)
@@ -34,7 +34,7 @@ def modify_hp_for_selected_env(hp):
             hp["base_lr"] = 0.04
         else:
             hp["base_lr"] = 0.01 / 5
-    elif hp["env"] in (matrix_SSD.IteratedBoS, matrix_SSD.IteratedAsymBoS):
+    elif hp["env"] in (matrix_sequential_social_dilemma.IteratedBoS, matrix_sequential_social_dilemma.IteratedAsymBoS):
         hp["n_epi"] = 10 if hp["debug"] else 800
         hp["base_lr"] = 0.01
         hp["x_limits"] = ((-1.0, 5.0),)
@@ -68,13 +68,12 @@ def modify_hp_for_selected_env(hp):
 
 
 def get_env_config(hp):
-    if hp["env"] in (matrix_SSD.IteratedPrisonersDilemma, matrix_SSD.IteratedBoSAndPD,
-                     matrix_SSD.IteratedAsymChicken, matrix_SSD.IteratedBoS,
-                     matrix_SSD.IteratedAsymBoS):
+    if hp["env"] in (matrix_sequential_social_dilemma.IteratedPrisonersDilemma, matrix_sequential_social_dilemma.IteratedBoSAndPD,
+                     matrix_sequential_social_dilemma.IteratedAsymChicken, matrix_sequential_social_dilemma.IteratedBoS,
+                     matrix_sequential_social_dilemma.IteratedAsymBoS):
         env_config = {
             "players_ids": ["player_row", "player_col"],
             "max_steps": hp["n_steps_per_epi"],
-            "reward_randomness": 0.0,  # if hp["env"] == matrix_SSD.IteratedAsymChicken else 0.0,
             "get_additional_info": True,
         }
     elif hp["env"] in [coin_game.CoinGame, coin_game.AsymCoinGame]:
@@ -481,9 +480,9 @@ def main(debug, train_n_replicates=None, filter_utilitarian=True):
         "self_play": True,
         # "self_play": False, # Not tested
 
-        "env": matrix_SSD.IteratedPrisonersDilemma,
-        # "env": matrix_SSD.IteratedAsymBoS,
-        # "env": matrix_SSD.IteratedAsymChicken,
+        "env": matrix_sequential_social_dilemma.IteratedPrisonersDilemma,
+        # "env": matrix_sequential_social_dilemma.IteratedAsymBoS,
+        # "env": matrix_sequential_social_dilemma.IteratedAsymChicken,
         # "env": coin_game.CoinGame
         # "env": coin_game.AsymCoinGame
 

@@ -1,6 +1,6 @@
 import random
 
-from marltoolbox.envs.matrix_SSD import IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS
+from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS
 
 
 def init_env(max_steps, env_class, seed=None):

@@ -20,7 +20,7 @@ from ray.rllib.agents.dqn import DQNTorchPolicy
 
 from marltoolbox.algos.lola.train_cg_tune_class_API import LOLAPGCG
 from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
-from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
+from marltoolbox.envs.vectorized_coin_game import CoinGame, AsymCoinGame
 from marltoolbox.utils import policy, log, same_and_cross_perf
 
 

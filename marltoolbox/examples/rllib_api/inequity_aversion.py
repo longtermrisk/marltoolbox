@@ -4,7 +4,7 @@ from ray import tune
 from ray.rllib.agents.pg import PGTrainer, PGTorchPolicy, pg_torch_policy
 
 # from marltoolbox.algos.inequity_aversion import InequityAversionTrainer
-from marltoolbox.envs.matrix_SSD import IteratedBoSAndPD
+from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedBoSAndPD
 from marltoolbox.utils import miscellaneous, log, postprocessing
 
 

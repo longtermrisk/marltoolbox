@@ -11,7 +11,7 @@ from ray.rllib.utils.schedules import PiecewiseSchedule
 
 torch, nn = try_import_torch()
 
-from marltoolbox.envs import matrix_SSD, coin_game
+from marltoolbox.envs import matrix_sequential_social_dilemma, coin_game
 from marltoolbox.algos import amTFT, population
 from marltoolbox.utils import same_and_cross_perf, exploration, log, \
     postprocessing, lvl1_best_response, miscellaneous
@@ -19,7 +19,7 @@ from marltoolbox.examples.rllib_api import amtft_various_env
 
 
 def modify_hp_for_selected_env(hp):
-    if hp["env"] == matrix_SSD.IteratedPrisonersDilemma:
+    if hp["env"] == matrix_sequential_social_dilemma.IteratedPrisonersDilemma:
         hp["n_epi"] = 10 if hp["debug"] else 400
         hp["base_lr"] = 0.01
         hp["x_limits"] = ((-3.5, 0.5),)
@@ -335,7 +335,7 @@ def main(debug):
         "self_play": True,
         # "self_play": False,
 
-        "env": matrix_SSD.IteratedPrisonersDilemma,
+        "env": matrix_sequential_social_dilemma.IteratedPrisonersDilemma,
         # "env": coin_game.CoinGame
 
         "NestedPolicyClass": dqn.DQNTorchPolicy,

@@ -25,7 +25,6 @@ def train(tune_hp):
         tune_config["env_config"] = {
             "players_ids": ["player_row", "player_col"],
             "max_steps": tune_hp["n_steps_per_epi"],
-            "reward_randomness": 0.0,
             "get_additional_info": True,
         }
     elif tune_hp["env"] == "CoinGame":
@@ -33,7 +32,7 @@ def train(tune_hp):
             "players_ids": ["player_red", "player_blue"],
             "max_steps": tune_hp["n_steps_per_epi"],
             "get_additional_info": True,
-            "flatten_obs": True,
+            # "flatten_obs": True,
         }
 
     ray.init(num_cpus=os.cpu_count(), num_gpus=0)

@@ -10,7 +10,7 @@ from ray import tune
 import marltoolbox.algos.lola.envs as lola_envs
 import marltoolbox.algos.lola_dice.envs as lola_dice_envs
 from marltoolbox.algos.lola import train_cg, train_exact, train_pg
-from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
+from marltoolbox.envs.vectorized_coin_game import CoinGame, AsymCoinGame
 from marltoolbox.utils import log
 
 

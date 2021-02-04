@@ -16,8 +16,8 @@ logging.basicConfig(filename='main.log', level=logging.DEBUG, filemode='w')
 from marltoolbox.algos.adaptive_mechanism_design.agent import Actor_Critic_Agent, Critic_Variant, Simple_Agent, \
     convert_from_rllib_env_format, convert_to_rllib_env_format
 from marltoolbox.algos.adaptive_mechanism_design.planning_agent import Planning_Agent
-from marltoolbox.envs.matrix_SSD import define_greed_fear_matrix_game
-from marltoolbox.envs.coin_game import CoinGame
+from marltoolbox.envs.matrix_sequential_social_dilemma import define_greed_fear_matrix_game
+from marltoolbox.envs.vectorized_coin_game import CoinGame
 
 
 def create_population(env, n_agents, n_units, use_simple_agents=False,
@@ -157,7 +157,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
 
             s_rllib_format = self.env.reset()
             last_s = convert_from_rllib_env_format(s_rllib_format, self.player_ids, state=True,
-                                                   n_states=self.env.NUM_STATES, coin_game=self.env.NAME == "CoinGame")
+                                                   n_states=self.env.n_features, coin_game=self.env.NAME == "CoinGame")
 
             flag = isinstance(last_s, list)
 
@@ -179,7 +179,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
                 s_rllib_format, rewards_rllib_format, done_rllib_format, info_rllib_format = self.env.step(
                     actions_rllib_format)
                 current_s = convert_from_rllib_env_format(s_rllib_format, self.player_ids, state=True,
-                                                          n_states=self.env.NUM_STATES,
+                                                          n_states=self.env.n_features,
                                                           coin_game=self.env.NAME == "CoinGame")
                 rewards = convert_from_rllib_env_format(rewards_rllib_format, self.player_ids)
                 done = convert_from_rllib_env_format(done_rllib_format, self.player_ids)
@@ -192,7 +192,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
                     if np.random.binomial(1, self.action_flip_prob):
                         perturbed_a = a
                         while perturbed_a == a:
-                            perturbed_a = random.randint(0, self.env.NUM_STATES - 1)
+                            perturbed_a = random.randint(0, self.env.n_features - 1)
                             print("perturbed_a == a", perturbed_a, a, perturbed_a == a)
                     else:
                         perturbed_actions.append(a)

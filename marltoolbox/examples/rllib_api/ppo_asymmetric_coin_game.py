@@ -26,7 +26,6 @@ def main(debug, stop_iters=2000, tf=False):
     env_config = {
         "players_ids": ["player_red", "player_blue"],
         "max_steps": 20,
-        "reward_randomness": None,
         "grid_size": 3,
         "get_additional_info": True,
     }
