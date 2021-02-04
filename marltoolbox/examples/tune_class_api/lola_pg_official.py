@@ -48,7 +48,7 @@ def get_tune_config(tune_hparams: dict, stop_on_epi_number:bool=False) -> dict:
             "grid_size": tune_config["grid_size"],
             "get_additional_info": True,
         }
-        tune_config['metric'] = "player_blue_pick_own"
+        tune_config['metric'] = "player_blue_pick_own_color"
     else:
         tune_config['num_episodes'] = 600000 if tune_config['num_episodes'] is None else tune_config['num_episodes']
         tune_config['trace_length'] = 150 if tune_config['trace_length'] is None else tune_config['trace_length']
@@ -165,7 +165,8 @@ def main(debug):
 
     exp_name, _ = log.log_in_current_day_dir("LOLA_PG")
 
-    use_best_exploiter = True
+    use_best_exploiter = False
+    # use_best_exploiter = True
 
     high_coop_speed_hp = True if use_best_exploiter else False
     # high_coop_speed_hp = True
@@ -257,7 +258,7 @@ def main(debug):
         # "exploiter_thresholds": None,
         "exploiter_thresholds": [0.0, 0.0] if debug else [0.80, 0.95],
 
-        # PG exploiter (DQN or PG exploiter: excluding options)
+        # PG exploiter
         # "use_PG_exploiter": False,
         "use_PG_exploiter": True if use_best_exploiter else False,
         "every_n_updates_copy_weights": 1 if debug else 100,
@@ -265,8 +266,8 @@ def main(debug):
         # "adding_scaled_weights": 0.33,
 
         # Destabilizer exploiter
-        # "use_destabilizer": True,
-        "use_destabilizer": False,
+        "use_destabilizer": True,
+        # "use_destabilizer": False,
     }
 
     if tune_hparams["load_plot_data"] is None:
