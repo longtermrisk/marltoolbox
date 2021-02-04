@@ -3,15 +3,16 @@ import random
 
 import numpy as np
 
-from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
+from marltoolbox.envs.vectorized_coin_game import CoinGame, AsymCoinGame
 
 
 # TODO add tests for grid_size != 3
 # TODO add tests for position in episode in 5th
 
-def init_env(max_steps, env_class, seed=None, grid_size=3):
+def init_env(max_steps, batch_size, env_class, seed=None, grid_size=3):
     config = {
         "max_steps": max_steps,
+        "batch_size": batch_size,
         "grid_size": grid_size,
     }
     env = env_class(config)
@@ -19,13 +20,14 @@ def init_env(max_steps, env_class, seed=None, grid_size=3):
     return env
 
 
-def check_obs(obs, grid_size):
+def check_obs(obs, batch_size, grid_size):
     assert len(obs) == 2, "two players"
-    for key, player_obs in obs.items():
-        assert player_obs.shape == (grid_size, grid_size, 4)
-        assert player_obs[..., 0].sum() == 1.0, f"observe 1 player red in grid: {player_obs[..., 0]}"
-        assert player_obs[..., 1].sum() == 1.0, f"observe 1 player blue in grid: {player_obs[..., 1]}"
-        assert player_obs[..., 2:].sum() == 1.0, f"observe 1 coin in grid: {player_obs[..., 0]}"
+    for i in range(batch_size):
+        for key, player_obs in obs.items():
+            assert player_obs.shape == (batch_size, grid_size, grid_size, 4)
+            assert player_obs[i, ..., 0].sum() == 1.0, f"observe 1 player red in grid: {player_obs[i, ..., 0]}"
+            assert player_obs[i, ..., 1].sum() == 1.0, f"observe 1 player blue in grid: {player_obs[i, ..., 1]}"
+            assert player_obs[i, ..., 2:].sum() == 1.0, f"observe 1 coin in grid: {player_obs[i, ..., 0]}"
 
 
 def assert_logger_buffer_size(env, n_steps):
@@ -36,90 +38,93 @@ def assert_logger_buffer_size(env, n_steps):
 
 
 def test_reset():
-    max_steps, grid_size = 20, 3
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    max_steps, batch_size, grid_size = 20, 5, 3
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env in [coin_game, asymm_coin_game]:
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
 
 def test_step():
-    max_steps, grid_size = 20, 3
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    max_steps, batch_size, grid_size = 20, 5, 3
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env in [coin_game, asymm_coin_game]:
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
-        actions = {policy_id: random.randint(0, env.NUM_ACTIONS - 1) for policy_id in env.players_ids}
+        actions = {policy_id: [random.randint(0, env.NUM_ACTIONS - 1) for _ in range(batch_size)]
+                   for policy_id in env.players_ids}
         obs, reward, done, info = env.step(actions)
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=1)
         assert not done["__all__"]
 
 
 def test_multiple_steps():
-    max_steps, grid_size = 20, 3
+    max_steps, batch_size, grid_size = 20, 5, 3
     n_steps = int(max_steps * 0.75)
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env in [coin_game, asymm_coin_game]:
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
         for step_i in range(1, n_steps, 1):
-            actions = {policy_id: random.randint(0, env.NUM_ACTIONS - 1) for policy_id in env.players_ids}
+            actions = {policy_id: [random.randint(0, env.NUM_ACTIONS - 1) for _ in range(batch_size)]
+                       for policy_id in env.players_ids}
             obs, reward, done, info = env.step(actions)
-            check_obs(obs, grid_size)
+            check_obs(obs, batch_size, grid_size)
             assert_logger_buffer_size(env, n_steps=step_i)
             assert not done["__all__"]
 
 
 def test_multiple_episodes():
-    max_steps, grid_size = 20, 3
+    max_steps, batch_size, grid_size = 20, 100, 3
     n_steps = int(max_steps * 8.25)
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env in [coin_game, asymm_coin_game]:
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
 
         step_i = 0
         for _ in range(n_steps):
             step_i += 1
-            actions = {policy_id: random.randint(0, env.NUM_ACTIONS - 1) for policy_id in env.players_ids}
+            actions = {policy_id: [random.randint(0, env.NUM_ACTIONS - 1) for _ in range(batch_size)]
+                       for policy_id in env.players_ids}
             obs, reward, done, info = env.step(actions)
-            check_obs(obs, grid_size)
+            check_obs(obs, batch_size, grid_size)
             assert_logger_buffer_size(env, n_steps=step_i)
             assert not done["__all__"] or (step_i == max_steps and done["__all__"])
             if done["__all__"]:
                 obs = env.reset()
-                check_obs(obs, grid_size)
+                check_obs(obs, batch_size, grid_size)
                 assert_logger_buffer_size(env, n_steps=0)
                 step_i = 0
 
 
-def overwrite_pos(env, p_red_pos, p_blue_pos, c_red_pos, c_blue_pos):
+def overwrite_pos(batch_size, env, p_red_pos, p_blue_pos, c_red_pos, c_blue_pos):
     assert c_red_pos is None or c_blue_pos is None
     if c_red_pos is None:
-        env.red_coin = 0
+        env.red_coin = [0] * batch_size
         coin_pos = c_blue_pos
     if c_blue_pos is None:
-        env.red_coin = 1
+        env.red_coin = [1] * batch_size
         coin_pos = c_red_pos
 
-    env.red_pos = p_red_pos
-    env.blue_pos = p_blue_pos
-    env.coin_pos = coin_pos
+    env.red_pos = [p_red_pos] * batch_size
+    env.blue_pos = [p_blue_pos] * batch_size
+    env.coin_pos = [coin_pos] * batch_size
 
     env.red_pos = np.array(env.red_pos)
     env.blue_pos = np.array(env.blue_pos)
@@ -127,16 +132,16 @@ def overwrite_pos(env, p_red_pos, p_blue_pos, c_red_pos, c_blue_pos):
     env.red_coin = np.array(env.red_coin)
 
 
-def assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+def assert_info(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
                 p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                 red_speed, blue_speed, red_own, blue_own):
     step_i = 0
     for _ in range(n_steps):
         step_i += 1
-        actions = {"player_red": p_red_act[step_i - 1],
-                   "player_blue": p_blue_act[step_i - 1]}
+        actions = {"player_red": [p_red_act[step_i - 1]] * batch_size,
+                   "player_blue": [p_blue_act[step_i - 1]] * batch_size}
         obs, reward, done, info = env.step(actions)
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=step_i)
         assert not done["__all__"] or (step_i == max_steps and done["__all__"])
 
@@ -154,11 +159,11 @@ def assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
                 assert info["player_blue"]["pick_own_color"] == blue_own
 
             obs = env.reset()
-            check_obs(obs, grid_size)
+            check_obs(obs, batch_size, grid_size)
             assert_logger_buffer_size(env, n_steps=0)
             step_i = 0
 
-        overwrite_pos(env, p_red_pos[step_i], p_blue_pos[step_i], c_red_pos[step_i],
+        overwrite_pos(batch_size, env, p_red_pos[step_i], p_blue_pos[step_i], c_red_pos[step_i],
                       c_blue_pos[step_i])
 
 
@@ -169,18 +174,18 @@ def test_logged_info_no_picking():
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     c_blue_pos = [None, None, None, None]
-    max_steps, grid_size = 4, 3
+    max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env in [coin_game, asymm_coin_game]:
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
-        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+        overwrite_pos(batch_size, env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
 
-        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+        assert_info(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=0.0, blue_speed=0.0, red_own=None, blue_own=None)
 
@@ -192,18 +197,18 @@ def test_logged_info__red_pick_red_all_the_time():
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     c_blue_pos = [None, None, None, None]
-    max_steps, grid_size = 4, 3
+    max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env_i, env in enumerate([coin_game, asymm_coin_game]):
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
-        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+        overwrite_pos(batch_size, env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
 
-        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+        assert_info(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=1.0, blue_speed=0.0, red_own=1.0, blue_own=None)
 
@@ -215,18 +220,18 @@ def test_logged_info__blue_pick_red_all_the_time():
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     c_blue_pos = [None, None, None, None]
-    max_steps, grid_size = 4, 3
+    max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env_i, env in enumerate([coin_game, asymm_coin_game]):
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
-        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+        overwrite_pos(batch_size, env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
 
-        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+        assert_info(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=0.0, blue_speed=1.0, red_own=None, blue_own=0.0)
 
@@ -238,18 +243,18 @@ def test_logged_info__blue_pick_blue_all_the_time():
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [None, None, None, None]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    max_steps, grid_size = 4, 3
+    max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env_i, env in enumerate([coin_game, asymm_coin_game]):
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
-        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+        overwrite_pos(batch_size, env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
 
-        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+        assert_info(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=0.0, blue_speed=1.0, red_own=None, blue_own=1.0)
 
@@ -261,18 +266,18 @@ def test_logged_info__red_pick_blue_all_the_time():
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [None, None, None, None]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    max_steps, grid_size = 4, 3
+    max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env_i, env in enumerate([coin_game, asymm_coin_game]):
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
-        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+        overwrite_pos(batch_size, env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
 
-        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+        assert_info(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=1.0, blue_speed=0.0, red_own=0.0, blue_own=None)
 
@@ -284,18 +289,18 @@ def test_logged_info__both_pick_blue_all_the_time():
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [None, None, None, None]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    max_steps, grid_size = 4, 3
+    max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env_i, env in enumerate([coin_game, asymm_coin_game]):
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
-        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+        overwrite_pos(batch_size, env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
 
-        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+        assert_info(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=1.0, blue_speed=1.0, red_own=0.0, blue_own=1.0)
 
@@ -307,20 +312,20 @@ def test_logged_info__both_pick_red_all_the_time():
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     c_blue_pos = [None, None, None, None]
-    max_steps, grid_size = 4, 3
+    max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env_i, env in enumerate([coin_game, asymm_coin_game]):
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
-        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+        overwrite_pos(batch_size, env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
 
-        print(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+        print(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
               p_red_pos, p_blue_pos, c_red_pos, c_blue_pos)
-        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+        assert_info(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=1.0, blue_speed=1.0, red_own=1.0, blue_own=0.0)
 
@@ -332,18 +337,18 @@ def test_logged_info__both_pick_red_half_the_time():
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     c_blue_pos = [None, None, None, None]
-    max_steps, grid_size = 4, 3
+    max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env_i, env in enumerate([coin_game, asymm_coin_game]):
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
-        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+        overwrite_pos(batch_size, env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
 
-        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+        assert_info(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=0.5, blue_speed=0.5, red_own=1.0, blue_own=0.0)
 
@@ -355,18 +360,18 @@ def test_logged_info__both_pick_blue_half_the_time():
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [None, None, None, None]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    max_steps, grid_size = 4, 3
+    max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env_i, env in enumerate([coin_game, asymm_coin_game]):
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
-        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+        overwrite_pos(batch_size, env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
 
-        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+        assert_info(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=0.5, blue_speed=0.5, red_own=0.0, blue_own=1.0)
 
@@ -378,18 +383,18 @@ def test_logged_info__both_pick_blue():
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [None, None, None, None]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    max_steps, grid_size = 4, 3
+    max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env_i, env in enumerate([coin_game, asymm_coin_game]):
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
-        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+        overwrite_pos(batch_size, env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
 
-        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+        assert_info(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=0.25, blue_speed=0.5, red_own=0.0, blue_own=1.0)
 
@@ -401,27 +406,27 @@ def test_logged_info__pick_half_the_time_half_blue_half_red():
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], None, [1, 1], None]
     c_blue_pos = [None, [1, 1], None, [1, 1]]
-    max_steps, grid_size = 4, 3
+    max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env_i, env in enumerate([coin_game, asymm_coin_game]):
         obs = env.reset()
-        check_obs(obs, grid_size)
+        check_obs(obs, batch_size, grid_size)
         assert_logger_buffer_size(env, n_steps=0)
-        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+        overwrite_pos(batch_size, env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
 
-        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+        assert_info(n_steps, batch_size, p_red_act, p_blue_act, env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=0.5, blue_speed=0.5, red_own=0.5, blue_own=0.5)
 
 
 def test_get_and_set_env_state():
-    max_steps, grid_size = 20, 100, 3
+    max_steps, batch_size, grid_size = 20, 100, 3
     n_steps = int(max_steps * 8.25)
-    coin_game = init_env(max_steps, CoinGame, grid_size)
-    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
 
     for env in [coin_game, asymm_coin_game]:
         obs = env.reset()
@@ -432,7 +437,8 @@ def test_get_and_set_env_state():
         step_i = 0
         for _ in range(n_steps):
             step_i += 1
-            actions = {policy_id: random.randint(0, env.NUM_ACTIONS - 1) for policy_id in env.players_ids}
+            actions = {policy_id: [random.randint(0, env.NUM_ACTIONS - 1) for _ in range(batch_size)]
+                       for policy_id in env.players_ids}
             obs, reward, done, info = env.step(actions)
 
             assert all([v == initial_env_state_saved[k]
