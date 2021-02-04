@@ -38,6 +38,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         self.grid_size = config.get("grid_size", 3)
         self.get_additional_info = config.get("get_additional_info", True)
         self.asymmetric = config.get("asymmetric", False)
+        self.n_features = self.grid_size ** 2 * (2 * self.NUM_AGENTS)
 
         self.OBSERVATION_SPACE = gym.spaces.Box(
             low=0,
@@ -172,14 +173,14 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         actions = [ac_red, ac_blue]
         return actions
 
-    def _to_RLLib_API(self, observation, reward):
+    def _to_RLLib_API(self, observation, rewards):
         state = {
             self.player_red_id: observation,
             self.player_blue_id: observation,
         }
-        reward = {
-            self.player_red_id: reward[0],
-            self.player_blue_id: reward[1],
+        rewards = {
+            self.player_red_id: rewards[0],
+            self.player_blue_id: rewards[1],
         }
 
         epi_is_done = (self.step_count == self.max_steps)
@@ -198,7 +199,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         else:
             info = {}
 
-        return state, reward, done, info
+        return state, rewards, done, info
 
     def _get_episode_info(self):
         """
