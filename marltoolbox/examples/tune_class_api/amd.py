@@ -143,7 +143,13 @@ def add_env_hp(hp):
     return hp
 
 
-def main(debug):
+def main(debug, use_rllib_policy=False):
+    """
+    The planner is not modified yet to work with policies/agents created with RLLib.
+    """
+    if use_rllib_policy:
+        print("WARNING: not possible to use the planner with use_rllib_polcy:", use_rllib_policy)
+
     train_n_replicates = 1 if debug else 5
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
@@ -172,7 +178,7 @@ def main(debug):
         "action_flip_prob": 0,
         "n_players": 2,
 
-        "with_planner": True,
+        "with_planner": True and not use_rllib_policy,
         # "with_planner": False,
         # "with_planner": tune.grid_search([True, False]),
 
@@ -182,6 +188,8 @@ def main(debug):
         "normalize_against_vp": False,
         "normalize_against_v": False,
         "normalize_vp_separated": False,
+
+        "use_rllib_polcy": use_rllib_policy,
 
     }
 
