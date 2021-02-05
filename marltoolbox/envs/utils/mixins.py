@@ -1,7 +1,7 @@
 from abc import ABC
-from envs.utils.interfaces import InfoAccumulationInterface
-import copy
-import numpy as np
+
+from marltoolbox.envs.utils.interfaces import InfoAccumulationInterface
+
 
 class TwoPlayersTwoActionsInfoMixin(InfoAccumulationInterface, ABC):
     """

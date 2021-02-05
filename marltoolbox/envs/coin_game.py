@@ -8,7 +8,7 @@ from gym.utils import seeding
 from numba.typed import List
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
-from envs.utils.interfaces import InfoAccumulationInterface
+from marltoolbox.envs.utils.interfaces import InfoAccumulationInterface
 
 
 class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
