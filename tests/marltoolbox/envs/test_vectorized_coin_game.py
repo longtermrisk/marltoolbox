@@ -469,3 +469,40 @@ def test_get_and_set_env_state():
             if done["__all__"]:
                 obs = env.reset()
                 step_i = 0
+
+
+def test_observations_are_invariant_to_the_player_trained():
+    p_red_pos = [[0, 0], [0, 0], [1, 1], [1, 1], [0, 0], [1, 1], [2, 0], [0, 1], [2, 2], [1, 2]]
+    p_blue_pos = [[0, 0], [0, 0], [1, 1], [1, 1], [1, 1], [0, 0], [0, 1], [2, 0], [1, 2], [2, 2]]
+    p_red_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    c_red_pos = [[1, 1], None, [0, 1], None, None, [2, 2], [0, 0], None, None, [2, 1]]
+    c_blue_pos = [None, [1, 1], None, [0, 1], [2, 2], None, None, [0, 0], [2, 1], None]
+    max_steps, batch_size, grid_size = 10, 51, 3
+    n_steps = max_steps
+    coin_game = init_env(max_steps, batch_size, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, batch_size, AsymCoinGame, grid_size)
+
+    for env_i, env in enumerate([coin_game, asymm_coin_game]):
+        _ = env.reset()
+        step_i = 0
+        overwrite_pos(batch_size, env, p_red_pos[step_i], p_blue_pos[step_i], c_red_pos[step_i], c_blue_pos[step_i])
+
+        for _ in range(n_steps):
+            step_i += 1
+            actions = {"player_red": [p_red_act[step_i - 1]] * batch_size,
+                       "player_blue": [p_blue_act[step_i - 1]] * batch_size}
+            obs, reward, done, info = env.step(actions)
+
+            # assert that observations are symmetrical respective to the actions
+            if step_i % 2 == 1:
+                obs_step_odd = obs
+            elif step_i % 2 == 0:
+                assert np.all(obs[env.players_ids[0]] == obs_step_odd[env.players_ids[1]])
+                assert np.all(obs[env.players_ids[1]] == obs_step_odd[env.players_ids[0]])
+
+            if step_i == max_steps:
+                break
+
+            overwrite_pos(batch_size, env, p_red_pos[step_i], p_blue_pos[step_i], c_red_pos[step_i],
+                          c_blue_pos[step_i])

@@ -226,3 +226,30 @@ def test_logged_info_mix_CD_CD():
 
         assert_info(n_steps, p_row_act, p_col_act, env, max_steps,
                     CC=0.0, DD=0.0, CD=0.5, DC=0.5)
+
+def test_observations_are_invariant_to_the_player_trained():
+    p_row_act = [0, 1, 1, 0]
+    p_col_act = [0, 1, 0, 1]
+    max_steps = 4
+    env_class_all = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS]
+    env_all = [init_env(max_steps, env_class) for env_class in env_class_all]
+    n_steps = 4
+
+    for env in env_all:
+        _ = env.reset()
+        step_i = 0
+        for _ in range(n_steps):
+            step_i += 1
+            actions = {"player_row": p_row_act[step_i - 1],
+                       "player_col": p_col_act[step_i - 1]}
+            obs, reward, done, info = env.step(actions)
+            # assert that observations are symmetrical respective to the actions
+            if step_i == 1:
+                assert obs[env.players_ids[0]] == obs[env.players_ids[1]]
+            elif step_i == 2:
+                assert obs[env.players_ids[0]] == obs[env.players_ids[1]]
+            elif step_i == 3:
+                obs_step_3 = obs
+            elif step_i == 4:
+                assert obs[env.players_ids[0]] == obs_step_3[env.players_ids[1]]
+                assert obs[env.players_ids[1]] == obs_step_3[env.players_ids[0]]

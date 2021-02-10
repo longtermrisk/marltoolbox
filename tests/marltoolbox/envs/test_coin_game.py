@@ -1,10 +1,8 @@
-import copy
 import random
 
 import numpy as np
 
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
-from envs.utils.wrappers import add_RewardUncertaintyEnvClassWrapper
 
 
 # TODO add tests for grid_size != 3
@@ -418,51 +416,38 @@ def test_logged_info__pick_half_the_time_half_blue_half_red():
                     red_speed=0.5, blue_speed=0.5, red_own=0.5, blue_own=0.5)
 
 
-# def test_save_load_env():
-#     max_steps, grid_size = 20, 3
-#     n_steps = int(max_steps * 8.25)
-#     MyCoinGame = add_SaveLoadEnvClassWrapper(CoinGame)
-#     MyAsymCoinGame = add_SaveLoadEnvClassWrapper(AsymCoinGame)
-#     coin_game = init_env(max_steps, MyCoinGame, grid_size)
-#     asymm_coin_game = init_env(max_steps, MyAsymCoinGame, grid_size)
-#
-#     for env in [coin_game, asymm_coin_game]:
-#         obs = env.reset()
-#         initial_env_state = env._save_env()
-#         initial_env_state_saved = copy.deepcopy(initial_env_state)
-#         env_initial = copy.deepcopy(env)
-#
-#         step_i = 0
-#         for _ in range(n_steps):
-#             step_i += 1
-#             actions = {policy_id: random.randint(0, env.NUM_ACTIONS - 1) for policy_id in env.players_ids}
-#             obs, reward, done, info = env.step(actions)
-#
-#             # assert all([v == initial_env_state_saved[k]
-#             #             if not isinstance(v, np.ndarray)
-#             #             else (v == initial_env_state_saved[k]).all()
-#             #             for k, v in initial_env_state.items()])
-#             env_state_after_step = env._save_env()
-#             env_after_step = copy.deepcopy(env)
-#
-#             env._set_env_state(initial_env_state)
-#             env_vars, env_initial_vars = vars(env), vars(env_initial)
-#             env_vars.pop("np_random", None)
-#             env_initial_vars.pop("np_random", None)
-#             assert all([v == env_initial_vars[k]
-#                         if not isinstance(v, np.ndarray)
-#                         else (v == env_initial_vars[k]).all()
-#                         for k, v in env_vars.items()])
-#
-#             env._set_env_state(env_state_after_step)
-#             env_vars, env_after_step_vars = vars(env), vars(env_after_step)
-#             env_vars.pop("np_random", None)
-#             env_after_step_vars.pop("np_random", None)
-#             assert all([v == env_after_step_vars[k]
-#                         if not isinstance(v, np.ndarray)
-#                         else (v == env_after_step_vars[k]).all()
-#                         for k, v in env_vars.items()])
-#
-#             if done["__all__"]:
-#                 obs = env.reset()
-#                 step_i = 0
+def test_observations_are_invariant_to_the_player_trained():
+    p_red_pos = [[0, 0], [0, 0], [1, 1], [1, 1], [0, 0], [1, 1], [2, 0], [0, 1], [2, 2], [1, 2]]
+    p_blue_pos = [[0, 0], [0, 0], [1, 1], [1, 1], [1, 1], [0, 0], [0, 1], [2, 0], [1, 2], [2, 2]]
+    p_red_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    c_red_pos = [[1, 1], None, [0, 1], None, None, [2, 2], [0, 0], None, None, [2, 1]]
+    c_blue_pos = [None, [1, 1], None, [0, 1], [2, 2], None, None, [0, 0], [2, 1], None]
+    max_steps, grid_size = 10, 3
+    n_steps = max_steps
+    coin_game = init_env(max_steps, CoinGame, grid_size)
+    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+
+    for env_i, env in enumerate([coin_game, asymm_coin_game]):
+        obs = env.reset()
+        step_i = 0
+        overwrite_pos(env, p_red_pos[step_i], p_blue_pos[step_i], c_red_pos[step_i], c_blue_pos[step_i])
+
+        for _ in range(n_steps):
+            step_i += 1
+            actions = {"player_red": p_red_act[step_i - 1],
+                       "player_blue": p_blue_act[step_i - 1]}
+            obs, reward, done, info = env.step(actions)
+
+            # assert that observations are symmetrical respective to the actions
+            if step_i % 2 == 1:
+                obs_step_odd = obs
+            elif step_i % 2 == 0:
+                assert np.all(obs[env.players_ids[0]] == obs_step_odd[env.players_ids[1]])
+                assert np.all(obs[env.players_ids[1]] == obs_step_odd[env.players_ids[0]])
+
+            if step_i == max_steps:
+                break
+
+            overwrite_pos(env, p_red_pos[step_i], p_blue_pos[step_i], c_red_pos[step_i],
+                          c_blue_pos[step_i])

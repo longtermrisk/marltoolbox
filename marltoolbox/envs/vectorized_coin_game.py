@@ -97,7 +97,7 @@ def generate_coin(batch_size, generate, red_coin, red_pos, blue_pos, coin_pos, g
 
 @jit(nopython=True)
 def generate_state(batch_size, red_pos, blue_pos, coin_pos, red_coin,
-                   step_count, max_steps, grid_size):
+                   step_count_in_current_episode, max_steps, grid_size):
     state = np.zeros((batch_size, grid_size, grid_size, 4))
     for i in prange(batch_size):
         state[i, red_pos[i][0], red_pos[i][1], 0] = 1
@@ -111,12 +111,12 @@ def generate_state(batch_size, red_pos, blue_pos, coin_pos, red_coin,
 
 @jit(nopython=True)
 def vectorized_step_with_numba_optimization(actions, batch_size, red_pos, blue_pos, coin_pos, red_coin, moves,
-         grid_size: int, asymmetric: bool, step_count: int, max_steps: int):
+         grid_size: int, asymmetric: bool, step_count_in_current_episode: int, max_steps: int):
     red_pos, blue_pos = move_players(batch_size, actions, red_pos, blue_pos, moves, grid_size)
     reward, generate, red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue = compute_reward(
         batch_size, red_pos, blue_pos, coin_pos, red_coin, asymmetric)
     coin_pos = generate_coin(batch_size, generate, red_coin, red_pos, blue_pos, coin_pos, grid_size)
-    state = generate_state(batch_size, red_pos, blue_pos, coin_pos, red_coin, step_count,
+    state = generate_state(batch_size, red_pos, blue_pos, coin_pos, red_coin, step_count_in_current_episode,
                            max_steps, grid_size)
     return red_pos, blue_pos, reward, coin_pos, state, red_coin, red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue
 
@@ -136,8 +136,8 @@ class CoinGame(NotVectorizedCoinGame):
 
 
     def reset(self):
-        self.step_count = 0
-        if self.get_additional_info:
+        self.step_count_in_current_episode = 0
+        if self.output_additional_info:
             self._reset_info()
 
         self.red_coin = np.random.randint(2, size=self.batch_size)
@@ -156,7 +156,7 @@ class CoinGame(NotVectorizedCoinGame):
         self.coin_pos = generate_coin(
             self.batch_size, generate, self.red_coin, self.red_pos, self.blue_pos, self.coin_pos, self.grid_size)
         state = generate_state(self.batch_size, self.red_pos, self.blue_pos, self.coin_pos,
-                               self.red_coin, self.step_count,
+                               self.red_coin, self.step_count_in_current_episode,
                                self.max_steps, self.grid_size)
 
         # Unvectorize if batch_size == 1 (do not return batch of states)
@@ -175,22 +175,24 @@ class CoinGame(NotVectorizedCoinGame):
         :return: observations, rewards, done, info
         """
         actions = self._from_RLLib_API_to_list(actions)
-        self.step_count += 1
+        self.step_count_in_current_episode += 1
 
         (self.red_pos, self.blue_pos, rewards, self.coin_pos, observation, self.red_coin,
          red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue) = vectorized_step_with_numba_optimization(
             actions, self.batch_size, self.red_pos, self.blue_pos, self.coin_pos, self.red_coin, self.MOVES,
-            self.grid_size, self.asymmetric, self.step_count, self.max_steps)
+            self.grid_size, self.asymmetric, self.step_count_in_current_episode, self.max_steps)
 
-        if self.get_additional_info:
+        if self.output_additional_info:
             self._accumulate_info(red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue)
+
+        observations = self._produce_observations_invariant_to_the_player_trained(observation)
 
         # Unvectorize if batch_size == 1 (do not return batch of states and rewards)
         if self.batch_size == 1 and not self.force_vectorized:
-            observation = observation[0, ...]
+            observations = [obs[0, ...] for obs in observations]
             rewards[0], rewards[1] = rewards[0][0], rewards[1][0]
 
-        return self._to_RLLib_API(observation, rewards)
+        return self._to_RLLib_API(observations, rewards)
 
     def _from_RLLib_API_to_list(self, actions):
         """
@@ -209,7 +211,7 @@ class CoinGame(NotVectorizedCoinGame):
             "coin_pos": self.coin_pos, "red_coin": self.red_coin,
             "grid_size": self.grid_size, "asymmetric": self.asymmetric,
             "batch_size": self.batch_size,
-            "step_count": self.step_count,
+            "step_count_in_current_episode": self.step_count_in_current_episode,
             "max_steps": self.max_steps,
             "red_pick": self.red_pick,
             "red_pick_own": self.red_pick_own,

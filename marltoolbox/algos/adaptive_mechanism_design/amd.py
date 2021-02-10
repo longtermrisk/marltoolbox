@@ -328,7 +328,7 @@ class AdaptiveMechanismDesign(tune.Trainable):
                 obs_before_act = obs_after_act
 
             if self.planning_agent is not None and self.epi_n < self.n_planning_eps:
-                self.avg_planning_rewards_per_round.append([r / self.env.step_count for r in cum_planning_rs])
+                self.avg_planning_rewards_per_round.append([r / self.env.step_count_in_current_episode for r in cum_planning_rs])
             epi_rewards = np.array(self.episode_reward)
             self.training_epi_avg_reward.append(np.mean(epi_rewards, axis=0))
             self.episode_reward.clear()

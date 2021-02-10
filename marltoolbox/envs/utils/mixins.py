@@ -5,7 +5,7 @@ from marltoolbox.envs.utils.interfaces import InfoAccumulationInterface
 
 class TwoPlayersTwoActionsInfoMixin(InfoAccumulationInterface, ABC):
     """
-    Mixin class to add logging capability in two player games
+    Mixin class to add logging capability in a two player discrete game. Logs the frequency of each state.
     """
 
     def _init_info(self):
@@ -37,7 +37,8 @@ class TwoPlayersTwoActionsInfoMixin(InfoAccumulationInterface, ABC):
 
 class NPlayersNDiscreteActionsInfoMixin(InfoAccumulationInterface, ABC):
     """
-    Mixin class to add logging capability in N player games with discrete actions
+    Mixin class to add logging capability in N player games with discrete actions.
+    Logs the frequency of action profiles used (action profile: the set of actions used during one step by all players).
     """
 
     def _init_info(self):

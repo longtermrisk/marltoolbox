@@ -2,27 +2,31 @@
 # Part of the code modified from: https://github.com/alshedivat/lola/tree/master/lola
 ##########
 
+from abc import ABC
 from collections import Iterable
 
 import numpy as np
-from abc import ABC
 from gym.spaces import Discrete
 from gym.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from marltoolbox.envs.utils.mixins import TwoPlayersTwoActionsInfoMixin, NPlayersNDiscreteActionsInfoMixin
+
 from marltoolbox.envs.utils.interfaces import InfoAccumulationInterface
+from marltoolbox.envs.utils.mixins import TwoPlayersTwoActionsInfoMixin, NPlayersNDiscreteActionsInfoMixin
 
 
 class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, ABC):
     """
-    A multi-agent abstract class for matrix games.
+    A multi-agent abstract class for two player matrix games.
     """
 
     def __init__(self, config: dict):
         """
-        PAYOUT_MATRIX: Numpy array. Along dim N the action of the Nth player change.
-        max_steps: episode length
-        players_ids: agent ids for each player
+        PAYOUT_MATRIX: Numpy array. Along the dimension N, the action of the Nth player change.
+                       The last dimension is used to select the player whose reward you want to know.
+        max_steps: number of step in one episode
+        players_ids: list of the RLLib agent id of each player
+        output_additional_info: ask the environment to aggregate information about the last episode and output them
+                       as info at the end of the episode.
         """
 
         assert "reward_randomness" not in config.keys()
@@ -33,12 +37,12 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
         self.players_ids = config.get("players_ids", ["player_row", "player_col"])
         self.player_row_id, self.player_col_id = self.players_ids
         self.max_steps = config.get("max_steps", 20)
-        self.get_additional_info = config.get("get_additional_info", True)
+        self.output_additional_info = config.get("output_additional_info", True)
 
-        self.step_count = None
+        self.step_count_in_current_episode = None
 
         # To store info about the fraction of each states
-        if self.get_additional_info:
+        if self.output_additional_info:
             self._init_info()
 
     def seed(self, seed=None):
@@ -47,44 +51,62 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
         return [seed]
 
     def reset(self):
-        self.step_count = 0
-        if self.get_additional_info:
+        self.step_count_in_current_episode = 0
+        if self.output_additional_info:
             self._reset_info()
         return {
             self.player_row_id: self.NUM_STATES - 1,
             self.player_col_id: self.NUM_STATES - 1
         }
 
-    def step(self, action):
-        self.step_count += 1
-        ac0, ac1 = action[self.player_row_id], action[self.player_col_id]
+    def step(self, actions: dict):
+        """
+        :param actions: Dict containing both actions for player_1 and player_2
+        :return: observations, rewards, done, info
+        """
+        self.step_count_in_current_episode += 1
+        action_player_0, action_player_1 = actions[self.player_row_id], actions[self.player_col_id]
 
-        # Store info
-        if self.get_additional_info:
-            self._accumulate_info(ac0, ac1)
+        if self.output_additional_info:
+            self._accumulate_info(action_player_0, action_player_1)
 
-        return self._to_RLLib_API(ac0, ac1)
+        observations = self._produce_observations_invariant_to_the_player_trained(action_player_0, action_player_1)
+        rewards = self._get_players_rewards(action_player_0, action_player_1)
+        epi_is_done = self.step_count_in_current_episode == self.max_steps
+        info = self._get_info_for_current_epi(epi_is_done)
 
-    def _to_RLLib_API(self, ac0, ac1):
+        return self._to_RLLib_API(observations, rewards, epi_is_done, info)
+
+    def _produce_observations_invariant_to_the_player_trained(self, action_player_0: int, action_player_1: int):
+        """
+        We want to be able to use a policy trained as player 1 for evaluation as player 2 and vice versa.
+        """
+        return [action_player_0 * self.NUM_ACTIONS + action_player_1,
+                action_player_1 * self.NUM_ACTIONS + action_player_0]
+
+    def _get_players_rewards(self, action_player_0: int, action_player_1: int):
+        return [self.PAYOUT_MATRIX[action_player_0][action_player_1][0],
+                self.PAYOUT_MATRIX[action_player_0][action_player_1][1]]
+
+    def _to_RLLib_API(self, observations: list, rewards: list, epi_is_done: bool, info: dict):
 
         observations = {
-            self.player_row_id: ac0 * self.NUM_ACTIONS + ac1,
-            self.player_col_id: ac1 * self.NUM_ACTIONS + ac0
+            self.player_row_id: observations[0],
+            self.player_col_id: observations[1]
         }
 
-        rewards = {player_id: self.PAYOUT_MATRIX[ac0][ac1][i]
-                        for i, player_id in enumerate(self.players_ids)}
+        rewards = {
+            self.player_row_id: rewards[0],
+            self.player_col_id: rewards[1]
+        }
 
-        epi_is_done = self.step_count == self.max_steps
-
-        if epi_is_done and self.get_additional_info:
-            info_for_this_epi = self._get_episode_info()
-            info = {
-                self.player_row_id: info_for_this_epi,
-                self.player_col_id: info_for_this_epi
-            }
-        else:
+        if info is None:
             info = {}
+        else:
+            info = {
+                self.player_row_id: info,
+                self.player_col_id: info
+            }
 
         done = {
             self.player_row_id: epi_is_done,
@@ -94,8 +116,16 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
 
         return observations, rewards, done, info
 
+    def _get_info_for_current_epi(self, epi_is_done):
+        if epi_is_done and self.output_additional_info:
+            info_for_current_epi = self._get_episode_info()
+        else:
+            info_for_current_epi = None
+        return info_for_current_epi
+
     def __str__(self):
         return self.NAME
+
 
 class IteratedMatchingPennies(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
@@ -128,7 +158,7 @@ class IteratedPrisonersDilemma(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSo
 
 class IteratedAsymPrisonersDilemma(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
-    A two-agent environment for the Prisoner's Dilemma game.
+    A two-agent environment for the Asymmetric Prisoner's Dilemma game.
     """
 
     NUM_AGENTS = 2
@@ -173,7 +203,7 @@ class IteratedChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilem
 
 class IteratedAsymChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
-    A two-agent environment for the Chicken game.
+    A two-agent environment for the Asymmetric Chicken game.
     """
 
     NUM_AGENTS = 2
@@ -218,7 +248,6 @@ class IteratedAsymBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilem
 
 def define_greed_fear_matrix_game(greed, fear):
     class GreedFearGame(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
-
         NUM_AGENTS = 2
         NUM_ACTIONS = 2
         NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
