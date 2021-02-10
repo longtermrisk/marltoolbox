@@ -17,7 +17,7 @@ def main(debug, stop_iters=200, tf=False):
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("PG_IPD")
 
-    ray.init(num_cpus=os.cpu_count(), num_gpus=0)
+    ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
 
     stop = {
         "training_iteration": 2 if debug else stop_iters,

@@ -1,34 +1,33 @@
 import copy
-
 import os
+
 import ray
 from ray import tune
-from ray.rllib.agents import dqn, a3c
-from ray.rllib.agents.a3c import a3c_torch_policy
+from ray.rllib.agents import dqn
 from ray.rllib.agents.dqn.dqn_torch_policy import build_q_stats, postprocess_nstep_and_prio
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
 
-torch, nn = try_import_torch()
+import torch
 
 from marltoolbox.envs import matrix_sequential_social_dilemma, coin_game
 from marltoolbox.algos import amTFT
 from marltoolbox.utils import same_and_cross_perf, exploration, log, \
-    postprocessing, policy, miscellaneous
+    postprocessing, miscellaneous
+from marltoolbox.utils.plot import PlotConfig
 
 
 def modify_hp_for_selected_env(hp):
     if hp["env"] == matrix_sequential_social_dilemma.IteratedPrisonersDilemma:
         hp["n_epi"] = 10 if hp["debug"] else 400
         hp["base_lr"] = 0.01
-        hp["x_limits"] = ((-3.5, 0.5),)
-        hp["y_limits"] = ((-3.5, 0.5),)
+        hp["x_limits"] = (-3.5, 0.5)
+        hp["y_limits"] = (-3.5, 0.5)
     elif hp["env"] == matrix_sequential_social_dilemma.IteratedAsymChicken:
         hp["n_epi"] = 10 if hp["debug"] else 400
         hp["debit_threshold"] = 2.0
-        hp["x_limits"] = ((-11.0, 4.5),)
-        hp["y_limits"] = ((-11.0, 4.5),)
+        hp["x_limits"] = (-11.0, 4.5)
+        hp["y_limits"] = (-11.0, 4.5)
         hp["use_adam"] = True
         if hp["use_adam"]:
             hp["base_lr"] = 0.04
@@ -37,13 +36,13 @@ def modify_hp_for_selected_env(hp):
     elif hp["env"] in (matrix_sequential_social_dilemma.IteratedBoS, matrix_sequential_social_dilemma.IteratedAsymBoS):
         hp["n_epi"] = 10 if hp["debug"] else 800
         hp["base_lr"] = 0.01
-        hp["x_limits"] = ((-1.0, 5.0),)
-        hp["y_limits"] = ((-1.0, 5.0),)
+        hp["x_limits"] = (-1.0, 5.0)
+        hp["y_limits"] = (-1.0, 5.0)
     elif hp["env"] in [coin_game.CoinGame, coin_game.AsymCoinGame]:
         hp["n_epi"] = 10 if hp["debug"] else 4000
         hp["base_lr"] = 0.1
-        hp["x_limits"] = ((-1.0, 3.0),)
-        hp["y_limits"] = ((-1.0, 1.0),)
+        hp["x_limits"] = (-1.0, 3.0)
+        hp["y_limits"] = (-1.0, 1.0)
         hp["gamma"] = 0.9
         hp["lambda"] = 0.9
         hp["alpha"] = 0.0
@@ -59,123 +58,35 @@ def modify_hp_for_selected_env(hp):
     else:
         raise NotImplementedError(f'hp["env"]: {hp["env"]}')
 
-    hp["scale_multipliers"] = (
-        ((1 / hp["n_steps_per_epi"]),  # First metric, x scale multiplier
-         (1 / hp["n_steps_per_epi"])),  # First metric, y scale multiplier
-    )
+    hp["scale_multipliers"] = ((1 / hp["n_steps_per_epi"]),  # for x axis
+                               (1 / hp["n_steps_per_epi"]))  # for y axis
 
     return hp
 
 
-def get_env_config(hp):
-    if hp["env"] in (matrix_sequential_social_dilemma.IteratedPrisonersDilemma, matrix_sequential_social_dilemma.IteratedBoSAndPD,
-                     matrix_sequential_social_dilemma.IteratedAsymChicken, matrix_sequential_social_dilemma.IteratedBoS,
-                     matrix_sequential_social_dilemma.IteratedAsymBoS):
-        env_config = {
-            "players_ids": ["player_row", "player_col"],
-            "max_steps": hp["n_steps_per_epi"],
-            "get_additional_info": True,
-        }
-    elif hp["env"] in [coin_game.CoinGame, coin_game.AsymCoinGame]:
-        env_config = {
-            "players_ids": ["player_red", "player_blue"],
-            "max_steps": hp["n_steps_per_epi"],
-            "grid_size": 3,
-            "get_additional_info": True,
-        }
-    else:
-        raise NotImplementedError()
-    return env_config
+def train(hp):
+    tune_analysis_per_welfare = {}
+    for welfare_fn, welfare_group_name in hp['welfare_functions']:
+        print("==============================================")
+        print("Going to start two_steps_training with welfare function", welfare_fn)
+        if hp["filter_utilitarian"] and welfare_fn == postprocessing.WELFARE_UTILITARIAN:
+            hp = preprocess_utilitarian_config(hp)
+        stop, env_config, trainer_config_update = get_rllib_config(hp, welfare_fn)
+        print("trainer_config_update", trainer_config_update)
+        results = amTFT.two_steps_training(stop=stop,
+                                           config=trainer_config_update,
+                                           name=hp["exp_name"],
+                                           TrainerClass=dqn.DQNTrainer)
+        if hp["filter_utilitarian"] and welfare_fn == postprocessing.WELFARE_UTILITARIAN:
+            results = postprocess_utilitarian_results(results, env_config, hp)
+        tune_analysis_per_welfare[welfare_group_name] = results
+    return tune_analysis_per_welfare
 
 
-def get_nested_policy_class(hp, welfare_fn):
-    NestedPolicyClass = hp["NestedPolicyClass"]
-
-    if NestedPolicyClass == dqn.DQNTorchPolicy:
-        additional_fn = postprocess_nstep_and_prio
-        stats_fn = build_q_stats
-        get_vars = lambda policy: policy.q_func_vars
-
-    elif NestedPolicyClass == policy.A2CTorchPolicy:
-        additional_fn = a3c.a3c_torch_policy.add_advantages
-        stats_fn = a3c_torch_policy.loss_and_entropy_stats
-        hp["base_lr"] = hp["base_lr"] * hp["a2c_lr_multiplier"]
-        get_vars = lambda policy: policy.model.parameters()
-    else:
-        raise NotImplementedError()
-
-    if not hp["use_adam"]:
-        def sgd_optimizer_dqn(policy, config) -> "torch.optim.Optimizer":
-            return torch.optim.SGD(get_vars(policy), lr=policy.cur_lr, momentum=config["sgd_momentum"])
-
-        NestedPolicyClass = NestedPolicyClass.with_updates(optimizer_fn=sgd_optimizer_dqn)
-
-    if hp["debug"]:
-        NestedPolicyClass = NestedPolicyClass.with_updates(stats_fn=log.stats_fn_wt_additionnal_logs(stats_fn))
-
-    CoopNestedPolicyClass = NestedPolicyClass.with_updates(
-        postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
-            postprocessing.get_postprocessing_welfare_function(
-                add_utilitarian_welfare=welfare_fn == postprocessing.WELFARE_UTILITARIAN,
-                add_inequity_aversion_welfare=welfare_fn == postprocessing.WELFARE_INEQUITY_AVERSION,
-                inequity_aversion_alpha=hp["alpha"], inequity_aversion_beta=hp["beta"],
-                inequity_aversion_gamma=hp["gamma"], inequity_aversion_lambda=hp["lambda"],
-            ),
-            additional_fn
-        )
-    )
-    return NestedPolicyClass, CoopNestedPolicyClass
-
-
-def get_policies(hp, env_config, welfare_fn):
-    PolicyClass = amTFT.amTFTTorchPolicy
-    NestedPolicyClass, CoopNestedPolicyClass = get_nested_policy_class(hp, welfare_fn)
-
-    amTFT_config_update = merge_dicts(
-        amTFT.DEFAULT_CONFIG,
-        {
-            # Set to True to train the nested policies and to False to use them
-            "working_state": "train_coop",
-            "welfare": welfare_fn,
-            "verbose": 1 if hp["debug"] else 0,
-
-            "sgd_momentum": 0.9,
-            'nested_policies': [
-                {"Policy_class": CoopNestedPolicyClass, "config_update": {}},
-                {"Policy_class": NestedPolicyClass, "config_update": {}},
-                {"Policy_class": CoopNestedPolicyClass, "config_update": {}},
-                {"Policy_class": NestedPolicyClass, "config_update": {}},
-            ]
-        }
-    )
-
-    policy_1_config = copy.deepcopy(amTFT_config_update)
-    policy_1_config["own_policy_id"] = env_config["players_ids"][0]
-    policy_1_config["opp_policy_id"] = env_config["players_ids"][1]
-    policy_1_config["debit_threshold"] = hp["debit_threshold"]
-
-    policy_2_config = copy.deepcopy(amTFT_config_update)
-    policy_2_config["own_policy_id"] = env_config["players_ids"][1]
-    policy_2_config["opp_policy_id"] = env_config["players_ids"][0]
-    policy_2_config["debit_threshold"] = hp["debit_threshold"]
-
-    policies = {
-        env_config["players_ids"][0]: (
-            # The default policy is DQN defined in DQNTrainer but we overwrite it to use the LE policy
-            PolicyClass,
-            hp["env"](env_config).OBSERVATION_SPACE,
-            hp["env"].ACTION_SPACE,
-            policy_1_config
-        ),
-        env_config["players_ids"][1]: (
-            PolicyClass,
-            hp["env"](env_config).OBSERVATION_SPACE,
-            hp["env"].ACTION_SPACE,
-            policy_2_config
-        ),
-    }
-
-    return policies
+def preprocess_utilitarian_config(hp):
+    hp_copy = copy.deepcopy(hp)
+    hp_copy['train_n_replicates'] = hp_copy['train_n_replicates'] * hp_copy["n_times_more_utilitarians_seeds"]
+    return hp_copy
 
 
 def get_rllib_config(hp, welfare_fn):
@@ -237,115 +148,62 @@ def get_rllib_config(hp, welfare_fn):
         # for more usage information.
         "callbacks": amTFT.get_amTFTCallBacks(
             additionnal_callbacks=[log.get_logging_callbacks_class(),
+                                   # This only overwrite the reward that is used for training not the one in the metrics
                                    postprocessing.OverwriteRewardWtWelfareCallback]),
         # "log_level": "INFO",
 
     }
 
-    if hp["NestedPolicyClass"] == dqn.DQNTorchPolicy:
-        trainer_config_update.update({
-            # === DQN Models ===
-            # Update the target network every `target_network_update_freq` steps.
-            "target_network_update_freq": hp["n_steps_per_epi"],
-            # === Replay buffer ===
-            # Size of the replay buffer. Note that if async_updates is set, then
-            # each worker will have a replay buffer of this size.
-            "buffer_size": int(hp["n_steps_per_epi"] * hp["n_epi"]) // 4,
-            # Whether to use dueling dqn
-            "dueling": False,
-            # Dense-layer setup for each the advantage branch and the value branch
-            # in a dueling architecture.
-            "hiddens": hp["hiddens"],
-            # Whether to use double dqn
-            "double_q": True,
-            # If True prioritized replay buffer will be used.
-            "prioritized_replay": False,
-            "model": {
-                # Number of hidden layers for fully connected net
-                "fcnet_hiddens": hp["hiddens"],
-                # Nonlinearity for fully connected net (tanh, relu)
-                "fcnet_activation": "relu",
-            },
+    trainer_config_update.update({
+        # === DQN Models ===
+        # Update the target network every `target_network_update_freq` steps.
+        "target_network_update_freq": hp["n_steps_per_epi"],
+        # === Replay buffer ===
+        # Size of the replay buffer. Note that if async_updates is set, then
+        # each worker will have a replay buffer of this size.
+        "buffer_size": int(hp["n_steps_per_epi"] * hp["n_epi"]) // 4,
+        # Whether to use dueling dqn
+        "dueling": False,
+        # Dense-layer setup for each the advantage branch and the value branch
+        # in a dueling architecture.
+        "hiddens": hp["hiddens"],
+        # Whether to use double dqn
+        "double_q": True,
+        # If True prioritized replay buffer will be used.
+        "prioritized_replay": False,
+        "model": {
+            # Number of hidden layers for fully connected net
+            "fcnet_hiddens": hp["hiddens"],
+            # Nonlinearity for fully connected net (tanh, relu)
+            "fcnet_activation": "relu",
+        },
 
-            # How many steps of the model to sample before learning starts.
-            "learning_starts": int(hp["n_steps_per_epi"] * hp["bs_epi_mul"]),
+        # How many steps of the model to sample before learning starts.
+        "learning_starts": int(hp["n_steps_per_epi"] * hp["bs_epi_mul"]),
 
-            # === Exploration Settings ===
-            # Default exploration behavior, iff `explore`=None is passed into
-            # compute_action(s).
-            # Set to False for no exploration behavior (e.g., for evaluation).
-            "explore": True,
-            # Provide a dict specifying the Exploration object's config.
-            "exploration_config": {
-                # The Exploration class to use. In the simplest case, this is the name
-                # (str) of any class present in the `rllib.utils.exploration` package.
-                # You can also provide the python class directly or the full location
-                # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-                # EpsilonGreedy").
-                "type": exploration.SoftQSchedule,
-                # Add constructor kwargs here (if any).
-                "temperature_schedule": hp["temperature_schedule"] or PiecewiseSchedule(
-                    endpoints=[
-                        (0, 10.0),
-                        (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.33), 1.0),
-                        (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.66), 0.1)],
-                    outside_value=0.1,
-                    framework="torch"),
-            },
-        })
-    # elif hp["NestedPolicyClass"] == a3c_torch_policy.A3CTorchPolicy:
-    elif hp["NestedPolicyClass"] == policy.A2CTorchPolicy:
-
-        trainer_config_update.update({
-            # === A3C Settings ===
-            # Should use a critic as a baseline (otherwise don't use value baseline;
-            # required for using GAE).
-            "use_critic": True,
-            # If true, use the Generalized Advantage Estimator (GAE)
-            # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
-            "use_gae": False,
-            # Size of rollout batch
-            # "rollout_fragment_length": 10,
-            # GAE(gamma) parameter
-            "lambda": 1.0,
-            # Max global norm for each gradient calculated by worker
-            # "grad_clip": 40.0,
-            # # Learning rate
-            # "lr": 0.0001,
-            # # Learning rate schedule
-            # "lr_schedule": None,
-            # Value Function Loss coefficient
-            "vf_loss_coeff": 0.5,
-            # Entropy coefficient
-            "entropy_coeff": 1.0 * 3.0,
-            # Min time per iteration
-            # "min_iter_time_s": 5,
-            # Workers sample async. Note that this increases the effective
-            # rollout_fragment_length by up to 5x due to async buffering of batches.
-            "sample_async": True,
-
-            "lr": hp["base_lr"],
-            # Learning rate schedule
-            "lr_schedule": [(0, hp["base_lr"]),
-                            (int(hp["n_steps_per_epi"] * hp["n_epi"]), hp["base_lr"] / 1e9)],
-
-            # === Exploration Settings ===
-            # Default exploration behavior, iff `explore`=None is passed into
-            # compute_action(s).
-            # Set to False for no exploration behavior (e.g., for evaluation).
-            "explore": True,
-            # Provide a dict specifying the Exploration object's config.
-            "exploration_config": {
-                # The Exploration class to use. In the simplest case, this is the name
-                # (str) of any class present in the `rllib.utils.exploration` package.
-                # You can also provide the python class directly or the full location
-                # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-                # EpsilonGreedy").
-                "type": "StochasticSampling",
-            },
-        })
-    else:
-        raise NotImplementedError()
+        # === Exploration Settings ===
+        # Default exploration behavior, iff `explore`=None is passed into
+        # compute_action(s).
+        # Set to False for no exploration behavior (e.g., for evaluation).
+        "explore": True,
+        # Provide a dict specifying the Exploration object's config.
+        "exploration_config": {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": exploration.SoftQSchedule,
+            # Add constructor kwargs here (if any).
+            "temperature_schedule": hp["temperature_schedule"] or PiecewiseSchedule(
+                endpoints=[
+                    (0, 10.0),
+                    (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.33), 1.0),
+                    (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.66), 0.1)],
+                outside_value=0.1,
+                framework="torch"),
+        },
+    })
 
     if hp["env"] in [coin_game.CoinGame, coin_game.AsymCoinGame]:
         trainer_config_update["model"] = {
@@ -356,10 +214,105 @@ def get_rllib_config(hp, welfare_fn):
     return stop, env_config, trainer_config_update
 
 
-def preprocess_utilitarian_config(hp):
-    hp_copy = copy.deepcopy(hp)
-    hp_copy['train_n_replicates'] = hp_copy['train_n_replicates'] * hp_copy["n_times_more_utilitarians_seeds"]
-    return hp_copy
+def get_env_config(hp):
+    if hp["env"] in (
+    matrix_sequential_social_dilemma.IteratedPrisonersDilemma, matrix_sequential_social_dilemma.IteratedBoSAndPD,
+    matrix_sequential_social_dilemma.IteratedAsymChicken, matrix_sequential_social_dilemma.IteratedBoS,
+    matrix_sequential_social_dilemma.IteratedAsymBoS):
+        env_config = {
+            "players_ids": ["player_row", "player_col"],
+            "max_steps": hp["n_steps_per_epi"],
+            "get_additional_info": True,
+        }
+    elif hp["env"] in [coin_game.CoinGame, coin_game.AsymCoinGame]:
+        env_config = {
+            "players_ids": ["player_red", "player_blue"],
+            "max_steps": hp["n_steps_per_epi"],
+            "grid_size": 3,
+            "get_additional_info": True,
+        }
+    else:
+        raise NotImplementedError()
+    return env_config
+
+
+def get_nested_policy_class(hp, welfare_fn):
+    NestedPolicyClass = dqn.DQNTorchPolicy
+
+    get_vars = lambda policy: policy.q_func_vars
+
+    if not hp["use_adam"]:
+        def sgd_optimizer_dqn(policy, config) -> "torch.optim.Optimizer":
+            return torch.optim.SGD(get_vars(policy), lr=policy.cur_lr, momentum=config["sgd_momentum"])
+
+        NestedPolicyClass = NestedPolicyClass.with_updates(optimizer_fn=sgd_optimizer_dqn)
+
+    if hp["debug"]:
+        NestedPolicyClass = NestedPolicyClass.with_updates(stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats))
+
+    CoopNestedPolicyClass = NestedPolicyClass.with_updates(
+        postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
+            postprocessing.get_postprocessing_welfare_function(
+                add_utilitarian_welfare=welfare_fn == postprocessing.WELFARE_UTILITARIAN,
+                add_inequity_aversion_welfare=welfare_fn == postprocessing.WELFARE_INEQUITY_AVERSION,
+                inequity_aversion_alpha=hp["alpha"], inequity_aversion_beta=hp["beta"],
+                inequity_aversion_gamma=hp["gamma"], inequity_aversion_lambda=hp["lambda"],
+            ),
+            postprocess_nstep_and_prio
+        )
+    )
+    return NestedPolicyClass, CoopNestedPolicyClass
+
+
+def get_policies(hp, env_config, welfare_fn):
+    PolicyClass = amTFT.amTFTTorchPolicy
+    NestedPolicyClass, CoopNestedPolicyClass = get_nested_policy_class(hp, welfare_fn)
+
+    amTFT_config_update = merge_dicts(
+        amTFT.DEFAULT_CONFIG,
+        {
+            # Set to True to train the nested policies and to False to use them
+            "working_state": "train_coop",
+            "welfare": welfare_fn,
+            "verbose": 1 if hp["debug"] else 0,
+
+            "sgd_momentum": 0.9,
+            'nested_policies': [
+                {"Policy_class": CoopNestedPolicyClass, "config_update": {}},
+                {"Policy_class": NestedPolicyClass, "config_update": {}},
+                {"Policy_class": CoopNestedPolicyClass, "config_update": {}},
+                {"Policy_class": NestedPolicyClass, "config_update": {}},
+            ]
+        }
+    )
+
+    policy_1_config = copy.deepcopy(amTFT_config_update)
+    policy_1_config["own_policy_id"] = env_config["players_ids"][0]
+    policy_1_config["opp_policy_id"] = env_config["players_ids"][1]
+    policy_1_config["debit_threshold"] = hp["debit_threshold"]
+
+    policy_2_config = copy.deepcopy(amTFT_config_update)
+    policy_2_config["own_policy_id"] = env_config["players_ids"][1]
+    policy_2_config["opp_policy_id"] = env_config["players_ids"][0]
+    policy_2_config["debit_threshold"] = hp["debit_threshold"]
+
+    policies = {
+        env_config["players_ids"][0]: (
+            # The default policy is DQN defined in DQNTrainer but we overwrite it to use the LE policy
+            PolicyClass,
+            hp["env"](env_config).OBSERVATION_SPACE,
+            hp["env"].ACTION_SPACE,
+            policy_1_config
+        ),
+        env_config["players_ids"][1]: (
+            PolicyClass,
+            hp["env"](env_config).OBSERVATION_SPACE,
+            hp["env"].ACTION_SPACE,
+            policy_2_config
+        ),
+    }
+
+    return policies
 
 
 def postprocess_utilitarian_results(results, env_config, hp):
@@ -375,86 +328,71 @@ def postprocess_utilitarian_results(results, env_config, hp):
     return results
 
 
-def train(hp):
-    results_list = []
-    for welfare_fn in hp['welfare_functions']:
-        print("==============================================")
-        print("Going to start two_steps_training with welfare function", welfare_fn)
-        if hp["filter_utilitarian"] and welfare_fn == postprocessing.WELFARE_UTILITARIAN:
-            hp = preprocess_utilitarian_config(hp)
-        stop, env_config, trainer_config_update = get_rllib_config(hp, welfare_fn)
-        print("trainer_config_update", trainer_config_update)
-        results = amTFT.two_steps_training(stop=stop,
-                                           config=trainer_config_update,
-                                           name=hp["exp_name"],
-                                           TrainerClass=hp["TrainerClass"])
-        if hp["filter_utilitarian"] and welfare_fn == postprocessing.WELFARE_UTILITARIAN:
-            results = postprocess_utilitarian_results(results, env_config, hp)
-        results_list.append(results)
-    return results_list
+def evaluate_same_and_cross_perf(tune_analysis_per_welfare, hp):
+    config_eval, env_config, stop, hp_eval = generate_eval_config(hp)
+
+    evaluator = same_and_cross_perf.SameAndCrossPlayEvaluator(exp_name=hp["exp_name"])
+    analysis_metrics_per_mode = evaluator.perform_evaluation_or_load_data(
+        evaluation_config=config_eval, stop_config=stop,
+        policies_to_load_from_checkpoint=copy.deepcopy(env_config["players_ids"]),
+        tune_analysis_per_exp=tune_analysis_per_welfare,
+        TrainerClass=dqn.DQNTrainer,
+        n_cross_play_per_checkpoint=min(5, (hp_eval["train_n_replicates"] * len(hp_eval["welfare_functions"])) - 1),
+        to_load_path=hp_eval["load_plot_data"])
+
+    plot_config = PlotConfig(xlim=hp_eval["x_limits"], ylim=hp_eval["y_limits"],
+                             markersize=5, alpha=1.0, jitter=hp_eval["jitter"],
+                             xlabel="player 1 payoffs", ylabel="player 2 payoffs",
+                             plot_max_n_points=hp_eval["train_n_replicates"],
+                             title="cross and same-play performances: " + hp_eval['env'].NAME,
+                             x_scale_multiplier=hp_eval["scale_multipliers"][0],
+                             y_scale_multiplier=hp_eval["scale_multipliers"][1])
+    evaluator.plot_results(analysis_metrics_per_mode, plot_config=plot_config,
+                           x_axis_metric=f"policy_reward_mean/{env_config['players_ids'][0]}",
+                           y_axis_metric=f"policy_reward_mean/{env_config['players_ids'][1]}")
+    return analysis_metrics_per_mode
 
 
-def evaluate_same_and_cross_perf(config_eval, results_list, hp, env_config, stop, train_n_replicates):
-    # Evaluate
+def generate_eval_config(hp):
+    hp_eval = modify_hp_for_evaluation(hp)
+    fake_welfare_function = hp_eval["welfare_functions"][0][0]
+    stop, env_config, trainer_config_update = get_rllib_config(hp_eval, fake_welfare_function)
+    config_eval = modify_config_for_evaluation(trainer_config_update, hp_eval, env_config)
+    return config_eval, env_config, stop, hp_eval
+
+
+def modify_hp_for_evaluation(hp):
+    hp_eval = copy.deepcopy(hp)
+    hp_eval["overwrite_reward"] = False
+    hp_eval["n_epi"] = 1
+    hp_eval["n_steps_per_epi"] = 5 if hp_eval["debug"] else 100
+    hp_eval["bs_epi_mul"] = 1
+    return hp_eval
+
+
+def modify_config_for_evaluation(config_eval, hp, env_config):
     config_eval["explore"] = False
     config_eval["seed"] = None
     for policy_id in config_eval["multiagent"]["policies"].keys():
         config_eval["multiagent"]["policies"][policy_id][3]["working_state"] = "eval_amtft"
-    policies_to_load = copy.deepcopy(env_config["players_ids"])
     if not hp["self_play"]:
         naive_player_id = env_config["players_ids"][-1]
         config_eval["multiagent"]["policies"][naive_player_id][3]["working_state"] = "eval_naive_selfish"
-
-    evaluator = same_and_cross_perf.SameAndCrossPlayEvaluation(
-        TrainerClass=hp["TrainerClass"],
-        group_names=hp["group_names"],
-        evaluation_config=config_eval,
-        stop_config=stop,
-        exp_name=hp["exp_name"],
-        policies_to_train=["None"],
-        policies_to_load_from_checkpoint=policies_to_load,
-    )
-
-    if hp["load_plot_data"] is None:
-        analysis_metrics_per_mode = evaluator.perf_analysis(n_same_play_per_checkpoint=1,
-                                                            n_cross_play_per_checkpoint=min(5, train_n_replicates - 1),
-                                                            extract_checkpoints_from_results=results_list,
-                                                            )
-    else:
-        analysis_metrics_per_mode = evaluator.load_results(to_load_path=hp["load_plot_data"])
-
-    evaluator.plot_results(
-        analysis_metrics_per_mode, title_sufix=": " + hp['env'].NAME,
-        metrics=((f"policy_reward_mean/{env_config['players_ids'][0]}",
-                  f"policy_reward_mean/{env_config['players_ids'][1]}"),),
-        x_limits=hp["x_limits"], y_limits=hp["y_limits"],
-        scale_multipliers=hp["scale_multipliers"], markersize=5, alpha=1.0, jitter=hp["jitter"],
-        xlabel="player 1 payoffs", ylabel="player 2 payoffs", add_title=False, frameon=True,
-        show_groups=True, plot_max_n_points=train_n_replicates
-    )
-    return analysis_metrics_per_mode
+    return config_eval
 
 
-def main(debug, train_n_replicates=None, filter_utilitarian=True):
+def main(debug, train_n_replicates=None, filter_utilitarian=None):
     train_n_replicates = 1 if debug else train_n_replicates
     train_n_replicates = 40 if train_n_replicates is None else train_n_replicates
     n_times_more_utilitarians_seeds = 4
-    pool_of_seeds = miscellaneous.get_random_seeds(train_n_replicates*(1+n_times_more_utilitarians_seeds))
+    pool_of_seeds = miscellaneous.get_random_seeds(train_n_replicates * (1 + n_times_more_utilitarians_seeds))
     exp_name, _ = log.log_in_current_day_dir("amTFT")
     hparams = {
         "debug": debug,
-        "filter_utilitarian": filter_utilitarian,
+        "filter_utilitarian": filter_utilitarian if filter_utilitarian is not None else not debug,
 
         "train_n_replicates": train_n_replicates,
         "n_times_more_utilitarians_seeds": n_times_more_utilitarians_seeds,
-
-        "NestedPolicyClass": dqn.DQNTorchPolicy,
-        "TrainerClass": dqn.DQNTrainer,
-
-        # The training hyperparameters with A2C are not tuned well, DQN instead is well tuned
-        # "NestedPolicyClass": policy.A2CTorchPolicy,
-        # "TrainerClass": a3c.A2CTrainer,
-        # "a2c_lr_multiplier": 1.0/9.0,
 
         "load_plot_data": None,
         # Example: "load_plot_data": ".../SameAndCrossPlay_save.p",
@@ -462,8 +400,8 @@ def main(debug, train_n_replicates=None, filter_utilitarian=True):
         "exp_name": exp_name,
         "n_steps_per_epi": 20,
         "bs_epi_mul": 4,
-        "welfare_functions": [postprocessing.WELFARE_INEQUITY_AVERSION, postprocessing.WELFARE_UTILITARIAN],
-        "group_names": ["inequity_aversion", "utilitarian"],
+        "welfare_functions": [(postprocessing.WELFARE_INEQUITY_AVERSION, "inequity_aversion"),
+                              (postprocessing.WELFARE_UTILITARIAN, "utilitarian")],
         "seeds": pool_of_seeds,
 
         "gamma": 0.5,
@@ -496,32 +434,21 @@ def main(debug, train_n_replicates=None, filter_utilitarian=True):
     hparams = modify_hp_for_selected_env(hparams)
 
     if hparams["load_plot_data"] is None:
-        ray.init(num_cpus=os.cpu_count(), num_gpus=0)
+        ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=hparams["debug"])
 
         # Train
-        results_list = train(hparams)
+        tune_analysis_per_welfare = train(hparams)
         # Eval & Plot
-        hparams["overwrite_reward"] = False
-        hparams["n_epi"] = 1
-        hparams["n_steps_per_epi"] = 5 if hparams["debug"] else 100
-        hparams["bs_epi_mul"] = 1
-        stop, env_config, trainer_config_update = get_rllib_config(hparams, hparams["welfare_functions"][0])
-        analysis_metrics_per_mode = evaluate_same_and_cross_perf(trainer_config_update, results_list,
-                                     hparams, env_config, stop, train_n_replicates)
+        analysis_metrics_per_mode = evaluate_same_and_cross_perf(tune_analysis_per_welfare, hparams)
 
         ray.shutdown()
     else:
-        hparams["overwrite_reward"] = False
-        hparams["n_epi"] = 1
-        hparams["n_steps_per_epi"] = 5 if hparams["debug"] else 100
-        hparams["bs_epi_mul"] = 1
+        tune_analysis_per_welfare = None
         # Plot
-        results_list = None
-        stop, env_config, trainer_config_update = get_rllib_config(hparams, hparams["welfare_functions"][0])
-        analysis_metrics_per_mode = evaluate_same_and_cross_perf(trainer_config_update, results_list,
-                                     hparams, env_config, stop, train_n_replicates)
+        analysis_metrics_per_mode = evaluate_same_and_cross_perf(tune_analysis_per_welfare, hparams)
 
-    return results_list, analysis_metrics_per_mode
+    return tune_analysis_per_welfare, analysis_metrics_per_mode
+
 
 if __name__ == "__main__":
     debug_mode = True

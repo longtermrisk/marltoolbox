@@ -37,6 +37,6 @@ def test_ltft_ipd():
 def test_amtft_ipd():
     from marltoolbox.examples.rllib_api.amtft_various_env import main
     ray.shutdown()  # Restart Ray defensively in case the ray connection is lost.
-    results_list, analysis_metrics_per_mode = main(debug=False, train_n_replicates=1, filter_utilitarian=False)
-    for result in results_list:
-        check_learning_achieved(tune_results=result, reward=-42, min=True)
+    tune_analysis_per_welfare, analysis_metrics_per_mode = main(debug=False, train_n_replicates=1, filter_utilitarian=False)
+    for welfare_name, tune_analysis in tune_analysis_per_welfare.items():
+        check_learning_achieved(tune_results=tune_analysis, reward=-42, min=True)

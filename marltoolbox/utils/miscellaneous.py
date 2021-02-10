@@ -1,6 +1,7 @@
 import copy
 
 import inspect
+import os
 import time
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
@@ -214,3 +215,48 @@ class PolicyCallbacks(DefaultCallbacks):
         for policy in worker.policy_map.values():
             if hasattr(policy, method) and callable(getattr(policy, method)):
                 getattr(policy, method)()
+
+def list_all_files_in_one_dir_tree(path):
+    if not os.path.exists(path):
+        raise FileExistsError(f"path doesn't exist: {path}")
+    file_list = []
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            # append the file name to the list
+            file_list.append(os.path.join(root, file))
+    print(len(file_list), "files found")
+    return file_list
+
+def ignore_str_containing_keys(str_list, ignore_keys):
+    str_list_filtered = [file_path for file_path in str_list if all([key not in file_path for key in ignore_keys])]
+    print(len(str_list_filtered), "str remaining after ignoring str containing any ignore_keys:", ignore_keys)
+    return str_list_filtered
+
+GROUP_KEY_NONE = "group_none"
+
+def separate_str_in_group_containing_keys(str_list, group_keys):
+    if len(group_keys) == 0:
+        return {GROUP_KEY_NONE: str_list}
+
+    groups_of_str_list = {}
+    for group_key in group_keys:
+        str_list_filtered = [file_path for file_path in str_list if group_key in file_path]
+        groups_of_str_list[f"group_{group_key}"] = str_list_filtered
+        print(f"group {group_key} created with {len(str_list_filtered)} str")
+    return groups_of_str_list
+
+def keep_strs_containing_keys(str_list, plot_keys):
+    str_list_filtered = [str_ for str_ in str_list if any([key in str_ for key in plot_keys])]
+    print(len(str_list_filtered), "str found after selecting plot_keys:", plot_keys)
+    return str_list_filtered
+
+def fing_longer_substr(str_list):
+    substr = ''
+    if len(str_list) > 1 and len(str_list[0]) > 0:
+        for i in range(len(str_list[0])):
+            for j in range(len(str_list[0]) - i + 1):
+                if j > len(substr) and all(str_list[0][i:i + j] in x for x in str_list):
+                    substr = str_list[0][i:i + j]
+    elif len(str_list) == 1:
+        substr = str_list[0]
+    return substr
