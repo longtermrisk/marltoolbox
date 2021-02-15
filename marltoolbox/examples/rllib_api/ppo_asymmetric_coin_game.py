@@ -39,15 +39,11 @@ def main(debug, stop_iters=2000, tf=False):
                 env_config["players_ids"][0]: (None,
                                                AsymCoinGame(env_config).OBSERVATION_SPACE,
                                                AsymCoinGame.ACTION_SPACE,
-                                               {
-                                                   "framework": "tf" if tf else "torch",
-                                               }),
+                                               {}),
                 env_config["players_ids"][1]: (None,
                                                AsymCoinGame(env_config).OBSERVATION_SPACE,
                                                AsymCoinGame.ACTION_SPACE,
-                                               {
-                                                   "framework": "tf" if tf else "torch",
-                                               }),
+                                               {}),
             },
             "policy_mapping_fn": lambda agent_id: agent_id,
         },

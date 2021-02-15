@@ -319,7 +319,7 @@ def postprocess_utilitarian_results(results, env_config, hp):
     results = miscellaneous.filter_tune_results(
         results,
         metric=f"policy_reward_mean/{env_config['players_ids'][0]}",
-        metric_threshold=3.2 * hp["n_steps_per_epi"],
+        metric_threshold=hp["utilitarian_filtering_threshold"] * hp["n_steps_per_epi"],
         metric_mode="last-5-avg", threshold_mode="above")
     if len(results.trials) > hp['train_n_replicates']:
         results.trials = results.trials[:hp['train_n_replicates']]
@@ -331,7 +331,7 @@ def postprocess_utilitarian_results(results, env_config, hp):
 def evaluate_same_and_cross_perf(tune_analysis_per_welfare, hp):
     config_eval, env_config, stop, hp_eval = generate_eval_config(hp)
 
-    evaluator = same_and_cross_perf.SameAndCrossPlayEvaluator(exp_name=hp["exp_name"])
+    evaluator = same_and_cross_perf.SameAndCrossPlayEvaluator(exp_name=hp_eval["exp_name"])
     analysis_metrics_per_mode = evaluator.perform_evaluation_or_load_data(
         evaluation_config=config_eval, stop_config=stop,
         policies_to_load_from_checkpoint=copy.deepcopy(env_config["players_ids"]),
@@ -419,10 +419,14 @@ def main(debug, train_n_replicates=None, filter_utilitarian=None):
         # "self_play": False, # Not tested
 
         "env": matrix_sequential_social_dilemma.IteratedPrisonersDilemma,
+        "utilitarian_filtering_threshold": -2.5,
         # "env": matrix_sequential_social_dilemma.IteratedAsymBoS,
+        # "utilitarian_filtering_threshold": 3.2,
         # "env": matrix_sequential_social_dilemma.IteratedAsymChicken,
+        # "utilitarian_filtering_threshold": ...,
         # "env": coin_game.CoinGame
         # "env": coin_game.AsymCoinGame
+        # "utilitarian_filtering_threshold": ...,
 
         # For training speed
         "min_iter_time_s": 0.0 if debug else 3.0,

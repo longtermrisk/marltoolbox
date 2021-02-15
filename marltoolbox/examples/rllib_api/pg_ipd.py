@@ -38,17 +38,13 @@ def main(debug, stop_iters=200, tf=False):
                     None,
                     IteratedPrisonersDilemma.OBSERVATION_SPACE,
                     IteratedPrisonersDilemma.ACTION_SPACE,
-                    {
-                        "framework": "tf" if tf else "torch",
-                    }
+                    {}
                 ),
                 env_config["players_ids"][1]: (
                     None,
                     IteratedPrisonersDilemma.OBSERVATION_SPACE,
                     IteratedPrisonersDilemma.ACTION_SPACE,
-                    {
-                        "framework": "tf" if tf else "torch",
-                    }
+                    {}
                 ),
             },
             "policy_mapping_fn": lambda agent_id: agent_id,

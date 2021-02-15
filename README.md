@@ -37,6 +37,52 @@ Improve at each new use. Keep it simple. Keep it flexible.
 
 # Get started
 
+## How to use this toolbox
+
+`RLLib` is built on top of `Tune` and `Tune` is built on top of `Ray`. 
+This toolbox `marltoolbox`, is built to work with `RLLib` 
+but also to allow to fallback to `Tune` only if needed, 
+at the cost of some functionalities.  
+
+To speed up research, we advise to take advantages of the functionnalities of `Tune` and `RLLib`. 
+
+### Introduction 
+
+###### **a) Read this quick introduction to `Tune`**  
+[`Tune`'s key concepts](https://docs.ray.io/en/master/tune/key-concepts.html) (< 5 min)  
+
+######**b) Read this quick introduction to `RLLib`**  
+[`RLlib` in 60 seconds](https://docs.ray.io/en/master/rllib.html#rllib-in-60-seconds) (< 5 min)  
+
+######**c) Read the README of the `Ray` project (which includes `Tune` and `RLLib`):**  
+[`Ray` README](https://github.com/ray-project/ray) (<5 min)  
+
+######**c) Introduction to this toolbox:**  
+Without any local installation, you can work through 2 tutorials to introduce this toolbox.  
+Please use [Google Colab](https://colab.research.google.com/notebooks/intro.ipynb#recent=true)
+to run them:
+- [Basic - How to use the toolbox](https://github.com/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Basics_How_to_use_the_toolbox.ipynb)
+  (~ 30 mins)
+- [Evaluations - "Level 1 best-response" and "same-play and cross-play"](https://github.com/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_L1BR_and_same_and_cross_play_performance_evaluation.ipynb)
+  (~ 30 mins)
+
+### Advanced: 
+
+To explore `Tune` further:
+- [`Tune` documentation](https://docs.ray.io/en/latest/tune/user-guide.html) 
+- [`Tune` tutorials](https://github.com/ray-project/tutorial/tree/master/tune_exercises)
+- [`Tune` examples](https://docs.ray.io/en/master/tune/examples/index.html#tune-general-examples)
+
+To explore `RLLib` further:
+- [a simple tutorial](https://colab.research.google.com/github/ray-project/tutorial/blob/master/rllib_exercises/rllib_exercise02_ppo.ipynb)
+where `RLLib` is used to train a PPO algorithm
+- [`RLLib` documentation](https://docs.ray.io/en/master/rllib-toc.html)
+- [`RLLib` tutorials](https://github.com/ray-project/tutorial/tree/master/rllib_exercises)
+- [`RLLib` examples](https://github.com/ray-project/ray/tree/master/rllib/examples) 
+
+To explore the toolbox `marltoolbox` further, take a look at 
+[our examples](https://github.com/longtermrisk/marltoolbox/tree/master/marltoolbox/examples).
+
 ## Toolbox installation
 
 The installation is tested with Ubuntu 18.04 LTS (preferred) and 20.04 LTS.  
@@ -133,37 +179,6 @@ python
 pip install tensorflow
 ```
 
-## How to use this toolbox
-
-`RLLib` is built on top of `Tune` and `Tune` is built on top of `Ray`. 
-This toolbox `marltoolbox`, is built to work with `RLLib` 
-but also to allow to fallback to `Tune` only if needed, 
-at the cost of some functionalities.  
-
-To speed up research, we advise to take advantages of the functionnalities of `Tune` and `RLLib`. 
-
-### Quick introduction 
-
-a) Read this quick introduction to 
-[Tune's key concepts](https://docs.ray.io/en/master/tune/key-concepts.html) (< 5 min).  
-b) Read this quick introduction 
-[RLlib in 60 seconds](https://docs.ray.io/en/master/rllib.html#rllib-in-60-seconds) (< 5 min).  
-<ins>c) Toolbox tutorial</ins>
-
-### Latter, explore `Tune` and `RLLib`
-
-To explore `Tune` further:
-- [`Tune` documentation](https://docs.ray.io/en/latest/tune/user-guide.html) 
-- [`Tune` tutorials](https://github.com/ray-project/tutorial/tree/master/tune_exercises)
-- [`Tune` examples](https://docs.ray.io/en/master/tune/examples/index.html#tune-general-examples)
-
-To explore `RLLib` further:
-- [a simple tutorial](https://colab.research.google.com/github/ray-project/tutorial/blob/master/rllib_exercises/rllib_exercise02_ppo.ipynb)
-where `RLLib` is used to train a PPO algorithm
-- [`RLLib` documentation](https://docs.ray.io/en/master/rllib-toc.html)
-- [`RLLib` tutorials](https://github.com/ray-project/tutorial/tree/master/rllib_exercises)
-- [`RLLib` examples](https://github.com/ray-project/ray/tree/master/rllib/examples) 
-
 
 ## Training models
 
@@ -215,7 +230,7 @@ but also use more and more constrained APIs.
 # Some usages:
 
 #### 0) Fall back to the `Tune` APIs when using the `RLLib` API is too costly
-You can find examples in `marltoolbox.examples.tune_class_api` and in `marltoolbox.examples.tune_function_api`.  
+You can find such examples in `marltoolbox.examples.tune_class_api` and in `marltoolbox.examples.tune_function_api`.  
 
 If the setup you want to train already exist, has a training loop 
 and if the cost to convert it into `RLLib` is too expensive,
@@ -225,8 +240,8 @@ then with minimum changes you can use `Tune`.
 **When is the conversion cost to `RLLib` too high?**  
 - If the algorithm has a complex unusual dataflow 
 - If the algorithm has an unusual training process 
-    - like LOLA: performing "virtual" opponent updates
-    - like L-TFT: nested algorithms
+    - like `LOLA`: performing "virtual" opponent updates
+    - like `LTFT`: nested algorithms
 - If you don't need to change the algorithm
 - If you don't plan to run the algorithm against policies from `RLLib`
 - If you do not plan to work much with the algorithm. 
@@ -236,17 +251,13 @@ And thus, you do not want to invest time in the conversion to `RLLib`.
 
 #### 1) Using components directly provided by `RLLib`  
 
-###### a) Without `RLLib`
-
-Examples using the `Tune` class API:
+###### a) Examples using the `Tune` class API:
 - Using an A3C policy: `amd.py` with `use_rllib_policy = True` (toolbox example)
 - Using (custom or not) environments:
     - IPD and coin game environments: amd.py (toolbox example)
     - Asymmetric coin game environment: lola_pg_official.py (toolbox example)
 
-###### b) With `RLLib`
-
-Examples using the `RLLib` API:
+###### b) Examples using the `RLLib` API:
 - IPD environments: pg_ipd.py (toolbox example)
 - Asymmetric coin game environment: ppo_asymmetric_coin_game.py (toolbox example)
 - APEX_DDPG and the water world environment:

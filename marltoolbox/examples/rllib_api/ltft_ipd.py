@@ -43,7 +43,7 @@ def get_rllib_config(hp: dict):
         optimizer_fn=sgd_optimizer_dqn,
         stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats))
 
-    LE_CONFIG_UPDATE = merge_dicts(
+    ltft_config = merge_dicts(
         LTFT_DEFAULT_CONFIG_UPDATE,
         {
             "sgd_momentum": 0.9,
@@ -85,16 +85,16 @@ def get_rllib_config(hp: dict):
         "multiagent": {
             "policies": {
                 "player_row": (
-                    # The default policy is DQN defined in DQNTrainer but we overwrite it to use the LTFT policy
+                    # The default policy is DQNTorchPolicy defined in DQNTrainer but we overwrite it to use the LTFT policy
                     LTFT,
                     IteratedPrisonersDilemma.OBSERVATION_SPACE,
                     IteratedPrisonersDilemma.ACTION_SPACE,
-                    copy.deepcopy(LE_CONFIG_UPDATE)),
+                    copy.deepcopy(ltft_config)),
                 "player_col": (
                     LTFT,
                     IteratedPrisonersDilemma.OBSERVATION_SPACE,
                     IteratedPrisonersDilemma.ACTION_SPACE,
-                    copy.deepcopy(LE_CONFIG_UPDATE)),
+                    copy.deepcopy(ltft_config)),
             },
             "policy_mapping_fn": lambda agent_id: agent_id,
         },
@@ -180,32 +180,32 @@ def get_rllib_config(hp: dict):
         "num_envs_per_worker": 1,
         "batch_mode": "complete_episodes",
 
-        # === Debug Settings ===
-        # Whether to write episode stats and videos to the agent log dir. This is
-        # typically located in ~/ray_results.
-        "monitor": True,
-        # Set the ray.rllib.* log level for the agent process and its workers.
-        # Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level will also
-        # periodically print out summaries of relevant internal dataflow (this is
-        # also printed out once at startup at the INFO level). When using the
-        # `rllib train` command, you can also use the `-v` and `-vv` flags as
-        # shorthand for INFO and DEBUG.
-        "log_level": "INFO",
+        # # === Debug Settings ===
+        # # Whether to write episode stats and videos to the agent log dir. This is
+        # # typically located in ~/ray_results.
+        # "monitor": True,
+        # # Set the ray.rllib.* log level for the agent process and its workers.
+        # # Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level will also
+        # # periodically print out summaries of relevant internal dataflow (this is
+        # # also printed out once at startup at the INFO level). When using the
+        # # `rllib train` command, you can also use the `-v` and `-vv` flags as
+        # # shorthand for INFO and DEBUG.
+        # "log_level": "INFO",
         # Callbacks that will be run during various phases of training. See the
         # `DefaultCallbacks` class and `examples/custom_metrics_and_callbacks.py`
         # for more usage information.
         # "callbacks": DefaultCallbacks,
         "callbacks": miscellaneous.merge_callbacks(LTFTCallbacks,
                                                    log.get_logging_callbacks_class()),
-        # Whether to attempt to continue training if a worker crashes. The number
-        # of currently healthy workers is reported as the "num_healthy_workers"
-        # metric.
-        "ignore_worker_failures": False,
-        # Log system resource metrics to results. This requires `psutil` to be
-        # installed for sys stats, and `gputil` for GPU metrics.
-        "log_sys_usage": True,
-        # Use fake (infinite speed) sampler. For testing only.
-        "fake_sampler": False,
+        # # Whether to attempt to continue training if a worker crashes. The number
+        # # of currently healthy workers is reported as the "num_healthy_workers"
+        # # metric.
+        # "ignore_worker_failures": False,
+        # # Log system resource metrics to results. This requires `psutil` to be
+        # # installed for sys stats, and `gputil` for GPU metrics.
+        # "log_sys_usage": True,
+        # # Use fake (infinite speed) sampler. For testing only.
+        # "fake_sampler": False,
     }
 
     return rllib_config, env_config, stop
@@ -249,5 +249,5 @@ def main(debug):
     return tune_analysis_self_play, tune_analysis_naive_opponent
 
 if __name__ == "__main__":
-    debug = True
+    debug = False
     main(debug)

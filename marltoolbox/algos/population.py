@@ -132,6 +132,15 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
 def modify_config_to_use_population(config: dict, opponent_policy_id: str, opponents_checkpoints: list):
     population_policy = copy.deepcopy(list(config["multiagent"]["policies"][opponent_policy_id]))
 
+    population_policy = _convert_to_population_policy(population_policy, config,
+                                                      opponent_policy_id, opponents_checkpoints)
+
+    miscellaneous.overwrite_config(dict_=config,
+                                   key=f"multiagent.policies.{opponent_policy_id}", value=population_policy)
+    return config
+
+
+def _convert_to_population_policy(population_policy, config, opponent_policy_id, opponents_checkpoints):
     population_policy[0] = PopulationOfIdenticalAlgo
     population_policy[3].update(DEFAULT_CONFIG_UPDATE)
     population_policy[3]["policy_id_to_load"] = opponent_policy_id
@@ -141,6 +150,4 @@ def modify_config_to_use_population(config: dict, opponent_policy_id: str, oppon
          "config_update": copy.deepcopy(config["multiagent"]["policies"][opponent_policy_id][3])},
     ]
     population_policy[3]["policy_checkpoints"] = opponents_checkpoints
-
-    miscellaneous.overwrite_config(dict_=config,
-                                   key=f"multiagent.policies.{opponent_policy_id}", value=population_policy)
+    return population_policy

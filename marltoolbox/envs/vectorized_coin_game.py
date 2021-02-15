@@ -1,13 +1,16 @@
 ##########
 # Code modified from: https://github.com/julianstastny/openspiel-social-dilemmas/blob/master/games/coin_game_gym.py
 ##########
+
 import copy
 from collections import Iterable
 
 import numpy as np
 from numba import jit, prange
+from numba.typed import List
 
 from marltoolbox.envs.coin_game import CoinGame as NotVectorizedCoinGame
+
 
 @jit(nopython=True)
 def _same_pos(x, y):
@@ -15,7 +18,15 @@ def _same_pos(x, y):
 
 
 @jit(nopython=True)
-def move_players(batch_size, actions, red_pos, blue_pos, moves, grid_size):
+def move_players(batch_size, actions, red_pos, blue_pos, grid_size):
+
+    moves = List([
+        np.array([0, 1]),
+        np.array([0, -1]),
+        np.array([1, 0]),
+        np.array([-1, 0]),
+    ])
+
     for j in prange(batch_size):
         red_pos[j] = \
             (red_pos[j] + moves[actions[j, 0]]) % grid_size
@@ -110,9 +121,10 @@ def generate_state(batch_size, red_pos, blue_pos, coin_pos, red_coin,
 
 
 @jit(nopython=True)
-def vectorized_step_with_numba_optimization(actions, batch_size, red_pos, blue_pos, coin_pos, red_coin, moves,
-         grid_size: int, asymmetric: bool, step_count_in_current_episode: int, max_steps: int):
-    red_pos, blue_pos = move_players(batch_size, actions, red_pos, blue_pos, moves, grid_size)
+def vectorized_step_with_numba_optimization(actions, batch_size, red_pos, blue_pos, coin_pos, red_coin,
+                                            grid_size: int, asymmetric: bool, step_count_in_current_episode: int,
+                                            max_steps: int):
+    red_pos, blue_pos = move_players(batch_size, actions, red_pos, blue_pos, grid_size)
     reward, generate, red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue = compute_reward(
         batch_size, red_pos, blue_pos, coin_pos, red_coin, asymmetric)
     coin_pos = generate_coin(batch_size, generate, red_coin, red_pos, blue_pos, coin_pos, grid_size)
@@ -133,7 +145,6 @@ class CoinGame(NotVectorizedCoinGame):
         self.batch_size = config.get("batch_size", 1)
         self.force_vectorized = config.get("force_vectorize", False)
         assert self.grid_size == 3, "hardcoded in the generate_state function"
-
 
     def reset(self):
         self.step_count_in_current_episode = 0
@@ -168,7 +179,6 @@ class CoinGame(NotVectorizedCoinGame):
             self.player_blue_id: state
         }
 
-
     def step(self, actions: Iterable):
         """
         :param actions: Dict containing both actions for player_1 and player_2
@@ -179,7 +189,7 @@ class CoinGame(NotVectorizedCoinGame):
 
         (self.red_pos, self.blue_pos, rewards, self.coin_pos, observation, self.red_coin,
          red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue) = vectorized_step_with_numba_optimization(
-            actions, self.batch_size, self.red_pos, self.blue_pos, self.coin_pos, self.red_coin, self.MOVES,
+            actions, self.batch_size, self.red_pos, self.blue_pos, self.coin_pos, self.red_coin,
             self.grid_size, self.asymmetric, self.step_count_in_current_episode, self.max_steps)
 
         if self.output_additional_info:
@@ -206,7 +216,7 @@ class CoinGame(NotVectorizedCoinGame):
         return actions
 
     def _save_env(self):
-        env_state = {
+        env_save_state = {
             "red_pos": self.red_pos, "blue_pos": self.blue_pos,
             "coin_pos": self.coin_pos, "red_coin": self.red_coin,
             "grid_size": self.grid_size, "asymmetric": self.asymmetric,
@@ -218,7 +228,7 @@ class CoinGame(NotVectorizedCoinGame):
             "blue_pick": self.blue_pick,
             "blue_pick_own": self.blue_pick_own,
         }
-        return copy.deepcopy(env_state)
+        return copy.deepcopy(env_save_state)
 
     def _load_env(self, env_state):
         for k, v in env_state.items():

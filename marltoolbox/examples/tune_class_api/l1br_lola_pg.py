@@ -308,12 +308,13 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
     lvl0_policy_id = env_config["players_ids"][lvl0_policy_idx]
     lvl1_policy_id = env_config["players_ids"][lvl1_policy_idx]
 
-    lvl1_best_response.prepare_config_for_lvl1_training(
-        config=rllib_config,
-        lvl0_policy_id=lvl0_policy_id, lvl1_policy_id=lvl1_policy_id,
-        select_n_lvl0_from_population=len(tune_hp["lvl0_seeds"]) // len(tune_hp["lvl1_seeds"]),
-        n_lvl1_to_train=len(tune_hp["lvl1_seeds"]),
-        overlapping_population=False, lvl0_checkpoints=lvl0_checkpoints)
+    l1br_configuration_helper = lvl1_best_response.L1BRConfigurationHelper(rllib_config, lvl0_policy_id, lvl1_policy_id)
+    l1br_configuration_helper.define_exp(
+        use_n_lvl0_agents_in_each_population=len(tune_hp["lvl0_seeds"]) // len(tune_hp["lvl1_seeds"]),
+        train_n_lvl1_agents=len(tune_hp["lvl1_seeds"]),
+        lvl0_checkpoints=lvl0_checkpoints)
+    rllib_config = l1br_configuration_helper.prepare_config_for_lvl1_training()
+
 
     print("rllib_config", rllib_config)
     results = ray.tune.run(DQNTrainer, config=rllib_config,

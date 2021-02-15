@@ -153,12 +153,12 @@ class LTFT(hierarchical.HierarchicalTorchPolicy):
                 samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="being_punished")
 
             # TODO currently continue to learn because I use the batch to stop but the batch is sampled!
-            if len(samples_copy[samples_copy.ACTIONS]) > 0:
-                learner_stats["learner_stats"][f"learner_stats_algo{i}"] = algo.learn_on_batch(samples_copy)
-                self.to_log[f'algo{i}_cur_lr'] = algo.cur_lr
-            # For debugging purpose log the true lr (to be compared to algo.cur_lr)
-            for j, opt in enumerate(algo._optimizers):
-                self.to_log[f"algo_{i}_{j}_lr"] = [p["lr"] for p in opt.param_groups][0]
+            # if len(samples_copy[samples_copy.ACTIONS]) > 0:
+            #     learner_stats["learner_stats"][f"learner_stats_algo{i}"] = algo.learn_on_batch(samples_copy)
+            #     self.to_log[f'algo{i}_cur_lr'] = algo.cur_lr
+            # # For debugging purpose log the true lr (to be compared to algo.cur_lr)
+            # for j, opt in enumerate(algo._optimizers):
+            #     self.to_log[f"algo_{i}_{j}_lr"] = [p["lr"] for p in opt.param_groups][0]
 
         return learner_stats
 
@@ -176,7 +176,7 @@ class LTFT(hierarchical.HierarchicalTorchPolicy):
             self.n_cooperation_steps_in_current_epi += 1
 
     def on_episode_end(self):
-
+        print("LTFT, on_episode_end")
         if self.n_steps_since_start >= self.length_of_history + self.WARMUP_LENGTH:
             percentile_value = self._compare_log_likelihood_on_boostrapped_sequences(self.data_queue)
             self._update_defection_metric(epi_defection_metric=-percentile_value)

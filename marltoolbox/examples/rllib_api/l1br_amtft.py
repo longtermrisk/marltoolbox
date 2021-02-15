@@ -59,14 +59,14 @@ def modify_conf_for_lvl1_training(hp_lvl1, env_config, rllib_config_lvl1, lvl0_c
                                postprocessing.OverwriteRewardWtWelfareCallback,
                                population.PopulationOfIdenticalAlgoCallBacks])
 
-    lvl1_best_response.prepare_config_for_lvl1_training(
-        config=rllib_config_lvl1,
-        lvl0_policy_id=lvl0_policy_id, lvl1_policy_id=lvl1_policy_id,
-        select_n_lvl0_from_population=hp_lvl1["n_seeds_lvl0"] // hp_lvl1["n_seeds_lvl1"],
-        n_lvl1_to_train=hp_lvl1["n_seeds_lvl1"],
-        overlapping_population=False, lvl0_checkpoints=lvl0_checkpoints)
+    l1br_configuration_helper = lvl1_best_response.L1BRConfigurationHelper(rllib_config_lvl1, lvl0_policy_id, lvl1_policy_id)
+    l1br_configuration_helper.define_exp(
+        use_n_lvl0_agents_in_each_population=hp_lvl1["n_seeds_lvl0"] // hp_lvl1["n_seeds_lvl1"],
+        train_n_lvl1_agents=hp_lvl1["n_seeds_lvl1"],
+        lvl0_checkpoints=lvl0_checkpoints)
+    rllib_config_lvl1 = l1br_configuration_helper.prepare_config_for_lvl1_training()
 
-    rllib_config_lvl1["multiagent"]["policies"][lvl0_policy_id][3]["explore"] = False
+    # rllib_config_lvl1["multiagent"]["policies"][lvl0_policy_id][3]["explore"] = False
     rllib_config_lvl1["multiagent"]["policies"][lvl0_policy_id][3]["working_state"] = "eval_amtft"
     return rllib_config_lvl1
 

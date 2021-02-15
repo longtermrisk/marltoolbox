@@ -1,13 +1,12 @@
 import copy
 from collections import Iterable
-from typing import Dict
 
 import gym
 import numpy as np
 from gym.spaces import Discrete
 from gym.utils import seeding
-from numba.typed import List
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from typing import Dict
 
 from marltoolbox.envs.utils.interfaces import InfoAccumulationInterface
 
@@ -21,12 +20,12 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
     NUM_ACTIONS = 4
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = None
-    MOVES = List([
+    MOVES = [
         np.array([0, 1]),
         np.array([0, -1]),
         np.array([1, 0]),
         np.array([-1, 0]),
-    ])
+    ]
 
     def __init__(self, config: dict):
 

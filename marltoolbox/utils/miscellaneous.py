@@ -114,13 +114,13 @@ def merge_policy_postprocessing_fn(*postprocessing_fn_list):
     return merged_postprocessing_fn
 
 
-def seed_to_checkpoint(dict_to_select_from):
+def seed_to_checkpoint(dict_to_select_from: dict):
     def get_value(policy_config):
         if "seed" in policy_config.keys():
             print("seed_to_checkpoint", policy_config["seed"])
             return dict_to_select_from[policy_config["seed"]]
         else:
-            print('seed_to_checkpoint default to checkpoint 0. config["seed"]:', policy_config["seed"])
+            print('WARNING! seed_to_checkpoint default to checkpoint 0. "seed" not in policy_config.keys()')
             return list(dict_to_select_from.values)[0]
 
     return get_value
@@ -216,6 +216,7 @@ class PolicyCallbacks(DefaultCallbacks):
             if hasattr(policy, method) and callable(getattr(policy, method)):
                 getattr(policy, method)()
 
+
 def list_all_files_in_one_dir_tree(path):
     if not os.path.exists(path):
         raise FileExistsError(f"path doesn't exist: {path}")
@@ -227,12 +228,15 @@ def list_all_files_in_one_dir_tree(path):
     print(len(file_list), "files found")
     return file_list
 
+
 def ignore_str_containing_keys(str_list, ignore_keys):
     str_list_filtered = [file_path for file_path in str_list if all([key not in file_path for key in ignore_keys])]
     print(len(str_list_filtered), "str remaining after ignoring str containing any ignore_keys:", ignore_keys)
     return str_list_filtered
 
+
 GROUP_KEY_NONE = "group_none"
+
 
 def separate_str_in_group_containing_keys(str_list, group_keys):
     if len(group_keys) == 0:
@@ -245,10 +249,12 @@ def separate_str_in_group_containing_keys(str_list, group_keys):
         print(f"group {group_key} created with {len(str_list_filtered)} str")
     return groups_of_str_list
 
+
 def keep_strs_containing_keys(str_list, plot_keys):
     str_list_filtered = [str_ for str_ in str_list if any([key in str_ for key in plot_keys])]
     print(len(str_list_filtered), "str found after selecting plot_keys:", plot_keys)
     return str_list_filtered
+
 
 def fing_longer_substr(str_list):
     substr = ''
