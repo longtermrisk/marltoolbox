@@ -214,7 +214,7 @@ def get_rllib_config(hp: dict):
 def main(debug):
     train_n_replicates = 1 if debug else 1
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
-    exp_name, _ = log.log_in_current_day_dir("LE_IPD")
+    exp_name, _ = log.log_in_current_day_dir("LTFT_IPD")
 
     hparameters = {
         "n_epi": 10 if debug else 200,

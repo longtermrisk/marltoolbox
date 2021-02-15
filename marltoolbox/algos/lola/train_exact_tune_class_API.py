@@ -246,7 +246,7 @@ class LOLAExact(tune.Trainable):
                     self.mainQN[1].lr_correction: lr_coor
                 }
             )
-            print("return_1", v1[0][0] / self.norm, "return_2", v2[0][0] / self.norm)
+            print("epi", self.timestep, "return_1", v1[0][0] / self.norm, "return_2", v2[0][0] / self.norm)
             update(self.mainQN, self.lr, update1, update2)
             params_time.append([params0, params1])
             delta_time.append([update1, update2])

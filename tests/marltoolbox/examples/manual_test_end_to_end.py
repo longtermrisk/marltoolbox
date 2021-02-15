@@ -39,4 +39,4 @@ def test_amtft_ipd():
     ray.shutdown()  # Restart Ray defensively in case the ray connection is lost.
     tune_analysis_per_welfare, analysis_metrics_per_mode = main(debug=False, train_n_replicates=1, filter_utilitarian=False)
     for welfare_name, tune_analysis in tune_analysis_per_welfare.items():
-        check_learning_achieved(tune_results=tune_analysis, reward=-42, min=True)
+        check_learning_achieved(tune_results=tune_analysis, reward=-204, min=True)

@@ -82,7 +82,7 @@ def merge_callbacks(*callbacks_list):
 
     callbacks_list = [callback() if inspect.isclass(callback) else callback for callback in callbacks_list]
 
-    class MergeCallBacks(DefaultCallbacks):
+    class MergedCallBacks(DefaultCallbacks):
         def __getattribute__(self, name):
             super_attr = super().__getattribute__(name)
             # Replace every callable by a callable calling the sequence of callbacks
@@ -96,7 +96,7 @@ def merge_callbacks(*callbacks_list):
             else:
                 return super_attr
 
-    return MergeCallBacks
+    return MergedCallBacks
 
 
 def merge_policy_postprocessing_fn(*postprocessing_fn_list):

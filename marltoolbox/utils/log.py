@@ -152,7 +152,6 @@ def get_logging_callbacks_class(log_env_step=True,
 
         def _get_log_from_buffer(self, trainer, result) -> dict:
             """Gets the to_log var from a policy and rename its keys, adding the policy_id as a prefix."""
-            # print("_get_log_from_buffer", len(self.buffer))
             if len(self.buffer) > 0:
                 data = self.buffer.pop(0)
                 for agent_id, agent_data in data.items():

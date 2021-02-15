@@ -28,6 +28,8 @@ DEFAULT_CONFIG_UPDATE = merge_dicts(
         "freeze_algo": True,
         "use_random_algo": True,
         "use_algo_in_order": False,
+
+        "switch_of_algo_every_n_epi": 1,
     }
 )
 
@@ -58,15 +60,36 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
         self.use_random_algo = config["use_random_algo"]
         self.use_algo_in_order = config["use_algo_in_order"]
         self.policy_checkpoints = config["policy_checkpoints"]
+        self.switch_of_algo_every_n_epi = config["switch_of_algo_every_n_epi"]
+        self.switch_of_algo_counter = self.switch_of_algo_every_n_epi
         if callable(self.policy_checkpoints):
             self.policy_checkpoints = self.policy_checkpoints(self.config)
 
-        self.set_algo_to_use()
-
-    def set_algo_to_use(self):
         assert self.use_random_algo or self.use_algo_in_order
         assert not self.use_random_algo or not self.use_algo_in_order
+        assert isinstance(self.switch_of_algo_every_n_epi, int)
 
+        self.set_algo_to_use()
+
+
+    def set_algo_to_use(self):
+        """
+        Called by a callback at the start of every episode.
+        """
+
+        if self.switch_of_algo_counter == self.switch_of_algo_every_n_epi :
+            self.switch_of_algo_counter = 0
+            self._set_algo_to_use()
+        else:
+            self.switch_of_algo_counter += 1
+
+    def _set_algo_to_use(self):
+        self._select_algo_idx_to_use()
+        self._load_checkpoint()
+        if self.freeze_algo:
+            self._freeze_algo()
+
+    def _select_algo_idx_to_use(self):
         if self.use_random_algo:
             self._use_random_algo()
         elif self.use_algo_in_order:
@@ -74,11 +97,30 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
         else:
             raise ValueError()
 
-        self._load_checkpoint()
+    def _use_random_algo(self):
+        self.active_checkpoint_idx = random.randint(0, len(self.policy_checkpoints) - 1)
 
-        if self.freeze_algo:
-            if hasattr(self.algorithms[0].model, "eval"):
-                self.algorithms[0].model.eval()
+    def _use_next_algo(self):
+        self.active_checkpoint_idx += 1
+        if self.active_checkpoint_idx == len(self.policy_checkpoints):
+            self.active_checkpoint_idx = 0
+
+    def _load_checkpoint(self):
+        # print("self.policy_checkpoints[self.active_checkpoint_idx]",
+        #       self.policy_checkpoints[self.active_checkpoint_idx])
+        restore.load_one_policy_checkpoint(policy_id=self.policy_id_to_load, policy=self.algorithms[0],
+                                           checkpoint_path=self.policy_checkpoints[self.active_checkpoint_idx],
+                                           using_Tune_class=hasattr(self.algorithms[0], "tune_config"))
+
+    def _freeze_algo(self):
+        if hasattr(self.algorithms[0].model, "eval"):
+            self.algorithms[0].model.eval()
+
+    def get_weights(self):
+        return self.algorithms[0].get_weights()
+
+    def set_weights(self, weights):
+        self.algorithms[0].set_weights(weights)
 
     def compute_actions(
             self,
@@ -106,28 +148,13 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
         else:
             raise NotImplementedError("Policies in PopulationOfAlgo are freezed thus "
                                       "PopulationOfAlgo.learn_on_batch should not be called")
+    @property
+    def to_log(self):
+        return self.algorithms[self.active_algo_idx].to_log
 
-    def _use_random_algo(self):
-        self.active_checkpoint_idx = random.randint(0, len(self.policy_checkpoints) - 1)
-
-    def _use_next_algo(self):
-        self.active_checkpoint_idx += 1
-        if self.active_checkpoint_idx == len(self.policy_checkpoints):
-            self.active_checkpoint_idx = 0
-
-    def _load_checkpoint(self):
-        # print("self.policy_checkpoints[self.active_checkpoint_idx]",
-        #       self.policy_checkpoints[self.active_checkpoint_idx])
-        restore.load_one_policy_checkpoint(policy_id=self.policy_id_to_load, policy=self.algorithms[0],
-                                           checkpoint_path=self.policy_checkpoints[self.active_checkpoint_idx],
-                                           using_Tune_class=hasattr(self.algorithms[0], "tune_config"))
-
-    def get_weights(self):
-        return self.algorithms[0].get_weights()
-
-    def set_weights(self, weights):
-        self.algorithms[0].set_weights(weights)
-
+    @to_log.setter
+    def to_log(self, value):
+        self.algorithms[self.active_algo_idx].to_log = value
 
 def modify_config_to_use_population(config: dict, opponent_policy_id: str, opponents_checkpoints: list):
     population_policy = copy.deepcopy(list(config["multiagent"]["policies"][opponent_policy_id]))

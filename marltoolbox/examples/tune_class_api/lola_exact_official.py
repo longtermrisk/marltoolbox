@@ -5,17 +5,17 @@
 
 import copy
 import os
-import time
 
 import ray
 from ray import tune
-from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
+from ray.rllib.agents.dqn import DQNTorchPolicy
+from ray.rllib.agents.pg import PGTorchPolicy
 
 from marltoolbox.algos.lola.train_exact_tune_class_API import LOLAExact
 from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersDilemma, IteratedMatchingPennies, \
     IteratedAsymBoS
 from marltoolbox.examples.tune_class_api import lola_pg_official
-from marltoolbox.utils import policy, log
+from marltoolbox.utils import policy, log, miscellaneous
 
 
 def train(hp):
@@ -29,26 +29,26 @@ def train(hp):
 
 
 def get_tune_config(hp: dict) -> dict:
-    config = copy.deepcopy(hp)
-    assert config['env'] in ("IPD", "IMP", "BoS", "AsymBoS")
+    tune_config = copy.deepcopy(hp)
+    assert tune_config['env'] in ("IPD", "IMP", "BoS", "AsymBoS")
 
-    if config["env"] in ("IPD", "IMP", "BoS", "AsymBoS"):
+    if tune_config["env"] in ("IPD", "IMP", "BoS", "AsymBoS"):
         env_config = {
             "players_ids": ["player_row", "player_col"],
-            "max_steps": config["trace_length"],
+            "max_steps": tune_config["trace_length"],
             "get_additional_info": True,
         }
 
-    if config["env"] in ("IPD", "BoS", "AsymBoS"):
-        config["gamma"] = 0.96 if config["gamma"] is None else config["gamma"]
-        config["save_dir"] = "dice_results_ipd"
-    elif config["env"] == "IMP":
-        config["gamma"] = 0.9 if config["gamma"] is None else config["gamma"]
-        config["save_dir"] = "dice_results_imp"
+    if tune_config["env"] in ("IPD", "BoS", "AsymBoS"):
+        tune_config["gamma"] = 0.96 if tune_config["gamma"] is None else tune_config["gamma"]
+        tune_config["save_dir"] = "dice_results_ipd"
+    elif tune_config["env"] == "IMP":
+        tune_config["gamma"] = 0.9 if tune_config["gamma"] is None else tune_config["gamma"]
+        tune_config["save_dir"] = "dice_results_imp"
 
-    stop = {"episodes_total": config['num_episodes']}
+    stop = {"episodes_total": tune_config['num_episodes']}
 
-    return config, stop, env_config
+    return tune_config, stop, env_config
 
 
 def evaluate(tune_analysis_per_exp, hp):
@@ -95,13 +95,13 @@ def generate_eval_config(hp):
         "multiagent": {
             "policies": {
                 env_config["players_ids"][0]: (
-                    policy.get_tune_policy_class(DQNTorchPolicy),
+                    policy.get_tune_policy_class(PGTorchPolicy),
                     hp_eval["env"](env_config).OBSERVATION_SPACE,
                     hp_eval["env"].ACTION_SPACE,
                     {"tune_config": copy.deepcopy(tune_config)}),
 
                 env_config["players_ids"][1]: (
-                    policy.get_tune_policy_class(DQNTorchPolicy),
+                    policy.get_tune_policy_class(PGTorchPolicy),
                     hp_eval["env"](env_config).OBSERVATION_SPACE,
                     hp_eval["env"].ACTION_SPACE,
                     {"tune_config": copy.deepcopy(tune_config)}),
@@ -120,8 +120,7 @@ def generate_eval_config(hp):
 
 def main(debug):
     train_n_replicates = 2 if debug else 40
-    timestamp = int(time.time())
-    seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
+    seeds = miscellaneous.get_random_seeds(train_n_replicates)
 
     exp_name, _ = log.log_in_current_day_dir("LOLA_Exact")
 

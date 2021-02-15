@@ -24,9 +24,6 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
     INITIALLY_ACTIVE_ALGO = 0
 
     def __init__(self, observation_space, action_space, config, after_init_nested=None, **kwargs):
-
-        self.to_log = {}
-
         self.algorithms = []
         self.config = config
         print("config", self.config)
@@ -46,8 +43,6 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
 
         self.active_algo_idx = self.INITIALLY_ACTIVE_ALGO
 
-        # if not miscellaneous.check_using_tune_class(self.config):
-        # Init parents only if we are using RLLib components (not Tune only)
         super().__init__(observation_space, action_space, config,
                          model=self.model,
                          loss=None,
@@ -56,9 +51,20 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
 
         for algo in self.algorithms:
             algo.model = algo.model.to(self.device)
-        # else:
-        #     self.observation_space = observation_space
-        #     self.action_space = action_space
+
+        self.to_log = {}
+
+    def __getattribute__(self, attr):
+        """
+        Here we try to fallback to attributes in the active policy.
+        """
+        try:
+            return object.__getattribute__(self, attr)
+        except AttributeError as initial:
+            try:
+                return object.__getattribute__(self.algorithms[self.active_algo_idx], attr)
+            except AttributeError:
+                raise initial
 
     @property
     def model(self):
@@ -122,7 +128,6 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
         actions, state_out, extra_fetches = self.algorithms[self.active_algo_idx].compute_actions(obs_batch)
-        self.last_used_algo = self.active_algo_idx
 
         return actions, state_out, extra_fetches
 
@@ -162,3 +167,4 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
                                other_agent_batches=None,
                                episode=None):
         return self.algorithms[self.active_algo_idx].postprocess_trajectory(sample_batch, other_agent_batches, episode)
+

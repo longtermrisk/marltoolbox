@@ -133,37 +133,43 @@ class LTFT(hierarchical.HierarchicalTorchPolicy):
         # Update LR used in optimizer
         self.optimizer()
 
-        for i, algo in enumerate(self.algorithms):
+        for policy_n, algo in enumerate(self.algorithms):
 
             samples_copy = samples.copy()
-            if i == self.COOP_POLICY_IDX or i == self.COOP_OPP_POLICY_IDX:
-                samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[
-                                                                  postprocessing.WELFARE_UTILITARIAN])
-                samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="punishing")
-            elif i == self.PUNITIVE_POLICY_IDX:
-                samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[
-                                                                  postprocessing.OPPONENT_NEGATIVE_REWARD])
-            elif i == self.COOP_OPP_POLICY_IDX:
-                samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[
-                                                                  postprocessing.WELFARE_UTILITARIAN])
-                samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="being_punished")
-            elif i == self.SPL_OPP_POLICY_IDX:
-                samples_copy[samples_copy.ACTIONS] = np.array(samples_copy.data[
-                                                                  postprocessing.OPPONENT_ACTIONS])
-                samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="being_punished")
+            samples_copy = self._modify_batch_for_policy(policy_n, samples_copy)
 
-            # TODO currently continue to learn because I use the batch to stop but the batch is sampled!
-            # if len(samples_copy[samples_copy.ACTIONS]) > 0:
-            #     learner_stats["learner_stats"][f"learner_stats_algo{i}"] = algo.learn_on_batch(samples_copy)
-            #     self.to_log[f'algo{i}_cur_lr'] = algo.cur_lr
-            # # For debugging purpose log the true lr (to be compared to algo.cur_lr)
+            if len(samples_copy[samples_copy.ACTIONS]) > 0:
+                learner_stats["learner_stats"][f"learner_stats_algo{policy_n}"] = algo.learn_on_batch(samples_copy)
+                # self.to_log[f'algo{policy_n}_cur_lr'] = algo.cur_lr
+            # For debugging purpose log the true lr (to be compared to algo.cur_lr)
             # for j, opt in enumerate(algo._optimizers):
-            #     self.to_log[f"algo_{i}_{j}_lr"] = [p["lr"] for p in opt.param_groups][0]
+            #     self.to_log[f"algo_{policy_n}_{j}_lr"] = [p["lr"] for p in opt.param_groups][0]
 
         return learner_stats
 
-    def on_episode_step(self, opp_obs, opp_a, being_punished_by_LE):
+    def _modify_batch_for_policy(self, policy_n, samples_copy):
+        if policy_n == self.COOP_POLICY_IDX or policy_n == self.COOP_OPP_POLICY_IDX:
+            samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[
+                                                              postprocessing.WELFARE_UTILITARIAN])
+            if policy_n == self.COOP_POLICY_IDX:
+                samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="punishing")
+            elif policy_n == self.COOP_OPP_POLICY_IDX:
+                samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="being_punished")
+            else:
+                raise ValueError()
+        elif policy_n == self.PUNITIVE_POLICY_IDX:
+            samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[
+                                                              postprocessing.OPPONENT_NEGATIVE_REWARD])
+        elif policy_n == self.SPL_OPP_POLICY_IDX:
+            samples_copy[samples_copy.ACTIONS] = np.array(samples_copy.data[
+                                                              postprocessing.OPPONENT_ACTIONS])
+            samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="being_punished")
+        else:
+            raise ValueError()
 
+        return samples_copy
+
+    def on_episode_step(self, opp_obs, opp_a, being_punished_by_LE):
         self.being_punished_by_LE = being_punished_by_LE
 
         if not self.being_punished_by_LE:
@@ -176,7 +182,6 @@ class LTFT(hierarchical.HierarchicalTorchPolicy):
             self.n_cooperation_steps_in_current_epi += 1
 
     def on_episode_end(self):
-        print("LTFT, on_episode_end")
         if self.n_steps_since_start >= self.length_of_history + self.WARMUP_LENGTH:
             percentile_value = self._compare_log_likelihood_on_boostrapped_sequences(self.data_queue)
             self._update_defection_metric(epi_defection_metric=-percentile_value)

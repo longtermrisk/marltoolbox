@@ -51,19 +51,19 @@ To speed up research, we advise to take advantages of the functionnalities of `T
 ###### **a) Read this quick introduction to `Tune`**  
 [`Tune`'s key concepts](https://docs.ray.io/en/master/tune/key-concepts.html) (< 5 min)  
 
-######**b) Read this quick introduction to `RLLib`**  
+###### **b) Read this quick introduction to `RLLib`**  
 [`RLlib` in 60 seconds](https://docs.ray.io/en/master/rllib.html#rllib-in-60-seconds) (< 5 min)  
 
-######**c) Read the README of the `Ray` project (which includes `Tune` and `RLLib`):**  
+###### **c) Read the README of the `Ray` project (which includes `Tune` and `RLLib`):**  
 [`Ray` README](https://github.com/ray-project/ray) (<5 min)  
 
-######**c) Introduction to this toolbox:**  
+###### **c) Introduction to this toolbox:**  
 Without any local installation, you can work through 2 tutorials to introduce this toolbox.  
 Please use [Google Colab](https://colab.research.google.com/notebooks/intro.ipynb#recent=true)
-to run them:
+to run them (e.g. use the option to open a notebook from GitHub):
 - [Basic - How to use the toolbox](https://github.com/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Basics_How_to_use_the_toolbox.ipynb)
   (~ 30 mins)
-- [Evaluations - "Level 1 best-response" and "same-play and cross-play"](https://github.com/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_L1BR_and_same_and_cross_play_performance_evaluation.ipynb)
+- [Evaluations - "Level 1 best-response" and "same-play and cross-play"](https://github.com/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Evaluations_Level_1_best_response_and_same_play_and_cross_play.ipynb)
   (~ 30 mins)
 
 ### Advanced: 
@@ -365,10 +365,10 @@ Examples:
 
 # TODO / Wishlist
 - Improvements:
-    - Add more unit tests
+    - Add unit tests for the algorithms
+    - Refactor the algorithm to make them more readable  
     - Use the logger everywhere
     - Add and improve docstrings
-    - Check performance of coin game with and without reporting the additional info
     - Set good hyper-parameters in the custom examples 
     - Report all results directly in Weights&Biases (saving download time from VM)
 - Add new algorithms:

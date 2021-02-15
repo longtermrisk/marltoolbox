@@ -15,7 +15,6 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -45,3 +44,4 @@ pip-delete-this-directory.txt
 
 rllib_bugs/
 *.log
+.ipynb_checkpoints/
