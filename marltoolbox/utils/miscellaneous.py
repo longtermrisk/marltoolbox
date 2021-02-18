@@ -11,6 +11,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AgentID, PolicyID
 from typing import Dict
 
+OVERWRITE_KEY = "OVERWRITE_KEY:"
 
 def sequence_of_fn_wt_same_args(*args, function_list, **kwargs) -> None:
     for fn in function_list:
@@ -23,17 +24,23 @@ def overwrite_config(dict_: dict, key, value):
     :param dict_: dict to edit
     :param key: string of the key to edit like: "first_key.intermediary_key.final_key_to_edit"
     :param value: value to write to for the "final_key_to_edit" key
-    :return: None
+    :return: dict_ edited
     """
-    dict_, k, current_value, found = move_to_key(dict_, key)
+    sub_struct, k, current_value, found = move_to_key(dict_, key)
 
     if current_value != value:
         if found:
-            print(f'Overwriting (key, value): ({key},{current_value}) with value: {value}')
-            dict_[k] = value
+            if isinstance(current_value, tuple) and current_value[0] == OVERWRITE_KEY:
+                print(f'NOT Overwriting (key, value): ({key},{current_value}) with value: {value}',
+                      f"Instead overwriting with {current_value[1]} since OVERWRITE_KEY found")
+                sub_struct[k] = current_value[1]
+            else:
+                print(f'Overwriting (key, value): ({key},{current_value}) with value: {value}')
+                sub_struct[k] = value
         else:
-            print(f'Adding (key, value): ({key},{value}) in dict.keys: {dict_.keys()}')
-            dict_[k] = value
+            print(f'Adding (key, value): ({key},{value}) in dict.keys: {sub_struct.keys()}')
+            sub_struct[k] = value
+    return dict_
 
 
 def move_to_key(dict_, key):
@@ -144,7 +151,16 @@ def set_config_for_evaluation(config: dict, policies_to_train=["None"]) -> dict:
     # Default exploration behavior, iff `explore`=None is passed into
     # compute_action(s).
     # Set to False for no exploration behavior (e.g., for evaluation).
-    config_copy["explore"] = False
+    # if "explore" in config_copy.keys():
+    #     if config["explore"] == "OverwriteTrue":
+    #         config_copy["explore"] = True
+    #     elif config_copy["explore"] == "OverwriteFalse":
+    #         config_copy["explore"] = False
+    #     else:
+    #         config_copy["explore"] = False
+    # else:
+    #     config_copy["explore"] = False
+    overwrite_config(dict_=config_copy, key="explore", value=False)
 
     # TODO below is really useless (since are not training anyway)? If so then clean it
     # The following is not really needed since we are not training any policies
@@ -164,16 +180,20 @@ def filter_tune_results(tune_analysis, metric, metric_threshold: float, metric_m
     assert metric_mode in ("avg", "min", "max", "last", "last-5-avg", "last-10-avg")
     print("Before trial filtering:", len(tune_analysis.trials), "trials")
     trials_filtered = []
-    for trial in tune_analysis.trials:
+    print("metric_threshold", metric_threshold, "threshold_mode", threshold_mode)
+    for trial_idx, trial in enumerate(tune_analysis.trials):
         available_metrics = trial.metric_analysis
+        print(f"trial_idx {trial_idx} "
+              f"available_metrics[{metric}][{metric_mode}] "
+              f"{available_metrics[metric][metric_mode]}")
         if threshold_mode == "above" and available_metrics[metric][metric_mode] > metric_threshold:
-            print("available_metrics[metric][metric_mode]", available_metrics[metric][metric_mode])
-            print("metric_threshold", metric_threshold)
             trials_filtered.append(trial)
         elif threshold_mode == "equal" and available_metrics[metric][metric_mode] == metric_threshold:
             trials_filtered.append(trial)
         elif threshold_mode == "below" and available_metrics[metric][metric_mode] < metric_threshold:
             trials_filtered.append(trial)
+        else:
+            print(f"filter trial {trial_idx}")
     tune_analysis.trials = trials_filtered
     print("After trial filtering:", len(tune_analysis.trials), "trials")
     return tune_analysis

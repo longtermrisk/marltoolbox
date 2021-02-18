@@ -34,7 +34,7 @@ class SameAndCrossPlayEvaluator:
     CROSS_PLAY_MODE = "cross-play"
     MODES = [CROSS_PLAY_MODE, SELF_PLAY_MODE]
 
-    def __init__(self, exp_name: str, mix_policy_order: bool = False):
+    def __init__(self, exp_name: str, use_random_policy_from_own_checkpoint: bool = False):
         """
         You should take a look at examples using this class.
         Any training is deactivated here. Only the worker rollout will evaluate your policy on the environment.
@@ -43,13 +43,14 @@ class SameAndCrossPlayEvaluator:
         Works for a unique pair of RLLib policies.
 
         :param exp_name: Normal exp_name argument provided to tune.run().
-        :param mix_policy_order:
+        :param use_random_policy_from_own_checkpoint: (optional, default to False)
         """
         self.default_selected_order = 0
         self.exp_name, self.exp_parent_dir = log.log_in_current_day_dir(exp_name)
         self.results_file_name = "SameAndCrossPlay_save.p"
         self.save_path = os.path.join(self.exp_parent_dir, self.results_file_name)
-        self.mix_policy_order = mix_policy_order
+        # TODO this var name is not clear enough (use_random_policy_from_own_checkpoint)
+        self.use_random_policy_from_own_checkpoint = use_random_policy_from_own_checkpoint
 
         self.experiment_defined = False
         self.checkpoints_loaded = False
@@ -122,10 +123,9 @@ class SameAndCrossPlayEvaluator:
         self._config_is_for_two_players()
 
         self.policies_ids_sorted = sorted(list(self.evaluation_config["multiagent"]["policies"].keys()))
-        self.policies_to_load_from_checkpoint = [policy_id
-                                                 for policy_id in self.policies_ids_sorted
-                                                 if
-                                                 self._is_policy_to_load(policy_id, policies_to_load_from_checkpoint)]
+        self.policies_to_load_from_checkpoint = sorted(
+            [policy_id for policy_id in self.policies_ids_sorted if
+                                                 self._is_policy_to_load(policy_id, policies_to_load_from_checkpoint)])
 
         self.experiment_defined = True
 
@@ -138,29 +138,24 @@ class SameAndCrossPlayEvaluator:
 
     def preload_checkpoints_from_tune_results(self, tune_results: Dict[str, ExperimentAnalysis]):
         """
-        :param tune_results: List of the tune_analysis you want to extract the groups of checkpoints from.
+        :param tune_results: Dict of the tune_analysis you want to extract the groups of checkpoints from.
             All the checkpoints in these tune_analysis will be extracted.
         """
         self._extract_groups_of_checkpoints(tune_results)
-        self.n_checkpoints = len(self.checkpoint_list)
+        self.n_checkpoints = len(self.checkpoints)
         print(f"Found {self.n_checkpoints} checkpoints in {len(tune_results)} tune_results")
 
         self.checkpoints_loaded = True
 
     def _extract_groups_of_checkpoints(self, tune_results: Dict[str, ExperimentAnalysis]):
-        self.checkpoint_list = []
-        self.checkpoint_list_group_idx = []
-        self.group_names = []
-        self.checkpoint_groups = {}
+        self.checkpoints = []
         for idx, (group_name, one_tune_result) in enumerate(tune_results.items()):
-            self._extract_one_group_of_checkpoints(idx, one_tune_result)
-            self.group_names.append(group_name)
+            self._extract_one_group_of_checkpoints(idx, one_tune_result, group_name)
 
-    def _extract_one_group_of_checkpoints(self, idx, one_tune_result: ExperimentAnalysis):
+    def _extract_one_group_of_checkpoints(self, idx, one_tune_result: ExperimentAnalysis, group_name):
         checkpoints_in_one_group = miscellaneous.extract_checkpoints(one_tune_result)
-        group_idx = [idx] * len(checkpoints_in_one_group)
-        self.checkpoint_list.extend(checkpoints_in_one_group)
-        self.checkpoint_list_group_idx.extend(group_idx)
+        self.checkpoints.extend([{"group_name": group_name, "path": checkpoint}
+                                 for checkpoint in checkpoints_in_one_group])
 
     def evaluate_performances(self, n_same_play_per_checkpoint: int, n_cross_play_per_checkpoint: int):
         """
@@ -257,10 +252,10 @@ class SameAndCrossPlayEvaluator:
 
         # Add the checkpoints to load from in the policy_config
         for policy_id in self.policies_to_load_from_checkpoint:
-            metadata[policy_id] = {"checkpoint_path": self.checkpoint_list[checkpoint_i],
+            metadata[policy_id] = {"checkpoint_path": self.checkpoints[checkpoint_i]["path"],
                                    "checkpoint_i": checkpoint_i}
             config_copy["multiagent"]["policies"][policy_id][3][restore.LOAD_FROM_CONFIG_KEY] = (
-                self.checkpoint_list[checkpoint_i], policy_id)
+                self.checkpoints[checkpoint_i]["path"], policy_id)
             config_copy["multiagent"]["policies"][policy_id][3]["policy_id"] = policy_id
             config_copy["multiagent"]["policies"][policy_id][3]["TuneTrainerClass"] = self.TuneTrainerClass
         return metadata, config_copy
@@ -269,7 +264,7 @@ class SameAndCrossPlayEvaluator:
         metadata = {"mode": self.CROSS_PLAY_MODE}
         config_copy = copy.deepcopy(self.evaluation_config)
 
-        if self.mix_policy_order:
+        if self.use_random_policy_from_own_checkpoint:
             own_position = random.randint(0, len(config_copy["multiagent"]["policies"]) - 1)
         else:
             own_position = self.default_selected_order
@@ -281,7 +276,7 @@ class SameAndCrossPlayEvaluator:
                 checkpoint_idx = own_checkpoint_i
             else:
                 checkpoint_idx = opponent_i
-            checkpoint_path = self.checkpoint_list[checkpoint_idx]
+            checkpoint_path = self.checkpoints[checkpoint_idx]["path"]
             metadata[policy_id] = {"checkpoint_path": checkpoint_path,
                                    "checkpoint_i": checkpoint_idx}
             config_copy["multiagent"]["policies"][policy_id][3][restore.LOAD_FROM_CONFIG_KEY] = (
@@ -291,30 +286,51 @@ class SameAndCrossPlayEvaluator:
         return metadata, config_copy
 
     def _select_opponent_randomly(self, checkpoint_i, n_cross_play_per_checkpoint):
-        checkpoint_list_minus_i = list(range(len(self.checkpoint_list)))
+        checkpoint_list_minus_i = list(range(len(self.checkpoints)))
         checkpoint_list_minus_i.pop(checkpoint_i)
         opponents = random.sample(checkpoint_list_minus_i, n_cross_play_per_checkpoint)
         return opponents
 
-    def _split_results_per_mode_and_pair_id(self, all_results):
+    def _split_results_per_mode_and_group_pair_id(self, all_metadata_wt_results):
         analysis_per_mode = []
-        # Split per modes
-        for mode in self.MODES:
-            reports_in_mode = [report for report in all_results if report["mode"] == mode]
-            analysis_list = [report["results"] for report in reports_in_mode]
-            analysis_groups_ids = [self._get_group_pair_id(report) for report in reports_in_mode]
-            analysis_groups_names = [self._get_group_pair_names(report) for report in reports_in_mode]
-            group_pair_ids = set(analysis_groups_ids)
-            # Split per group_pair id (filter per id inside mode)
-            for group_pair_id in list(group_pair_ids):
-                filtered_names, filtered_ids, filtered_analysis_list = [], [], []
-                for analysis, id, names in zip(analysis_list, analysis_groups_ids, analysis_groups_names):
-                    if id == group_pair_id:
-                        filtered_analysis_list.append(analysis)
-                        filtered_ids.append(id)
-                        filtered_names.append(names)
-                analysis_per_mode.append((mode, filtered_analysis_list, filtered_ids[0], filtered_names[0]))
+
+        metadata_per_modes = self._split_metadata_per_mode(all_metadata_wt_results)
+        for mode, metadata_for_one_mode in metadata_per_modes.items():
+            analysis_per_mode.extend(self._split_metadata_per_group_pair_id(metadata_for_one_mode, mode))
+
         return analysis_per_mode
+
+    def _split_metadata_per_mode(self, all_results):
+        return {mode: [report for report in all_results if report["mode"] == mode] for mode in self.MODES}
+
+    def _split_metadata_per_group_pair_id(self, metadata_for_one_mode, mode):
+        analysis_per_group_pair_id = []
+
+        tune_analysis = [metadata["results"] for metadata in metadata_for_one_mode]
+        group_pair_names = [self._get_pair_of_group_names(metadata) for metadata in metadata_for_one_mode]
+        group_pair_ids = [self._get_id_of_pair_of_group_names(one_pair_of_names) for one_pair_of_names in group_pair_names]
+        group_pair_ids_in_this_mode = sorted(set(group_pair_ids))
+
+        for group_pair_id in list(group_pair_ids_in_this_mode):
+            filtered_analysis_list, one_pair_of_names = \
+                self._find_and_group_results_for_one_group_pair_id(
+                    group_pair_id, tune_analysis, group_pair_ids, group_pair_names)
+            analysis_per_group_pair_id.append((mode, filtered_analysis_list, group_pair_id, one_pair_of_names))
+        return analysis_per_group_pair_id
+
+    def _find_and_group_results_for_one_group_pair_id(self,
+                                                      group_pair_id, tune_analysis, group_pair_ids, group_pair_names):
+        filtered_group_pair_names, filtered_tune_analysis = [], []
+        for one_tune_analysis, id_, pair_of_names in zip(tune_analysis, group_pair_ids, group_pair_names):
+            if id_ == group_pair_id:
+                filtered_tune_analysis.append(one_tune_analysis)
+                filtered_group_pair_names.append(pair_of_names)
+
+        filtered_ids = [ self._get_id_of_pair_of_group_names(one_pair_of_names) for one_pair_of_names in filtered_group_pair_names]
+        assert len(set(filtered_ids)) == 1
+        one_pair_of_names = filtered_group_pair_names[0]
+
+        return filtered_tune_analysis, one_pair_of_names
 
     def _extract_all_metrics(self, analysis_per_mode):
         analysis_metrics_per_mode = []
@@ -328,30 +344,20 @@ class SameAndCrossPlayEvaluator:
             analysis_metrics_per_mode.append((mode, available_metrics_list, group_pair_id, group_pair_name))
         return analysis_metrics_per_mode
 
-    def _group_results_and_extract_metrics(self, all_results):
-        analysis_per_mode = self._split_results_per_mode_and_pair_id(all_results)
-        analysis_metrics_per_mode = self._extract_all_metrics(analysis_per_mode)
-        return analysis_metrics_per_mode
+    def _group_results_and_extract_metrics(self, all_metadata_wt_results):
+        analysis_per_mode_per_group_pair_id = self._split_results_per_mode_and_group_pair_id(all_metadata_wt_results)
+        analysis_metrics_per_mode_per_group_pair_id = self._extract_all_metrics(analysis_per_mode_per_group_pair_id)
+        return analysis_metrics_per_mode_per_group_pair_id
 
-    def _get_group_pair_id(self, result):
-        checkpoints_groups_sorted = self._extract_checkpoints_used(result)
-        checkpoints_groups_sorted_str = [str(e) for e in checkpoints_groups_sorted]
-        unique_group_pair_id = ''.join(checkpoints_groups_sorted_str)
-        return unique_group_pair_id
+    def _get_id_of_pair_of_group_names(self, pair_of_group_names):
+        id_of_pair_of_group_names = ''.join(pair_of_group_names)
+        return id_of_pair_of_group_names
 
-    def _get_group_pair_names(self, result):
-        checkpoints_groups_sorted = self._extract_checkpoints_used(result)
-        if self.group_names is not None:
-            group_pair_names = [self.group_names[group_idx] for group_idx in checkpoints_groups_sorted]
-        else:
-            group_pair_names = None
-        return group_pair_names
-
-    def _extract_checkpoints_used(self, result):
-        checkpoints_used = [result[policy_id]["checkpoint_i"] for policy_id in self.policies_to_load_from_checkpoint]
-        checkpoints_groups = [self.checkpoint_list_group_idx[checkpoint_i] for checkpoint_i in checkpoints_used]
-        checkpoints_groups_sorted = sorted(checkpoints_groups)
-        return checkpoints_groups_sorted
+    def _get_pair_of_group_names(self, metadata):
+        checkpoints_idx_used = [metadata[policy_id]["checkpoint_i"]
+                                for policy_id in self.policies_to_load_from_checkpoint]
+        pair_of_group_names = [self.checkpoints[checkpoint_i]["group_name"] for checkpoint_i in checkpoints_idx_used]
+        return pair_of_group_names
 
     def plot_results(self, analysis_metrics_per_mode, plot_config, x_axis_metric, y_axis_metric):
         plotter = SameAndCrossPlayPlotter()

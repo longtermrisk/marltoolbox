@@ -243,7 +243,7 @@ class IteratedAsymBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilem
     OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOUT_MATRIX = np.array([[[+3.5, +1.0], [+0.0, +0.0]],
                               [[+0.0, +0.0], [+1.0, +3.0]]])
-    NAME = "IteratedBoS"
+    NAME = "AsymmetricIteratedBoS"
 
 
 def define_greed_fear_matrix_game(greed, fear):

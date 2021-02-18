@@ -60,11 +60,11 @@ To speed up research, we advise to take advantages of the functionnalities of `T
 ###### **c) Introduction to this toolbox:**  
 Without any local installation, you can work through 2 tutorials to introduce this toolbox.  
 Please use [Google Colab](https://colab.research.google.com/notebooks/intro.ipynb#recent=true)
-to run them (e.g. use the option to open a notebook from GitHub):
+to run them:
 - [Basic - How to use the toolbox](https://github.com/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Basics_How_to_use_the_toolbox.ipynb)
-  (~ 30 mins)
+  (~ 30 mins) [(in Colab)](https://colab.research.google.com/github/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Basics_How_to_use_the_toolbox.ipynb)
 - [Evaluations - "Level 1 best-response" and "same-play and cross-play"](https://github.com/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Evaluations_Level_1_best_response_and_same_play_and_cross_play.ipynb)
-  (~ 30 mins)
+  (~ 30 mins) [(in Colab)](https://colab.research.google.com/github/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Evaluations_Level_1_best_response_and_same_play_and_cross_play.ipynb)
 
 ### Advanced: 
 
@@ -308,8 +308,9 @@ Examples:
 - algos
     - AMD ([Adaptive Mechanism Design](https://arxiv.org/abs/1806.04067))
     - amTFT ([Approximate Markov Tit-For-Tat](https://arxiv.org/abs/1707.01068))
-    - L-TFT ([Learning Tit-For-Tat](https://longtermrisk.org/files/toward_cooperation_learning_games_oct_2020.pdf), 
+    - LTFT ([Learning Tit-For-Tat](https://longtermrisk.org/files/toward_cooperation_learning_games_oct_2020.pdf), 
       **simplified version**)
+    - LOLA-Exact, LOLA-PG
     - LOLA-DICE ([paper](https://arxiv.org/pdf/1802.05098.pdf), 
       [unofficial](https://github.com/alexis-jacq/LOLA_DiCE), 
       in the `experimental` branch, **WIP: 
@@ -343,6 +344,7 @@ Examples:
         "same-play": playing against agents from the same training run.  
         "cross-play": playing against agents from different training runs.  
 - examples
+    - 2 tutorials
     - Tune function API
         - LOLA-PG (official with slight modifications, 
         **WIP: hyperparameters not well tuned**)

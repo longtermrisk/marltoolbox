@@ -18,7 +18,7 @@ from marltoolbox.examples.rllib_api import amtft_various_env
 
 def train_lvl0_population(hp):
     assert len(hp["welfare_functions"]) == 1
-    lvl0_tune_analysis_per_welfare = amtft_various_env.train(hp)
+    lvl0_tune_analysis_per_welfare = amtft_various_env.train_for_each_welfare_function(hp)
     assert len(lvl0_tune_analysis_per_welfare) == 1
     tune_analysis_lvl0 = list(lvl0_tune_analysis_per_welfare.values())[0]
     return tune_analysis_lvl0
@@ -88,6 +88,9 @@ def main(debug):
         "bs_epi_mul": 4,
         "welfare_functions": [(postprocessing.WELFARE_UTILITARIAN, "utilitarian")],
 
+        "amTFTPolicy": amTFT.amTFTRolloutsTorchPolicy,
+        "explore_during_evaluation": True,
+
         "n_seeds_lvl0": train_n_replicates,
         "n_seeds_lvl1": train_n_replicates//2,
 
@@ -116,7 +119,7 @@ def main(debug):
 
     ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=hparams["debug"])
 
-    hparams = amtft_various_env.modify_hp_for_selected_env(hparams)
+    hparams = amtft_various_env.modify_hyperparams_for_the_selected_env(hparams)
     lvl0_tune_analysis = train_lvl0_population(hp=hparams)
     tune_analysis_lvl1 = train_lvl1_agents(hp_lvl1=copy.deepcopy(hparams), tune_analysis_lvl0=lvl0_tune_analysis)
     print(tune_analysis_lvl1.results_df.columns)

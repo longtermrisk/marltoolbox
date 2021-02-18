@@ -31,7 +31,7 @@ class RolloutManager(RolloutSaver):
         else:
             # Append this rollout to our list, to save laer.
             self._rollouts.append(self._current_rollout)
-        self._num_episodes += 1
+        self._num_episodes += 1 # Even if the episode is not completely finished
         if self._update_file:
             self._update_file.seek(0)
             self._update_file.write(self._get_progress() + "\n")

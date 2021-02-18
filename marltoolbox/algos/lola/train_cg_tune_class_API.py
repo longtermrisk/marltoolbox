@@ -940,6 +940,8 @@ class LOLAPGCG(tune.Trainable):
         to_report.update(training_info)
         if self.use_DQN_exploiter:
             to_report.update(dqn_exploiter_stats["learner_stats"])
+            if self.exploiter_thresholds is not None:
+                self.last_batch_opp_coop = to_report["player_red_pick_own_color"]
         if self.use_PG_exploiter:
             expl_training_info = {
                 "pg_expl_player_loss":  pg_expl_player_loss,
@@ -959,8 +961,7 @@ class LOLAPGCG(tune.Trainable):
             }
             to_report.update(expl_training_info)
 
-        if self.exploiter_thresholds is not None:
-            self.last_batch_opp_coop = to_report["player_red_pick_own_color"]
+
         return to_report
 
     def compute_centered_discounted_r(self, rewards, discount):

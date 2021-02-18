@@ -38,6 +38,11 @@ LTFT_DEFAULT_CONFIG_UPDATE = merge_dicts(
     }
 )
 
+# TODO Must make the SPL policy train on the last data, not on the last data sampled from a buffer (like with DQN)
+WARNING_MESSAGE = "TODO LTFT: The supervised learning(SPL) policy also use the batch sampled by the DQN data flow. " \
+                  "This makes the SPL learns an average of the opponent policy and not the true current policy => " \
+                  "this is not the original behavior. Must make the SPL policy train on the last data, not on the " \
+                  "last data sampled from a buffer (like with DQN)."
 
 class LTFT(hierarchical.HierarchicalTorchPolicy):
     """
@@ -55,6 +60,8 @@ class LTFT(hierarchical.HierarchicalTorchPolicy):
     INITIALLY_ACTIVE_ALGO = COOP_POLICY_IDX
 
     def __init__(self, observation_space, action_space, config, **kwargs):
+
+        print("WARNING_MESSAGE", WARNING_MESSAGE)
 
         super().__init__(observation_space, action_space, config,
                          after_init_nested=(lambda policy: [torch.nn.init.normal_(p, mean=0.0, std=0.1)

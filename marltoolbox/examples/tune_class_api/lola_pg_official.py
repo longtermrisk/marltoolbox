@@ -197,7 +197,7 @@ def main(debug):
         # Dynamically set
         "num_episodes": 3 if debug else 4000 if high_coop_speed_hp else 2000,
         # "num_episodes": tune.grid_search([2000, 4000, 6000]),
-        "trace_length": 20,
+        "trace_length": 4 if debug else 20,
         "lr": None,
         "gamma": 0.5,
         "batch_size": 8 if debug else 512,
@@ -272,7 +272,7 @@ def main(debug):
         # (is not None) DQN exploiter use thresholds on opp cooperation to switch between policies
         # otherwise the DQN exploiter will use the best policy (from simulated reward)
         # "exploiter_thresholds": None,
-        "exploiter_thresholds": [0.0, 0.0] if debug else [0.80, 0.95],
+        "exploiter_thresholds": [0.6, 0.7] if debug else [0.80, 0.95],
 
         # PG exploiter
         # "use_PG_exploiter": False,
