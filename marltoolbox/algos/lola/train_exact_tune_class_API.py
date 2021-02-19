@@ -29,8 +29,7 @@ class Qnetwork:
         with tf.variable_scope(myScope):
             self.input_place = tf.placeholder(shape=[5], dtype=tf.int32)
             if simple_net:
-                self.p_act = tf.Variable(tf.random_normal([5, 1]))
-                # self.action = self.p_act[self.input_place]
+                self.p_act = tf.Variable(tf.random_normal([5, 1], stddev=1.0))
             else:
                 act = tf.nn.tanh(
                     layers.fully_connected(
@@ -41,7 +40,6 @@ class Qnetwork:
                 self.p_act = layers.fully_connected(
                     act, num_outputs=1, activation_fn=None
                 )
-                # self.action = self.p_act
         self.parameters = []
         for i in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                    scope=myScope):
@@ -156,6 +154,7 @@ class LOLAExact(tune.Trainable):
     def _init_lola(self, env, *, num_episodes=50, trace_length=200,
                    simple_net=True, corrections=True, pseudo=False,
                    num_hidden=10, reg=0.0, lr=1., lr_correction=0.5, gamma=0.96,
+                   with_linear_LR_decay_to_zero=False, clip_update=None,
                    **kwargs):
 
         print("args not used:", kwargs)
@@ -171,8 +170,9 @@ class LOLAExact(tune.Trainable):
         self.lr = lr
         self.lr_correction = lr_correction
         self.gamma = gamma
+        self.with_linear_LR_decay_to_zero=with_linear_LR_decay_to_zero
+        self.clip_update=clip_update
 
-        self.timestep = 0
 
         graph = tf.Graph()
 
@@ -184,7 +184,7 @@ class LOLAExact(tune.Trainable):
 
             if env == "IPD":
                 self.payout_mat_1 = np.array([[-1., 0.], [-3., -2.]])
-                self.payout_mat_2 = np.array([[-1., -3], [+0., -2.]])
+                self.payout_mat_2 = self.payout_mat_1.T
             elif env == "AsymBoS":
                 self.payout_mat_1 = np.array([[+3.5, 0.], [0., +1]])
                 self.payout_mat_2 = np.array([[+1., 0.], [0., +3.]])
@@ -215,13 +215,12 @@ class LOLAExact(tune.Trainable):
         self._init_lola(**config)
 
     def step(self):
-        self.timestep += 1
 
         self.sess.run(self.init)
         lr_coor = np.ones(1) * self.lr_correction
 
         log_items = {}
-        log_items['episode'] = self.timestep
+        log_items['episode'] = self.training_iteration
 
         res = []
         params_time = []
@@ -246,8 +245,8 @@ class LOLAExact(tune.Trainable):
                     self.mainQN[1].lr_correction: lr_coor
                 }
             )
-            print("epi", self.timestep, "return_1", v1[0][0] / self.norm, "return_2", v2[0][0] / self.norm)
-            update(self.mainQN, self.lr, update1, update2)
+            update1, update2 = self._clip_update(update1, update2)
+            self._update_with_lr_decay(update1, update2, i)
             params_time.append([params0, params1])
             delta_time.append([update1, update2])
 
@@ -256,16 +255,41 @@ class LOLAExact(tune.Trainable):
             res.append([v1[0][0] / self.norm, v2[0][0] / self.norm])
         self.results.append(res)
 
-        log_items["episodes_total"] = self.timestep
+        log_items["episodes_total"] = self.training_iteration
 
         return log_items
+
+    def _clip_update(self, update1, update2):
+        if self.clip_update is not None:
+            assert self.clip_update > 0.0
+            update1_norm = np.linalg.norm(update1)
+            if update1_norm > self.clip_update:
+                multiplier = self.clip_update / update1_norm
+                update1 *= multiplier
+            update2_norm = np.linalg.norm(update2)
+            if update2_norm > self.clip_update:
+                multiplier = self.clip_update / update2_norm
+                update2 *= multiplier
+            # update1 = np.clip(update1, a_min=-self.clip_update, a_max=self.clip_update)
+            # update2 = np.clip(update2, a_min=-self.clip_update, a_max=self.clip_update)
+        return update1, update2
+
+    def _update_with_lr_decay(self, update1, update2, i):
+        if self.with_linear_LR_decay_to_zero:
+            n_step_from_start = self.training_iteration * self.trace_length + i
+            n_total_steps = (self.num_episodes + 1) * self.trace_length
+            decayed_lr = self.lr * (1 - (n_step_from_start / n_total_steps))
+            assert decayed_lr >= 0.0
+            update(self.mainQN, decayed_lr, update1, update2)
+        else:
+            update(self.mainQN, self.lr, update1, update2)
 
     def save_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint.json")
         tf_checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
         tf_checkpoint_dir, tf_checkpoint_filename = os.path.split(tf_checkpoint_path)
         checkpoint = {
-            "timestep": self.timestep,
+            "timestep": self.training_iteration,
             "tf_checkpoint_dir": tf_checkpoint_dir,
             "tf_checkpoint_filename": tf_checkpoint_filename,
         }

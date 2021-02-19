@@ -14,7 +14,7 @@ import torch
 
 from marltoolbox.envs import matrix_sequential_social_dilemma, coin_game
 from marltoolbox.algos import amTFT
-from marltoolbox.utils import same_and_cross_perf, exploration, log, \
+from marltoolbox.utils import self_and_cross_perf, exploration, log, \
     postprocessing, miscellaneous
 from marltoolbox.utils.plot import PlotConfig
 
@@ -34,7 +34,7 @@ def main(debug, train_n_replicates=None, filter_utilitarian=None):
         "n_times_more_utilitarians_seeds": n_times_more_utilitarians_seeds,
 
         "load_plot_data": None,
-        # Example: "load_plot_data": ".../SameAndCrossPlay_save.p",
+        # Example: "load_plot_data": ".../SelfAndCrossPlay_save.p",
 
 
         "exp_name": exp_name,
@@ -86,13 +86,13 @@ def main(debug, train_n_replicates=None, filter_utilitarian=None):
         # Train
         tune_analysis_per_welfare = train_for_each_welfare_function(hparams)
         # Eval & Plot
-        analysis_metrics_per_mode = evaluate_same_and_cross_perf(tune_analysis_per_welfare, hparams)
+        analysis_metrics_per_mode = evaluate_self_and_cross_perf(tune_analysis_per_welfare, hparams)
 
         ray.shutdown()
     else:
         tune_analysis_per_welfare = None
         # Plot
-        analysis_metrics_per_mode = evaluate_same_and_cross_perf(tune_analysis_per_welfare, hparams)
+        analysis_metrics_per_mode = evaluate_self_and_cross_perf(tune_analysis_per_welfare, hparams)
 
     return tune_analysis_per_welfare, analysis_metrics_per_mode
 
@@ -407,10 +407,10 @@ def postprocess_utilitarian_results(results, env_config, hp):
     return results, hp_copy
 
 
-def evaluate_same_and_cross_perf(tune_analysis_per_welfare, hp):
+def evaluate_self_and_cross_perf(tune_analysis_per_welfare, hp):
     config_eval, env_config, stop, hp_eval = generate_eval_config(hp)
 
-    evaluator = same_and_cross_perf.SameAndCrossPlayEvaluator(exp_name=hp_eval["exp_name"])
+    evaluator = self_and_cross_perf.SelfAndCrossPlayEvaluator(exp_name=hp_eval["exp_name"])
     analysis_metrics_per_mode = evaluator.perform_evaluation_or_load_data(
         evaluation_config=config_eval, stop_config=stop,
         policies_to_load_from_checkpoint=copy.deepcopy(env_config["players_ids"]),
@@ -419,13 +419,18 @@ def evaluate_same_and_cross_perf(tune_analysis_per_welfare, hp):
         n_cross_play_per_checkpoint=min(5, (hp_eval["train_n_replicates"] * len(hp_eval["welfare_functions"])) - 1),
         to_load_path=hp_eval["load_plot_data"])
 
+    if hp["env"] in [coin_game.CoinGame, coin_game.AsymCoinGame]:
+        background_area_coord = None
+    else:
+        background_area_coord = hp['env'].PAYOUT_MATRIX
     plot_config = PlotConfig(xlim=hp_eval["x_limits"], ylim=hp_eval["y_limits"],
                              markersize=5, alpha=1.0, jitter=hp_eval["jitter"],
                              xlabel="player 1 payoffs", ylabel="player 2 payoffs",
                              plot_max_n_points=hp_eval["train_n_replicates"],
                              # title="cross and same-play performances: " + hp_eval['env'].NAME,
                              x_scale_multiplier=hp_eval["plot_axis_scale_multipliers"][0],
-                             y_scale_multiplier=hp_eval["plot_axis_scale_multipliers"][1])
+                             y_scale_multiplier=hp_eval["plot_axis_scale_multipliers"][1],
+                             background_area_coord=background_area_coord)
     evaluator.plot_results(analysis_metrics_per_mode, plot_config=plot_config,
                            x_axis_metric=f"policy_reward_mean/{env_config['players_ids'][0]}",
                            y_axis_metric=f"policy_reward_mean/{env_config['players_ids'][1]}")
@@ -478,5 +483,5 @@ def modify_config_for_evaluation(config_eval, hp, env_config):
 
 
 if __name__ == "__main__":
-    debug_mode = True
+    debug_mode = False
     main(debug_mode)

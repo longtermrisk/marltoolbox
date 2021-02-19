@@ -1,5 +1,5 @@
 
-from marltoolbox.utils import same_and_cross_perf
+from marltoolbox.utils import self_and_cross_perf
 from marltoolbox.examples.rllib_api.pg_ipd import get_rllib_config
 from marltoolbox.utils.miscellaneous import get_random_seeds
 import os
@@ -11,7 +11,7 @@ from marltoolbox.utils import log, miscellaneous, restore
 def _init_evaluator():
     rllib_config, stop_config = get_rllib_config(seeds=get_random_seeds(1))
 
-    evaluator = same_and_cross_perf.SameAndCrossPlayEvaluator(
+    evaluator = self_and_cross_perf.SelfAndCrossPlayEvaluator(
         exp_name="testing_amTFT",
     )
     evaluator.define_the_experiment_to_run(
@@ -107,8 +107,8 @@ def test__prepare_one_master_config_dict():
     _load_tune_analysis(evaluator, train_n_replicates, exp_name)
 
     def assert_(n_same_play_per_checkpoint, n_cross_play_per_checkpoint):
-        master_config, all_metadata = evaluator._prepare_one_master_config_dict(n_cross_play_per_checkpoint,
-                                                                                n_same_play_per_checkpoint)
+        master_config, all_metadata = evaluator._prepare_one_master_config_dict(n_same_play_per_checkpoint,
+                                                                                n_cross_play_per_checkpoint)
 
         assert len(master_config["multiagent"]["policies"]["grid_search"]) == \
                (n_cross_play_per_checkpoint + n_same_play_per_checkpoint)*train_n_replicates
@@ -125,7 +125,7 @@ def test__get_config_for_one_same_play():
     _load_tune_analysis(evaluator, train_n_replicates, exp_name)
 
     def assert_(checkpoint_i):
-        metadata, config_copy = evaluator._get_config_for_one_same_play(checkpoint_i)
+        metadata, config_copy = evaluator._get_config_for_one_self_play(checkpoint_i)
 
         own_policy_id = evaluator.policies_to_load_from_checkpoint[0]
         assert metadata[own_policy_id]["checkpoint_path"] == evaluator.checkpoints[checkpoint_i]["path"]

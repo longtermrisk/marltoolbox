@@ -12,8 +12,21 @@ parser.add_argument("--tf", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 
 
-def get_rllib_config(seeds, debug=False, stop_iters=200, tf=False):
+def main(debug, stop_iters=200, tf=False):
+    train_n_replicates = 1 if debug else 1
+    seeds = miscellaneous.get_random_seeds(train_n_replicates)
+    exp_name, _ = log.log_in_current_day_dir("PG_IPD")
 
+    ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
+
+    rllib_config, stop_config = get_rllib_config(seeds, debug, stop_iters, tf)
+    tune_analysis = tune.run(PGTrainer, config=rllib_config, stop=stop_config,
+                             checkpoint_freq=0, checkpoint_at_end=True, name=exp_name)
+    ray.shutdown()
+    return tune_analysis
+
+
+def get_rllib_config(seeds, debug=False, stop_iters=200, tf=False):
     stop_config = {
         "training_iteration": 2 if debug else stop_iters,
     }
@@ -48,24 +61,10 @@ def get_rllib_config(seeds, debug=False, stop_iters=200, tf=False):
         "seed": tune.grid_search(seeds),
         "callbacks": log.get_logging_callbacks_class(),
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "log_level": "INFO",
         "framework": "tf" if tf else "torch",
     }
 
     return rllib_config, stop_config
-
-def main(debug, stop_iters=200, tf=False):
-    train_n_replicates = 1 if debug else 1
-    seeds = miscellaneous.get_random_seeds(train_n_replicates)
-    exp_name, _ = log.log_in_current_day_dir("PG_IPD")
-
-    ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
-
-    rllib_config, stop_config = get_rllib_config(seeds, debug, stop_iters, tf)
-    tune_analysis = tune.run(PGTrainer, config=rllib_config, stop=stop_config, verbose=1,
-                       checkpoint_freq=0, checkpoint_at_end=True, name=exp_name)
-    ray.shutdown()
-    return tune_analysis
 
 
 if __name__ == "__main__":

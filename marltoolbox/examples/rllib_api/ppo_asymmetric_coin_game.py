@@ -48,24 +48,23 @@ def main(debug, stop_iters=2000, tf=False):
             "policy_mapping_fn": lambda agent_id: agent_id,
         },
         # Size of batches collected from each worker.
-        "rollout_fragment_length": 20, #20 if debug else 200,
+        "rollout_fragment_length": 20,
         # Number of timesteps collected for each SGD round. This defines the size
         # of each SGD epoch.
-        "train_batch_size": 128*4, # if debug else 4000,
+        "train_batch_size": 512,
         "model": {
             "dim": env_config["grid_size"],
             "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]]  # [Channel, [Kernel, Kernel], Stride]]
         },
-        "lr": 5e-5*10*10,
+        "lr": 5e-3,
 
         "seed": tune.grid_search(seeds),
         "callbacks": log.get_logging_callbacks_class(),
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "log_level": "INFO",
         "framework": "tf" if tf else "torch",
     }
 
-    tune_analysis = tune.run(PPOTrainer, config=rllib_config, stop=stop, verbose=1,
+    tune_analysis = tune.run(PPOTrainer, config=rllib_config, stop=stop,
                        checkpoint_freq=0, checkpoint_at_end=True, name=exp_name)
     ray.shutdown()
     return tune_analysis

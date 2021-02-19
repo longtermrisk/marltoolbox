@@ -18,9 +18,60 @@ from marltoolbox.examples.tune_class_api import lola_pg_official
 from marltoolbox.utils import policy, log, miscellaneous
 
 
+def main(debug):
+    train_n_replicates = 2 if debug else 40
+    seeds = miscellaneous.get_random_seeds(train_n_replicates)
+
+    exp_name, _ = log.log_in_current_day_dir("LOLA_Exact")
+
+    hparams = {
+
+        "load_plot_data": None,
+        # Example "load_plot_data": ".../SameAndCrossPlay_save.p",
+
+        "exp_name": exp_name,
+        "train_n_replicates": train_n_replicates,
+
+        "env": "IPD",
+        # "env": "IMP",
+        # "env": "AsymBoS",
+
+        "num_episodes": 5 if debug else 50,
+        "trace_length": 5 if debug else 200,
+        "simple_net": True,
+        "corrections": True,
+        "pseudo": False,
+        "num_hidden": 32,
+        "reg": 0.0,
+        "lr": 1.,
+        "lr_correction": 1.0,
+        "gamma": 0.96,
+
+        "seed": tune.grid_search(seeds),
+        "metric": "ret1",
+
+        "with_linear_LR_decay_to_zero": False,
+        "clip_update": None,
+
+        # "with_linear_LR_decay_to_zero": True,
+        # "clip_update": 0.1,
+        # "lr": 0.001,
+
+    }
+
+    if hparams["load_plot_data"] is None:
+        ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
+        tune_analysis_per_exp = train(hparams)
+    else:
+        tune_analysis_per_exp = None
+
+    evaluate(tune_analysis_per_exp, hparams)
+    ray.shutdown()
+
+
 def train(hp):
     tune_config, stop, _ = get_tune_config(hp)
-    # Train with the Tune Class API (not RLLib Class)
+    # Train with the Tune Class API (not an RLLib Trainer)
     tune_analysis = tune.run(LOLAExact, name=hp["exp_name"], config=tune_config,
                              checkpoint_at_end=True,
                              stop=stop, metric=hp["metric"], mode="max")
@@ -55,15 +106,15 @@ def evaluate(tune_analysis_per_exp, hp):
     (rllib_hp, rllib_config_eval, policies_to_load, trainable_class, stop, env_config) = \
         generate_eval_config(hp)
 
-    lola_pg_official.evaluate_same_and_cross_perf(rllib_hp, rllib_config_eval, policies_to_load,
-                                 trainable_class, stop, env_config, tune_analysis_per_exp)
+    lola_pg_official.evaluate_self_and_cross_perf(rllib_hp, rllib_config_eval, policies_to_load,
+                                                  trainable_class, stop, env_config, tune_analysis_per_exp)
 
 
 def generate_eval_config(hp):
     hp_eval = copy.deepcopy(hp)
 
     hp_eval["min_iter_time_s"] = 3.0
-    hp_eval["seed"] = 2020
+    hp_eval["seed"] = miscellaneous.get_random_seeds(1)[0]
     hp_eval["batch_size"] = 1
     hp_eval["num_episodes"] = 100
 
@@ -84,8 +135,8 @@ def generate_eval_config(hp):
         hp_eval["y_limits"] = (-1.0, 1.0)
     elif hp_eval["env"] == "AsymBoS":
         hp_eval["env"] = IteratedAsymBoS
-        hp_eval["x_limits"] = (-1.0, 5.0)
-        hp_eval["y_limits"] = (-1.0, 5.0)
+        hp_eval["x_limits"] = (0.0, 4.0)
+        hp_eval["y_limits"] = (0.0, 4.0)
     else:
         raise NotImplementedError()
 
@@ -117,48 +168,6 @@ def generate_eval_config(hp):
     trainable_class = LOLAExact
 
     return hp_eval, rllib_config_eval, policies_to_load, trainable_class, stop, env_config
-
-def main(debug):
-    train_n_replicates = 2 if debug else 40
-    seeds = miscellaneous.get_random_seeds(train_n_replicates)
-
-    exp_name, _ = log.log_in_current_day_dir("LOLA_Exact")
-
-    hparams = {
-
-        "load_plot_data": None,
-        # Example "load_plot_data": ".../SameAndCrossPlay_save.p",
-
-        "exp_name": exp_name,
-        "train_n_replicates": train_n_replicates,
-
-        # "env": "IPD",
-        # "env": "IMP",
-        "env": "AsymBoS",
-
-        "num_episodes": 5 if debug else 50,
-        "trace_length": 5 if debug else 200,
-        "simple_net": True,
-        "corrections": True,
-        "pseudo": False,
-        "num_hidden": 10,
-        "reg": 0.0,
-        "lr": 1.,
-        "lr_correction": 0.5,
-        "gamma": 0.96,
-
-        "seed": tune.grid_search(seeds),
-        "metric": "ret1",
-    }
-
-    if hparams["load_plot_data"] is None:
-        ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
-        tune_analysis_per_exp = train(hparams)
-    else:
-        tune_analysis_per_exp = None
-
-    evaluate(tune_analysis_per_exp, hparams)
-    ray.shutdown()
 
 
 if __name__ == "__main__":

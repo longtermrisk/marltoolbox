@@ -21,7 +21,7 @@ from ray.rllib.agents.dqn import DQNTorchPolicy
 from marltoolbox.algos.lola.train_cg_tune_class_API import LOLAPGCG
 from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
 from marltoolbox.envs.vectorized_coin_game import CoinGame, AsymCoinGame
-from marltoolbox.utils import policy, log, same_and_cross_perf
+from marltoolbox.utils import policy, log, self_and_cross_perf
 from marltoolbox.utils.plot import PlotConfig
 
 
@@ -99,13 +99,13 @@ def evaluate(tune_hp, debug, tune_analysis_per_exp):
     (rllib_hp, rllib_config_eval, policies_to_load, trainable_class, stop, env_config) = \
         generate_eval_config(tune_hp, debug)
 
-    evaluate_same_and_cross_perf(rllib_hp, rllib_config_eval, policies_to_load,
+    evaluate_self_and_cross_perf(rllib_hp, rllib_config_eval, policies_to_load,
                                  trainable_class, stop, env_config, tune_analysis_per_exp)
 
 
-def evaluate_same_and_cross_perf(rllib_hp, rllib_config_eval, policies_to_load,
+def evaluate_self_and_cross_perf(rllib_hp, rllib_config_eval, policies_to_load,
                                  trainable_class, stop, env_config, tune_analysis_per_exp):
-    evaluator = same_and_cross_perf.SameAndCrossPlayEvaluator(exp_name=rllib_hp["exp_name"])
+    evaluator = self_and_cross_perf.SelfAndCrossPlayEvaluator(exp_name=rllib_hp["exp_name"])
     analysis_metrics_per_mode = evaluator.perform_evaluation_or_load_data(
         evaluation_config=rllib_config_eval, stop_config=stop,
         policies_to_load_from_checkpoint=policies_to_load,
@@ -114,13 +114,18 @@ def evaluate_same_and_cross_perf(rllib_hp, rllib_config_eval, policies_to_load,
         n_cross_play_per_checkpoint=min(5, rllib_hp["train_n_replicates"] - 1),
         to_load_path=rllib_hp["load_plot_data"])
 
+    if trainable_class == LOLAPGMatrice:
+        background_area_coord = rllib_hp['env'].PAYOUT_MATRIX
+    else:
+        background_area_coord = None
     plot_config = PlotConfig(xlim=rllib_hp["x_limits"], ylim=rllib_hp["y_limits"],
                              markersize=5, alpha=1.0, jitter=rllib_hp["jitter"],
                              xlabel="player 1 payoffs", ylabel="player 2 payoffs",
                              plot_max_n_points=rllib_hp["train_n_replicates"],
-                             title="cross and same-play performances: " + rllib_hp['env'].NAME,
+                             # title="cross and same-play performances: " + rllib_hp['env'].NAME,
                              x_scale_multiplier=rllib_hp["scale_multipliers"][0],
-                             y_scale_multiplier=rllib_hp["scale_multipliers"][1])
+                             y_scale_multiplier=rllib_hp["scale_multipliers"][1],
+                             background_area_coord=background_area_coord)
     evaluator.plot_results(analysis_metrics_per_mode, plot_config=plot_config,
                            x_axis_metric=f"policy_reward_mean/{env_config['players_ids'][0]}",
                            y_axis_metric=f"policy_reward_mean/{env_config['players_ids'][1]}")

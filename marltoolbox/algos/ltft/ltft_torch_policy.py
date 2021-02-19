@@ -12,7 +12,6 @@ from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import AgentID, PolicyID
 from ray.rllib.utils.typing import TensorType
 from typing import List, Union, Optional, Dict, Tuple
@@ -20,7 +19,6 @@ from typing import List, Union, Optional, Dict, Tuple
 from marltoolbox.algos import hierarchical
 from marltoolbox.utils import postprocessing
 
-torch, nn = try_import_torch()
 
 LTFT_DEFAULT_CONFIG_UPDATE = merge_dicts(
     hierarchical.DEFAULT_CONFIG,
@@ -44,9 +42,9 @@ WARNING_MESSAGE = "TODO LTFT: The supervised learning(SPL) policy also use the b
                   "this is not the original behavior. Must make the SPL policy train on the last data, not on the " \
                   "last data sampled from a buffer (like with DQN)."
 
-class LTFT(hierarchical.HierarchicalTorchPolicy):
+class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
     """
-    Learning Tit-for-tat (Learning Equilibrium(LE))
+    Learning Tit-for-tat (LTFT) policy
     """
     EPSILON = 1e-12
     DEBUG = False
@@ -342,15 +340,23 @@ def compute_log_likelihoods_wt_exploration(
         return log_likelihoods
 
 
+
+
 class LTFTCallbacks(DefaultCallbacks):
 
     def on_episode_step(self, *, worker, base_env,
                         episode, env_index, **kwargs):
+
         agent_ids = list(worker.policy_map.keys())
         assert len(agent_ids) == 2, "Implemented for 2 players"
+
         for agent_id, policy in worker.policy_map.items():
+            self._inform_agent_being_punished_or_not(episode, agent_id, policy, agent_ids)
+
+    def _inform_agent_being_punished_or_not(self, episode, agent_id, policy, agent_ids):
+
             opp_agent_id = [one_id for one_id in agent_ids if one_id != agent_id][0]
-            if hasattr(policy, 'on_episode_step') and callable(policy.on_episode_step):
+            if self._is_callback_implemented_in_policy(policy, 'on_episode_step'):
                 opp_obs = episode.last_observation_for(opp_agent_id)
                 opp_a = episode.last_action_for(opp_agent_id)
                 if episode.length > 0:
@@ -360,10 +366,12 @@ class LTFTCallbacks(DefaultCallbacks):
                     # Only during init
                     policy.on_episode_step(opp_obs, opp_a, False)
 
-    def on_episode_end(self, *, worker, base_env,
-                       policies, episode, env_index, **kwargs):
+    def _is_callback_implemented_in_policy(self, policy, callback_method):
+        return hasattr(policy, callback_method) and callable(hasattr(policy, callback_method))
+
+    def on_episode_end(self, *, worker, base_env, policies, episode, env_index, **kwargs):
         for polidy_ID, policy in policies.items():
-            if hasattr(policy, 'on_episode_end') and callable(policy.on_episode_end):
+            if self._is_callback_implemented_in_policy(policy, 'on_episode_end'):
                 policy.on_episode_end()
 
     def on_postprocess_trajectory(

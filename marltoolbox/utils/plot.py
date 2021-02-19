@@ -12,13 +12,25 @@ UPPER_ENVELOPE_SUFFIX = "_upper_envelope"
 
 
 class PlotConfig:
-    def __init__(self, *, xlabel: str = None, ylabel: str = None, display_legend: bool = True,
+    def __init__(self, *,
+                 xlabel: str = None,
+                 ylabel: str = None,
+                 display_legend: bool = True,
                  save_dir_path: str = None,
-                 title: str = None, xlim: str = None, ylim: str = None,
-                 colors=COLORS, figsize: tuple = None, plot_max_n_points: int = None,
-                 markersize=None, alpha: float = 1.0, jitter: float = 0.0,
-                 filename_prefix: str = "plot", x_scale_multiplier: float = 1.0, y_scale_multiplier: float = 1.0,
-                 empty_markers=True):
+                 title: str = None,
+                 xlim: str = None,
+                 ylim: str = None,
+                 colors=COLORS,
+                 figsize: tuple = None,
+                 plot_max_n_points: int = None,
+                 markersize=None,
+                 alpha: float = 1.0,
+                 jitter: float = 0.0,
+                 filename_prefix: str = "plot",
+                 x_scale_multiplier: float = 1.0,
+                 y_scale_multiplier: float = 1.0,
+                 empty_markers=True,
+                 background_area_coord=None):
         """
         Lot of the parameters follow the matplotlib.pyplot API.
         See https://matplotlib.org/3.1.1/api/_as_gen/matplotlib.pyplot.html#module-matplotlib.pyplot.
@@ -43,6 +55,7 @@ class PlotConfig:
         self.y_scale_multiplier = y_scale_multiplier
         self.jitter = jitter
         self.empty_markers = empty_markers
+        self.background_area_coord = background_area_coord
 
 
 class PlotHelper:
@@ -104,6 +117,8 @@ class PlotHelper:
             plt.xlim(self.plot_cfg.xlim)
         if self.plot_cfg.ylim is not None:
             plt.ylim(self.plot_cfg.ylim)
+        if self.plot_cfg.background_area_coord is not None:
+            self._add_background_area()
         if self.plot_cfg.save_dir_path is not None:
             file_name = f'{self.plot_cfg.filename_prefix}_{self.plot_cfg.ylabel}_vs' \
                         f'_{self.plot_cfg.xlabel}.png'
@@ -163,3 +178,14 @@ class PlotHelper:
         x_scaled = [x_p * self.plot_cfg.x_scale_multiplier for x_p in x]
         y_scaled = [y_p * self.plot_cfg.y_scale_multiplier for y_p in y]
         return x_scaled, y_scaled
+
+    def _add_background_area(self):
+        from scipy.spatial import ConvexHull
+        assert self.plot_cfg.background_area_coord.ndim == 3
+        points_defining_area = self.plot_cfg.background_area_coord.flatten().reshape(-1, 2)
+        area_hull = ConvexHull(points_defining_area)
+        plt.fill(points_defining_area[area_hull.vertices, 0], points_defining_area[area_hull.vertices, 1],
+                 facecolor='none', edgecolor='purple', linewidth=1)
+        plt.fill(points_defining_area[area_hull.vertices, 0], points_defining_area[area_hull.vertices, 1],
+                         'purple', alpha=0.05)
+

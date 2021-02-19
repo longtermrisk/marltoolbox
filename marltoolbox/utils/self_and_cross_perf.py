@@ -22,15 +22,15 @@ from marltoolbox.utils.plot import PlotHelper, PlotConfig
 logger = logging.getLogger(__name__)
 
 
-class SameAndCrossPlayEvaluator:
+class SelfAndCrossPlayEvaluator:
     """
-    Utility to run same and cross-play performance evaluation.
+    Utility to run self-play and cross-play performance evaluation.
 
     Does support only the RLLib API.
     Thus if you are working with Tune, then you will need to use the utils.policy.get_tune_policy_class helper
     to convert your Tune trainer into frozen RLLib policies.
     """
-    SELF_PLAY_MODE = "same-play"
+    SELF_PLAY_MODE = "self-play"
     CROSS_PLAY_MODE = "cross-play"
     MODES = [CROSS_PLAY_MODE, SELF_PLAY_MODE]
 
@@ -47,7 +47,7 @@ class SameAndCrossPlayEvaluator:
         """
         self.default_selected_order = 0
         self.exp_name, self.exp_parent_dir = log.log_in_current_day_dir(exp_name)
-        self.results_file_name = "SameAndCrossPlay_save.p"
+        self.results_file_name = "SelfAndCrossPlay_save.p"
         self.save_path = os.path.join(self.exp_parent_dir, self.results_file_name)
         # TODO this var name is not clear enough (use_random_policy_from_own_checkpoint)
         self.use_random_policy_from_own_checkpoint = use_random_policy_from_own_checkpoint
@@ -57,7 +57,7 @@ class SameAndCrossPlayEvaluator:
 
     def perform_evaluation_or_load_data(self, evaluation_config, stop_config, policies_to_load_from_checkpoint,
                                         tune_analysis_per_exp:list, TrainerClass=PGTrainer, TuneTrainerClass=None,
-                                        n_cross_play_per_checkpoint:int=1, n_same_play_per_checkpoint:int=1,
+                                        n_cross_play_per_checkpoint:int=1, n_self_play_per_checkpoint:int=1,
                                         to_load_path:str=None):
         """
 
@@ -74,7 +74,7 @@ class SameAndCrossPlayEvaluator:
             trainer. You need to provide the class of this trainer.
         :param n_cross_play_per_checkpoint: (int) How many cross-play experiment per checkpoint you want to run.
             They are run randomly against the other checkpoints.
-        :param n_same_play_per_checkpoint: (int) How many same-play experiment per checkpoint you want to run.
+        :param n_self_play_per_checkpoint: (int) How many self-play experiment per checkpoint you want to run.
             More than 1 mean that you are going to run several times the same experiments.
         :param to_load_path: where to load the data from
         :return: data formatted in a way ready for plotting by the plot_results method.
@@ -89,7 +89,7 @@ class SameAndCrossPlayEvaluator:
             )
             self.preload_checkpoints_from_tune_results(tune_results=tune_analysis_per_exp)
             analysis_metrics_per_mode = self.evaluate_performances(
-                n_same_play_per_checkpoint=n_same_play_per_checkpoint,
+                n_self_play_per_checkpoint=n_self_play_per_checkpoint,
                 n_cross_play_per_checkpoint=n_cross_play_per_checkpoint,
             )
         else:
@@ -157,9 +157,9 @@ class SameAndCrossPlayEvaluator:
         self.checkpoints.extend([{"group_name": group_name, "path": checkpoint}
                                  for checkpoint in checkpoints_in_one_group])
 
-    def evaluate_performances(self, n_same_play_per_checkpoint: int, n_cross_play_per_checkpoint: int):
+    def evaluate_performances(self, n_self_play_per_checkpoint: int, n_cross_play_per_checkpoint: int):
         """
-        :param n_same_play_per_checkpoint: (int) How many same-play experiment per checkpoint you want to run.
+        :param n_self_play_per_checkpoint: (int) How many self-play experiment per checkpoint you want to run.
             More than 1 mean that you are going to run several times the same experiments.
         :param n_cross_play_per_checkpoint: (int) How many cross-play experiment per checkpoint you want to run.
             They are run randomly against the other checkpoints.
@@ -170,32 +170,32 @@ class SameAndCrossPlayEvaluator:
         assert self.experiment_defined, "You must define the evaluation experiment with the " \
                                               "define_the_experiment_to_run method."
 
-        self._validate_number_of_requested_evaluations(n_same_play_per_checkpoint, n_cross_play_per_checkpoint)
-        all_metadata = self._evaluate_performances_in_parallel(n_same_play_per_checkpoint, n_cross_play_per_checkpoint)
+        self._validate_number_of_requested_evaluations(n_self_play_per_checkpoint, n_cross_play_per_checkpoint)
+        all_metadata = self._evaluate_performances_in_parallel(n_self_play_per_checkpoint, n_cross_play_per_checkpoint)
         analysis_metrics_per_mode = self._group_results_and_extract_metrics(all_metadata)
         self.save_results(analysis_metrics_per_mode)
         return analysis_metrics_per_mode
 
-    def _validate_number_of_requested_evaluations(self, n_same_play_per_checkpoint, n_cross_play_per_checkpoint):
-        assert n_same_play_per_checkpoint + n_cross_play_per_checkpoint >= 1
-        assert n_same_play_per_checkpoint >= 0
+    def _validate_number_of_requested_evaluations(self, n_self_play_per_checkpoint, n_cross_play_per_checkpoint):
+        assert n_self_play_per_checkpoint + n_cross_play_per_checkpoint >= 1
+        assert n_self_play_per_checkpoint >= 0
         assert n_cross_play_per_checkpoint >= 0
         if n_cross_play_per_checkpoint > 0:
             assert n_cross_play_per_checkpoint <= self.n_checkpoints - 1
 
-    def _evaluate_performances_in_parallel(self, n_same_play_per_checkpoint, n_cross_play_per_checkpoint):
-        master_config, all_metadata = self._prepare_one_master_config_dict(n_cross_play_per_checkpoint,
-                                                                           n_same_play_per_checkpoint)
+    def _evaluate_performances_in_parallel(self, n_self_play_per_checkpoint, n_cross_play_per_checkpoint):
+        master_config, all_metadata = self._prepare_one_master_config_dict(n_self_play_per_checkpoint,
+                                                                           n_cross_play_per_checkpoint)
         results = ray.tune.run(self.TrainerClass, config=master_config,
-                               stop=self.stop_config, name=os.path.join(self.exp_name, "same_cross_play"),
+                               stop=self.stop_config, name=os.path.join(self.exp_name, "self_and_cross_play_eval"),
                                checkpoint_freq=0, checkpoint_at_end=False)
 
         all_metadata_wt_results = self._add_results_into_metadata(all_metadata, results)
         return all_metadata_wt_results
 
-    def _prepare_one_master_config_dict(self, n_cross_play_per_checkpoint, n_same_play_per_checkpoint):
+    def _prepare_one_master_config_dict(self, n_self_play_per_checkpoint, n_cross_play_per_checkpoint):
         opponents_per_checkpoint = self._get_opponents_per_checkpoints(n_cross_play_per_checkpoint)
-        all_config_variations, all_metadata = self._produce_config_variations(n_same_play_per_checkpoint,
+        all_config_variations, all_metadata = self._produce_config_variations(n_self_play_per_checkpoint,
                                                                               n_cross_play_per_checkpoint,
                                                                               opponents_per_checkpoint)
         master_config = self._assemble_in_one_master_config(all_config_variations)
@@ -207,17 +207,17 @@ class SameAndCrossPlayEvaluator:
                                     for checkpoint_i in range(self.n_checkpoints)]
         return opponents_per_checkpoint
 
-    def _produce_config_variations(self, n_same_play_per_checkpoint,
+    def _produce_config_variations(self, n_self_play_per_checkpoint,
                                    n_cross_play_per_checkpoint, opponents_per_checkpoint):
-        same_plays = [self._get_config_for_one_same_play(checkpoint_i)
+        self_plays = [self._get_config_for_one_self_play(checkpoint_i)
                       for checkpoint_i in range(self.n_checkpoints)
-                      for same_play_n in range(n_same_play_per_checkpoint)]
+                      for _ in range(n_self_play_per_checkpoint)]
         cross_plays = [self._get_config_for_one_cross_play(checkpoint_i,
                                                            opponents_per_checkpoint[checkpoint_i][cross_play_n])
                        for checkpoint_i in range(self.n_checkpoints)
                        for cross_play_n in range(n_cross_play_per_checkpoint)]
-        print(f"Prepared {len(same_plays)} same_plays and {len(cross_plays)} cross_plays")
-        all_plays = same_plays + cross_plays
+        print(f"Prepared {len(self_plays)} sself_plays and {len(cross_plays)} cross_plays")
+        all_plays = self_plays + cross_plays
 
         all_metadata = [play[0] for play in all_plays]
         all_config_variations = [play[1] for play in all_plays]
@@ -246,7 +246,7 @@ class SameAndCrossPlayEvaluator:
         self.exp_parent_dir = tail
         return all_results
 
-    def _get_config_for_one_same_play(self, checkpoint_i):
+    def _get_config_for_one_self_play(self, checkpoint_i):
         metadata = {"mode": self.SELF_PLAY_MODE}
         config_copy = copy.deepcopy(self.evaluation_config)
 
@@ -360,13 +360,13 @@ class SameAndCrossPlayEvaluator:
         return pair_of_group_names
 
     def plot_results(self, analysis_metrics_per_mode, plot_config, x_axis_metric, y_axis_metric):
-        plotter = SameAndCrossPlayPlotter()
+        plotter = SelfAndCrossPlayPlotter()
         plotter.plot_results(exp_parent_dir=self.exp_parent_dir,
                              metrics_per_mode=analysis_metrics_per_mode, plot_config=plot_config,
                              x_axis_metric=x_axis_metric, y_axis_metric=y_axis_metric)
 
 
-class SameAndCrossPlayPlotter:
+class SelfAndCrossPlayPlotter:
     def __init__(self):
         self.x_axis_metric, self.y_axis_metric, self.metric_mode = None, None, None
         self.stat_summary = None
@@ -383,7 +383,7 @@ class SameAndCrossPlayPlotter:
         self._reset(x_axis_metric, y_axis_metric, metric_mode)
         for metrics_for_one_evaluation_mode in metrics_per_mode:
             self._extract_performance_evaluation_points(metrics_for_one_evaluation_mode)
-        self.stat_summary.save_summary(filename_prefix="same_and_cross_play", folder_dir=exp_parent_dir)
+        self.stat_summary.save_summary(filename_prefix="self_and_cross_play", folder_dir=exp_parent_dir)
         self. _plot_and_save_fig(plot_config, exp_parent_dir)
 
     def _reset(self, x_axis_metric, y_axis_metric, metric_mode):

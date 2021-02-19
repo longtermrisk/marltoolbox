@@ -4,28 +4,30 @@
 ##########
 
 import copy
-
 import os
-import ray
 import time
+
+import ray
 from ray import tune
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 
 from marltoolbox.algos.lola_dice.train_tune_class_API import LOLADICE
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
-from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersDilemma, IteratedMatchingPennies, IteratedAsymBoS
-from marltoolbox.utils import policy, log, same_and_cross_perf
+from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersDilemma, IteratedMatchingPennies, \
+    IteratedAsymBoS
 from marltoolbox.examples.tune_class_api import lola_pg_official
+from marltoolbox.utils import policy, log
 
 
 def train(hp):
     tune_config, stop, _ = get_tune_config(hp)
     # Train with the Tune Class API (not RLLib Class)
     tune_analysis = tune.run(LOLADICE, name=hp["exp_name"], config=tune_config,
-                                checkpoint_at_end=True,
-                                stop=stop, metric=hp["metric"], mode="max")
+                             checkpoint_at_end=True,
+                             stop=stop, metric=hp["metric"], mode="max")
     tune_analysis_per_exp = {"": tune_analysis}
     return tune_analysis_per_exp
+
 
 def get_tune_config(hp: dict) -> dict:
     config = copy.deepcopy(hp)
@@ -78,13 +80,13 @@ def get_tune_config(hp: dict) -> dict:
     return config, stop, env_config
 
 
-
 def evaluate(tune_analysis_per_exp, hp, debug):
     (rllib_hp, rllib_config_eval, policies_to_load, trainable_class, stop, env_config) = \
         generate_eval_config(hp, debug)
 
-    lola_pg_official.evaluate_same_and_cross_perf(rllib_hp, rllib_config_eval, policies_to_load,
-                                 trainable_class, stop, env_config, tune_analysis_per_exp)
+    lola_pg_official.evaluate_self_and_cross_perf(rllib_hp, rllib_config_eval, policies_to_load,
+                                                  trainable_class, stop, env_config, tune_analysis_per_exp)
+
 
 def generate_eval_config(hp, debug):
     hp_eval = copy.deepcopy(hp)
@@ -153,6 +155,7 @@ def generate_eval_config(hp, debug):
 
     return hp_eval, rllib_config_eval, policies_to_load, trainable_class, stop, env_config
 
+
 def main(debug):
     train_n_replicates = 2 if debug else 40
     timestamp = int(time.time())
@@ -208,7 +211,7 @@ def main(debug):
     evaluate(training_results, hparams, debug)
     ray.shutdown()
 
+
 if __name__ == "__main__":
     debug_mode = True
     main(debug_mode)
-

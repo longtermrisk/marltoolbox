@@ -63,8 +63,8 @@ Please use [Google Colab](https://colab.research.google.com/notebooks/intro.ipyn
 to run them:
 - [Basic - How to use the toolbox](https://github.com/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Basics_How_to_use_the_toolbox.ipynb)
   (~ 30 mins) [(in Colab)](https://colab.research.google.com/github/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Basics_How_to_use_the_toolbox.ipynb)
-- [Evaluations - "Level 1 best-response" and "same-play and cross-play"](https://github.com/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Evaluations_Level_1_best_response_and_same_play_and_cross_play.ipynb)
-  (~ 30 mins) [(in Colab)](https://colab.research.google.com/github/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Evaluations_Level_1_best_response_and_same_play_and_cross_play.ipynb)
+- [Evaluations - "Level 1 best-response" and "self-play and cross-play"](https://github.com/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Evaluations_Level_1_best_response_and_self_play_and_cross_play.ipynb)
+  (~ 30 mins) [(in Colab)](https://colab.research.google.com/github/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Evaluations_Level_1_best_response_and_self_play_and_cross_play.ipynb)
 
 ### Advanced: 
 
