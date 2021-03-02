@@ -2,6 +2,7 @@
 # Code modified from: https://github.com/Manuscrit/SLM-Lab/blob/support_multi_agents_with_awareness/slm_lab/agent/algorithm/meta_algorithm/learning_equilibrium.py
 ##########
 
+import logging
 import copy
 from collections import deque
 
@@ -18,6 +19,8 @@ from typing import List, Union, Optional, Dict, Tuple
 
 from marltoolbox.algos import hierarchical
 from marltoolbox.utils import postprocessing
+
+logger = logging.getLogger(__name__)
 
 
 LTFT_DEFAULT_CONFIG_UPDATE = merge_dicts(
@@ -80,6 +83,10 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         assert len(self.algorithms) == 4, str(len(self.algorithms))
         self.opp_policy_from_supervised_learning = True
 
+        # To coordinate the learning between the nested policies
+        self.train_pg = True
+        self.train_dqn = True
+
         self.n_steps_since_start = 0
         self.last_computed_w = None
 
@@ -135,10 +142,15 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
     def learn_on_batch(self, samples: SampleBatch):
         learner_stats = {"learner_stats": {}}
 
+        nested_policies, policy_to_train = self._get_policies_idx_to_train_with_current_batch()
+        if len(nested_policies) == 0:
+            return learner_stats
+        logging.debug(f"nested_policies {nested_policies}")
+
         # Update LR used in optimizer
         self.optimizer()
 
-        for policy_n, algo in enumerate(self.algorithms):
+        for policy_n, algo in zip(nested_policies, policy_to_train):
 
             samples_copy = samples.copy()
             samples_copy = self._modify_batch_for_policy(policy_n, samples_copy)
@@ -151,6 +163,18 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
             #     self.to_log[f"algo_{policy_n}_{j}_lr"] = [p["lr"] for p in opt.param_groups][0]
 
         return learner_stats
+
+    def _get_policies_idx_to_train_with_current_batch(self):
+        nested_policies_to_train = []
+        if self.train_dqn:
+            nested_policies_to_train.extend([0,1,2])
+        if self.train_pg:
+            nested_policies_to_train.append(3)
+
+        policy_to_train = [ self.algorithms[algo_idx]
+                            for algo_idx in nested_policies_to_train]
+
+        return nested_policies_to_train, policy_to_train
 
     def _modify_batch_for_policy(self, policy_n, samples_copy):
         if policy_n == self.COOP_POLICY_IDX or policy_n == self.COOP_OPP_POLICY_IDX:
