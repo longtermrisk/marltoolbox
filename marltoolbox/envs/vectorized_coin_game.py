@@ -19,7 +19,6 @@ def _same_pos(x, y):
 
 @jit(nopython=True)
 def move_players(batch_size, actions, red_pos, blue_pos, grid_size):
-
     moves = List([
         np.array([0, 1]),
         np.array([0, -1]),
@@ -36,41 +35,56 @@ def move_players(batch_size, actions, red_pos, blue_pos, grid_size):
 
 
 @jit(nopython=True)
-def compute_reward(batch_size, red_pos, blue_pos, coin_pos, red_coin, asymmetric):
+def compute_reward(batch_size, red_pos, blue_pos, coin_pos, red_coin,
+                   asymmetric, both_players_can_pick_the_same_coin):
     # Changing something here imply changing something in the analysis of the rewards
     reward_red = np.zeros(batch_size)
     reward_blue = np.zeros(batch_size)
     generate = np.zeros(batch_size, dtype=np.bool_)
-    red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue = False, False, False, False
+    red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue = \
+        0, 0, 0, 0
+
     for i in prange(batch_size):
+        red_first_if_both = None
+        if not both_players_can_pick_the_same_coin:
+            if _same_pos(red_pos[i], coin_pos[i]) and \
+                    _same_pos(blue_pos[i], coin_pos[i]):
+                red_first_if_both = bool(np.random.randint(0, 1))
+
         if red_coin[i]:
-            if _same_pos(red_pos[i], coin_pos[i]):
+            if _same_pos(red_pos[i], coin_pos[i]) and \
+                    (red_first_if_both is None or red_first_if_both):
                 generate[i] = True
                 reward_red[i] += 1
                 if asymmetric:
                     reward_red[i] += 3
-                red_pick_any = True
-                red_pick_red = True
-            if _same_pos(blue_pos[i], coin_pos[i]):
+                red_pick_any += 1
+                red_pick_red += 1
+            if _same_pos(blue_pos[i], coin_pos[i]) and \
+                    (red_first_if_both is None or not red_first_if_both):
                 generate[i] = True
                 reward_red[i] += -2
                 reward_blue[i] += 1
-                blue_pick_any = True
+                blue_pick_any += 1
         else:
-            if _same_pos(red_pos[i], coin_pos[i]):
+            if _same_pos(red_pos[i], coin_pos[i]) and \
+                    (red_first_if_both is None or red_first_if_both):
                 generate[i] = True
                 reward_red[i] += 1
                 reward_blue[i] += -2
                 if asymmetric:
                     reward_red[i] += 3
-                red_pick_any = True
-            if _same_pos(blue_pos[i], coin_pos[i]):
+                red_pick_any += 1
+            if _same_pos(blue_pos[i], coin_pos[i]) and \
+                    (red_first_if_both is None or not red_first_if_both):
                 generate[i] = True
                 reward_blue[i] += 1
-                blue_pick_any = True
-                blue_pick_blue = True
+                blue_pick_any += 1
+                blue_pick_blue += 1
     reward = [reward_red, reward_blue]
-    return reward, generate, red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue
+
+    return reward, generate, \
+           red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue
 
 
 @jit(nopython=True)
@@ -123,10 +137,10 @@ def generate_state(batch_size, red_pos, blue_pos, coin_pos, red_coin,
 @jit(nopython=True)
 def vectorized_step_with_numba_optimization(actions, batch_size, red_pos, blue_pos, coin_pos, red_coin,
                                             grid_size: int, asymmetric: bool, step_count_in_current_episode: int,
-                                            max_steps: int):
+                                            max_steps: int, both_players_can_pick_the_same_coin: bool):
     red_pos, blue_pos = move_players(batch_size, actions, red_pos, blue_pos, grid_size)
     reward, generate, red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue = compute_reward(
-        batch_size, red_pos, blue_pos, coin_pos, red_coin, asymmetric)
+        batch_size, red_pos, blue_pos, coin_pos, red_coin, asymmetric, both_players_can_pick_the_same_coin)
     coin_pos = generate_coin(batch_size, generate, red_coin, red_pos, blue_pos, coin_pos, grid_size)
     state = generate_state(batch_size, red_pos, blue_pos, coin_pos, red_coin, step_count_in_current_episode,
                            max_steps, grid_size)
@@ -190,7 +204,8 @@ class CoinGame(NotVectorizedCoinGame):
         (self.red_pos, self.blue_pos, rewards, self.coin_pos, observation, self.red_coin,
          red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue) = vectorized_step_with_numba_optimization(
             actions, self.batch_size, self.red_pos, self.blue_pos, self.coin_pos, self.red_coin,
-            self.grid_size, self.asymmetric, self.step_count_in_current_episode, self.max_steps)
+            self.grid_size, self.asymmetric, self.step_count_in_current_episode, self.max_steps,
+            self.both_players_can_pick_the_same_coin)
 
         if self.output_additional_info:
             self._accumulate_info(red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue)
@@ -203,6 +218,32 @@ class CoinGame(NotVectorizedCoinGame):
             rewards[0], rewards[1] = rewards[0][0], rewards[1][0]
 
         return self._to_RLLib_API(observations, rewards)
+
+    def _get_episode_info(self):
+        """
+        Output the following information:
+        pick_speed is the fraction of steps during which the player picked a coin
+        pick_own_color is the fraction of coins picked by the player which have the same color as the player
+        """
+        player_red_info, player_blue_info = {}, {}
+
+        if len(self.red_pick) > 0:
+            red_pick = sum(self.red_pick)
+            player_red_info["pick_speed"] = \
+                red_pick / (len(self.red_pick) * self.batch_size)
+            if red_pick > 0:
+                player_red_info["pick_own_color"] = \
+                    sum(self.red_pick_own) / red_pick
+
+        if len(self.blue_pick) > 0:
+            blue_pick = sum(self.blue_pick)
+            player_blue_info["pick_speed"] = \
+                blue_pick / (len(self.blue_pick) * self.batch_size)
+            if blue_pick > 0:
+                player_blue_info["pick_own_color"] = \
+                    sum(self.blue_pick_own) / blue_pick
+
+        return player_red_info, player_blue_info
 
     def _from_RLLib_API_to_list(self, actions):
         """
@@ -227,6 +268,7 @@ class CoinGame(NotVectorizedCoinGame):
             "red_pick_own": self.red_pick_own,
             "blue_pick": self.blue_pick,
             "blue_pick_own": self.blue_pick_own,
+            "both_players_can_pick_the_same_coin": self.both_players_can_pick_the_same_coin,
         }
         return copy.deepcopy(env_save_state)
 

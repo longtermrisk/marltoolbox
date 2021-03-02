@@ -21,7 +21,7 @@ class amTFTQValuesTorchPolicy(amTFTPolicyBase):
         #   between two agents, thus we can't really see any gain from exploitation
         debit = (self.selfish_opp_q_values[0, opp_action] * temperature_used_for_exploration -
                  self.selfish_opp_q_values[0, coop_opp_simulated_action] * temperature_used_for_exploration)
-        self.to_log['raw_debit'] = debit
+        self._to_log['raw_debit'] = debit
         return debit
 
     def _compute_selfish_opp_q_values(self, last_obs):

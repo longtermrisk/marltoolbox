@@ -1,4 +1,5 @@
 import copy
+from typing import List, Union, Optional, Dict, Tuple
 
 import numpy as np
 from ray import rllib
@@ -7,7 +8,6 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
-from typing import List, Union, Optional, Dict, Tuple
 
 torch, nn = try_import_torch()
 
@@ -23,7 +23,8 @@ DEFAULT_CONFIG = {
 class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
     INITIALLY_ACTIVE_ALGO = 0
 
-    def __init__(self, observation_space, action_space, config, after_init_nested=None, **kwargs):
+    def __init__(self, observation_space, action_space, config,
+                 after_init_nested=None, **kwargs):
         self.algorithms = []
         self.config = config
         print("config", self.config)
@@ -31,12 +32,14 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
             updated_config = copy.deepcopy(config)
             updated_config.update(nested_config["config_update"])
             if nested_config["Policy_class"] is None:
-                raise ValueError(f'You must specify the classes for the nested Policies '
-                                 f'in config["nested_config"]["Policy_class"] '
-                                 f'current value is {nested_config["Policy_class"]}')
+                raise ValueError(
+                    f'You must specify the classes for the nested Policies '
+                    f'in config["nested_config"]["Policy_class"] '
+                    f'current value is {nested_config["Policy_class"]}')
             Policy = nested_config["Policy_class"]
-            print("Spawn nested algo with config:", updated_config)
-            policy = Policy(observation_space, action_space, updated_config, **kwargs)
+            print("Create nested algo with config:", updated_config)
+            policy = Policy(observation_space, action_space, updated_config,
+                            **kwargs)
             if after_init_nested is not None:
                 after_init_nested(policy)
             self.algorithms.append(policy)
@@ -52,7 +55,7 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         for algo in self.algorithms:
             algo.model = algo.model.to(self.device)
 
-        self.to_log = {}
+        self._to_log = {}
 
     def __getattribute__(self, attr):
         """
@@ -62,9 +65,30 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
             return object.__getattribute__(self, attr)
         except AttributeError as initial:
             try:
-                return object.__getattribute__(self.algorithms[self.active_algo_idx], attr)
+                return object.__getattribute__(
+                    self.algorithms[self.active_algo_idx], attr)
             except AttributeError:
                 raise initial
+
+    @property
+    def to_log(self):
+        to_log = {"meta_policy": self._to_log,
+                  "nested_policy": {
+                      # f"policy_{algo_idx}": algo.to_log
+                      f"policy_0": algo.to_log
+                      for algo_idx, algo in enumerate(self.algorithms)
+                      if hasattr(algo, "to_log")
+                  }
+                  }
+        return to_log
+
+    @to_log.setter
+    def to_log(self, value):
+        if value == {}:
+            for algo in self.algorithms:
+                setattr(algo, "to_log", {})
+
+        self._to_log = value
 
     @property
     def model(self):
@@ -105,7 +129,8 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         return nested_update_target
 
     def get_weights(self):
-        return {self._nested_key(i): algo.get_weights() for i, algo in enumerate(self.algorithms)}
+        return {self._nested_key(i): algo.get_weights()
+                for i, algo in enumerate(self.algorithms)}
 
     def set_weights(self, weights):
         for i, algo in enumerate(self.algorithms):
@@ -127,7 +152,8 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
-        actions, state_out, extra_fetches = self.algorithms[self.active_algo_idx].compute_actions(obs_batch)
+        actions, state_out, extra_fetches = \
+            self.algorithms[self.active_algo_idx].compute_actions(obs_batch)
 
         return actions, state_out, extra_fetches
 
@@ -135,7 +161,8 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         raise NotImplementedError()
 
     def optimizer(self
-                  ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
+                  ) -> Union[
+        List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
         """Custom the local PyTorch optimizer(s) to use.
 
         Returns:
@@ -156,15 +183,18 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         return all_optimizers
 
     # TODO Move this in helper functions
-    def _filter_sample_batch(self, samples: SampleBatch, filter_key, remove=True, copy_data=False) -> SampleBatch:
+    def _filter_sample_batch(self, samples: SampleBatch, filter_key,
+                             remove=True, copy_data=False) -> SampleBatch:
         filter = samples.data[filter_key]
         if remove:
             # torch logical not
             filter = ~ filter
-        return SampleBatch({k: np.array(v, copy=copy_data)[filter] for (k, v) in samples.data.items()})
+        return SampleBatch({k: np.array(v, copy=copy_data)[filter]
+                            for (k, v) in samples.data.items()})
 
     def postprocess_trajectory(self, sample_batch,
                                other_agent_batches=None,
                                episode=None):
-        return self.algorithms[self.active_algo_idx].postprocess_trajectory(sample_batch, other_agent_batches, episode)
-
+        print("postprocess_trajectory", self.active_algo_idx)
+        return self.algorithms[self.active_algo_idx].postprocess_trajectory(
+            sample_batch, other_agent_batches, episode)

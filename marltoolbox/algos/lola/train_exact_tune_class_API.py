@@ -158,7 +158,6 @@ class LOLAExact(tune.Trainable):
                    **kwargs):
 
         print("args not used:", kwargs)
-        # print("is_training",is_training)
 
         self.num_episodes = num_episodes
         self.trace_length = trace_length
@@ -179,15 +178,13 @@ class LOLAExact(tune.Trainable):
         with graph.as_default() as g:
             self.sess = tf.Session()
             # Get info about the env
-            # self.payout_mat_1 = env.payout_mat
-            # self.payout_mat_2 = env.payout_mat.T
 
             if env == "IPD":
                 self.payout_mat_1 = np.array([[-1., 0.], [-3., -2.]])
                 self.payout_mat_2 = self.payout_mat_1.T
             elif env == "AsymBoS":
-                self.payout_mat_1 = np.array([[+3.5, 0.], [0., +1]])
-                self.payout_mat_2 = np.array([[+1., 0.], [0., +3.]])
+                self.payout_mat_1 = np.array([[+4., 0.], [0., +2.]])
+                self.payout_mat_2 = np.array([[+1., 0.], [0., +2.]])
             else:
                 raise ValueError(f"exp_name: {env}")
 

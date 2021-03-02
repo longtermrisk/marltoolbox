@@ -1,10 +1,11 @@
+from typing import List, Union, Optional, Dict, Tuple
+
 import numpy as np
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.utils.typing import TensorType
-from typing import List, Union, Optional, Dict, Tuple
 
 from marltoolbox.algos.amTFT.base_policy import amTFTPolicyBase, OWN_COOP_POLICY_IDX, OWN_SELFISH_POLICY_IDX, \
-    OPP_SELFISH_POLICY_IDX, OPP_COOP_POLICY_IDX
+    OPP_SELFISH_POLICY_IDX, OPP_COOP_POLICY_IDX, WORKING_STATES
 from marltoolbox.utils import rollout
 
 
@@ -15,7 +16,7 @@ class amTFTRolloutsTorchPolicy(amTFTPolicyBase):
         self._init_for_rollout(self.config)
 
     def _init_for_rollout(self, config):
-        self.last_k = 1
+        self.last_k = config["last_k"]
         self.use_opponent_policies = False
         self.rollout_length = config["rollout_length"]
         self.n_rollout_replicas = config["n_rollout_replicas"]
@@ -97,8 +98,9 @@ class amTFTRolloutsTorchPolicy(amTFTPolicyBase):
                                                                                           opp_action=opp_action,
                                                                                           last_obs=last_obs)
 
-        print("mean_total_reward_for_partially_coop_opp", mean_total_reward_for_partially_coop_opp)
-        print("mean_total_reward_for_totally_coop_opp", mean_total_reward_for_totally_coop_opp)
+        if self.verbose > 0:
+            print("mean_total_reward_for_partially_coop_opp", mean_total_reward_for_partially_coop_opp)
+            print("mean_total_reward_for_totally_coop_opp", mean_total_reward_for_totally_coop_opp)
         opp_reward_gain_from_picking_this_action = \
             mean_total_reward_for_partially_coop_opp - mean_total_reward_for_totally_coop_opp
 
@@ -134,18 +136,15 @@ class amTFTRolloutsTorchPolicy(amTFTPolicyBase):
         return self._compute_punishment_duration_from_rollouts(worker, last_obs)
 
     def _compute_punishment_duration_from_rollouts(self, worker, last_obs):
-        # self.performing_rollouts = True
-        # self.use_opponent_policies = False
-        # n_steps_to_punish = self.n_steps_to_punish
-        # assert self.n_rollout_replicas // 2 > 0
-        # policy_map = {policy_id: self for policy_id in worker.policy_map.keys()}
-        # policy_agent_mapping = (lambda agent_id: self._switch_own_and_opp(agent_id))
         n_steps_to_punish, policy_map, policy_agent_mapping = self._prepare_to_perform_virtual_rollouts_in_env(worker)
 
         self.k_opp_loss = {}
-        k_to_explore = self.last_k
+        k_to_explore = max(self.last_k, 1)
+        k_to_explore = min(k_to_explore,
+                           worker.env.max_steps - worker.env.step_count_in_current_episode)
+        k_to_explore = min(k_to_explore, self.rollout_length)
         self.debit_threshold_wt_multiplier = self.total_debit * self.punishment_multiplier
-
+        self.last_n_steps_played = None
         continue_to_search_k = True
         while continue_to_search_k:
             k_to_explore, continue_to_search_k = self._search_duration_of_future_punishment(
@@ -161,69 +160,163 @@ class amTFTRolloutsTorchPolicy(amTFTPolicyBase):
 
     def _search_duration_of_future_punishment(self, k_to_explore, worker, policy_map, policy_agent_mapping, last_obs):
 
-        _ = self._compute_opp_loss_for_one_k(k_to_explore, worker, policy_map, policy_agent_mapping, last_obs)
-        n_steps_played = self._compute_opp_loss_for_one_k(k_to_explore - 1, worker, policy_map, policy_agent_mapping,
-                                                          last_obs)
+        self._compute_opp_loss_for_one_k(k_to_explore, worker, policy_map, policy_agent_mapping,
+                                         last_obs)
+        self._compute_opp_loss_for_one_k(k_to_explore - 1, worker, policy_map,
+                                         policy_agent_mapping,
+                                         last_obs)
 
+        return self._duration_found_or_continue_search(k_to_explore)
+
+    def _duration_found_or_continue_search(self, k_to_explore):
         continue_to_search_k = not self._is_k_found(k_to_explore)
+
         if continue_to_search_k:
-            # If all the smallest k are already explored
-            if (self.k_opp_loss[k_to_explore - 1] > self.debit_threshold_wt_multiplier and (k_to_explore - 1) <= 1):
-                k_to_explore = 1
-                continue_to_search_k = False
-                return k_to_explore, continue_to_search_k
+            k_to_explore, continue_to_search_k = \
+                self._stop_search_if_all_small_k_already_explored(k_to_explore)
 
-            # If there is not enough steps to be perform remaining in the episode
-            # to compensate for the current total debit
-            if k_to_explore >= n_steps_played and self.k_opp_loss[k_to_explore] < self.debit_threshold_wt_multiplier:
-                print("n_steps_played", n_steps_played, "k_to_explore", k_to_explore)
-                k_to_explore = max(self.k_opp_loss.keys())
-                continue_to_search_k = False
-                return k_to_explore, continue_to_search_k
+        if continue_to_search_k:
+            k_to_explore, continue_to_search_k, skip_k_update = \
+                self._stop_search_if_not_enough_steps_to_be_played(k_to_explore)
 
-            if self.k_opp_loss[k_to_explore] > self.debit_threshold_wt_multiplier:
-                k_to_explore = min(self.k_opp_loss.keys())
-            elif self.k_opp_loss[k_to_explore] < self.debit_threshold_wt_multiplier:
-                k_to_explore = max(self.k_opp_loss.keys()) + 1
+        if continue_to_search_k and not skip_k_update:
+            k_to_explore, continue_to_search_k, skip_other = \
+                self._if_nothing_remains_to_explore(k_to_explore)
 
+            if continue_to_search_k and not skip_other:
+                k_to_explore = self._update_k_to_new_value_to_explore(k_to_explore)
+
+        if continue_to_search_k:
+            k_to_explore = max(k_to_explore, 1)
         return k_to_explore, continue_to_search_k
 
-    def _compute_opp_loss_for_one_k(self, k_to_explore, worker, policy_map, policy_agent_mapping, last_obs):
-        n_steps_played = 0
+    def _k_correction(self, k_to_explore):
+        k_to_explore = min(k_to_explore, self.rollout_length)
+        k_to_explore = max(k_to_explore, 0)
+        return k_to_explore
+
+    def _is_k_found(self, k_to_explore):
+        found_k = (self.k_opp_loss[k_to_explore] >= self.debit_threshold_wt_multiplier and
+                   self.k_opp_loss[k_to_explore - 1] < self.debit_threshold_wt_multiplier)
+        return found_k
+
+    def _if_nothing_remains_to_explore(self, k_to_explore):
+        continue_to_search_k = True
+        skip_other = False
+
+        all_k_explored = self.k_opp_loss.keys()
+        all_k_to_explore = list(range(self.rollout_length + 1))
+        # print("all_k_explored", all_k_explored)
+        # print("all_k_to_explore", all_k_to_explore)
+        for k_explored in all_k_explored:
+            all_k_to_explore.remove(k_explored)
+
+        if (k_to_explore == self.rollout_length and
+                not self._is_k_found(k_to_explore) and len(all_k_to_explore) > 0):
+
+            k_to_explore = max(all_k_to_explore) + 1
+            skip_other = True
+            print("explored max k, move to max of the remaining k", k_to_explore)
+
+        elif len(all_k_to_explore) == 0:
+            continue_to_search_k = False
+            if self.k_opp_loss[1] > self.debit_threshold_wt_multiplier:
+                k_to_explore = 1
+            elif self.k_opp_loss[self.rollout_length] < self.debit_threshold_wt_multiplier:
+                k_to_explore = self._search_max_punishment()
+            print("explored all k use", k_to_explore)
+            skip_other = True
+
+        k_to_explore = self._k_correction(k_to_explore)
+        return k_to_explore, continue_to_search_k, skip_other
+
+    def _search_max_punishment(self):
+        max_v, k_max = -np.inf, self.rollout_length
+        for k, v in self.k_opp_loss.items():
+            if v > max_v:
+                max_v = v
+                k_max = k
+            elif v == max_v and k < k_max:
+                k_max = k
+        return k_max
+
+    def _stop_search_if_all_small_k_already_explored(self,
+                                                     k_to_explore):
+        continue_to_search_k = True
+        if (self.k_opp_loss[k_to_explore - 1] > self.debit_threshold_wt_multiplier
+                and (k_to_explore - 1) <= 1):
+            k_to_explore = 1
+            continue_to_search_k = False
+            if self.verbose >= 1:
+                print("already explored all the small k", k_to_explore)
+        k_to_explore = self._k_correction(k_to_explore)
+        return k_to_explore, continue_to_search_k
+
+    def _stop_search_if_not_enough_steps_to_be_played(self, k_to_explore):
+        continue_to_search_k = True
+        skip_k_update = False
+        if self.last_n_steps_played is not None:
+            if k_to_explore >= self.last_n_steps_played and \
+                    self.k_opp_loss[k_to_explore] < self.debit_threshold_wt_multiplier:
+                k_to_explore = self._search_max_punishment()
+                continue_to_search_k = False
+                if self.verbose >= 1:
+                    print("n_steps_played", self.last_n_steps_played,
+                          "k_to_explore", k_to_explore)
+            elif k_to_explore > self.last_n_steps_played:
+                k_to_explore = self.last_n_steps_played
+                skip_k_update = True
+                if self.verbose >= 1:
+                    print("moving to k = last_n_steps_played", k_to_explore)
+        k_to_explore = self._k_correction(k_to_explore)
+        return k_to_explore, continue_to_search_k, skip_k_update
+
+    def _update_k_to_new_value_to_explore(self, k_to_explore):
+        if self.k_opp_loss[k_to_explore] > self.debit_threshold_wt_multiplier:
+            k_to_explore = min(self.k_opp_loss.keys())
+            if self.verbose >= 1:
+                print("move toward low k", k_to_explore)
+        elif self.k_opp_loss[k_to_explore] < self.debit_threshold_wt_multiplier:
+            k_to_explore = max(self.k_opp_loss.keys()) + 1
+            if self.verbose >= 1:
+                print("move toward high k", k_to_explore)
+        k_to_explore = self._k_correction(k_to_explore)
+        return k_to_explore
+
+    def _compute_opp_loss_for_one_k(self, k_to_explore, worker, policy_map,
+                                    policy_agent_mapping, last_obs):
         if self._is_k_out_of_bound(k_to_explore):
             self.k_opp_loss[k_to_explore] = 0
         elif k_to_explore not in self.k_opp_loss.keys():
-            opp_total_reward_loss, n_steps_played = self._compute_opp_total_reward_loss(k_to_explore, worker,
-                                                                                        policy_map,
-                                                                                        policy_agent_mapping,
-                                                                                        last_obs=last_obs)
+            opp_total_reward_loss, n_steps_played = \
+                self._compute_opp_total_reward_loss(k_to_explore, worker,
+                                                    policy_map,
+                                                    policy_agent_mapping,
+                                                    last_obs=last_obs)
             self.k_opp_loss[k_to_explore] = opp_total_reward_loss
             if self.verbose > 0:
                 print(f"k_to_explore {k_to_explore}: {opp_total_reward_loss}")
 
-        return n_steps_played
+            self.last_n_steps_played = n_steps_played
 
     def _is_k_out_of_bound(self, k_to_explore):
         return k_to_explore <= 0 or k_to_explore > self.rollout_length
 
-    def _is_k_found(self, k_to_explore):
-        found_k = (self.k_opp_loss[k_to_explore] >= self.debit_threshold_wt_multiplier and
-                   self.k_opp_loss[k_to_explore - 1] <= self.debit_threshold_wt_multiplier)
-        return found_k
-
     def _compute_opp_total_reward_loss(self, k_to_explore, worker, policy_map, policy_agent_mapping, last_obs):
         # Cooperative rollouts
-        coop_mean_total_reward, n_steps_played = self._compute_opp_mean_total_reward(worker, policy_map,
-                                                                                     policy_agent_mapping,
-                                                                                     partially_coop=False,
-                                                                                     opp_action=None,
-                                                                                     last_obs=last_obs)
-        # Cooperative rollouts with first action as the real one
-        partially_coop_mean_total_reward, _ = self._compute_opp_mean_total_reward(worker, policy_map,
-                                                                                  policy_agent_mapping,
-                                                                                  partially_coop=False,
-                                                                                  opp_action=None, last_obs=last_obs,
-                                                                                  k_to_explore=k_to_explore)
+        coop_mean_total_reward, n_steps_played = self._compute_opp_mean_total_reward(
+            worker, policy_map,
+            policy_agent_mapping,
+            partially_coop=False,
+            opp_action=None,
+            last_obs=last_obs)
+        # Partially cooperative rollouts with first k actions being selfish
+        partially_coop_mean_total_reward, _ = self._compute_opp_mean_total_reward(
+            worker, policy_map,
+            policy_agent_mapping,
+            partially_coop=False,
+            opp_action=None, last_obs=last_obs,
+            k_to_explore=k_to_explore)
 
         opp_total_reward_loss = coop_mean_total_reward - partially_coop_mean_total_reward
 
@@ -234,7 +327,9 @@ class amTFTRolloutsTorchPolicy(amTFTPolicyBase):
 
         return opp_total_reward_loss, n_steps_played
 
-    def _compute_opp_mean_total_reward(self, worker, policy_map, policy_agent_mapping, partially_coop: bool,
+    def _compute_opp_mean_total_reward(self, worker, policy_map,
+                                       policy_agent_mapping,
+                                       partially_coop: bool,
                                        opp_action, last_obs, k_to_explore=0):
         opp_total_rewards = []
         for i in range(self.n_rollout_replicas // 2):
@@ -251,15 +346,26 @@ class amTFTRolloutsTorchPolicy(amTFTPolicyBase):
                                                     reset_env_before=False,
                                                     num_episodes=1)
             assert coop_rollout._num_episodes == 1, f"coop_rollout._num_episodes {coop_rollout._num_episodes}"
+
             epi = coop_rollout._current_rollout
             opp_rewards = [step[3][self.opp_policy_id] for step in epi]
             # print("rewards", rewards)
             opp_total_reward = sum(opp_rewards)
 
             opp_total_rewards.append(opp_total_reward)
-        # print("total_rewards", total_rewards)
+
+            n_steps_played = len(epi)
+            assert self.n_steps_to_punish == max(0, k_to_explore - n_steps_played)
+            assert self.n_steps_to_punish_opponent == max(0, k_to_explore - n_steps_played)
+            assert len(self.overwrite_action) == 0
+
         self.n_steps_to_punish = 0
         self.n_steps_to_punish_opponent = 0
-        n_steps_played = len(epi)
         opp_mean_total_reward = sum(opp_total_rewards) / len(opp_total_rewards)
         return opp_mean_total_reward, n_steps_played
+
+    def on_episode_end(self):
+        if self.working_state == WORKING_STATES[2]:
+            self.total_debit = 0
+            self.n_steps_to_punish = 0
+            self.n_steps_to_punish_opponent = 0

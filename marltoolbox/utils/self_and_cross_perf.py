@@ -5,6 +5,7 @@ import os
 import pickle
 import random
 from typing import Dict
+import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -27,17 +28,20 @@ class SelfAndCrossPlayEvaluator:
     Utility to run self-play and cross-play performance evaluation.
 
     Does support only the RLLib API.
-    Thus if you are working with Tune, then you will need to use the utils.policy.get_tune_policy_class helper
-    to convert your Tune trainer into frozen RLLib policies.
+    Thus if you are working with Tune, then you will need to use the
+    utils.policy.get_tune_policy_class helper to convert your Tune trainer into
+    frozen RLLib policies.
     """
     SELF_PLAY_MODE = "self-play"
     CROSS_PLAY_MODE = "cross-play"
     MODES = [CROSS_PLAY_MODE, SELF_PLAY_MODE]
 
-    def __init__(self, exp_name: str, use_random_policy_from_own_checkpoint: bool = False):
+    def __init__(self, exp_name: str,
+                 use_random_policy_from_own_checkpoint: bool = False):
         """
         You should take a look at examples using this class.
-        Any training is deactivated here. Only the worker rollout will evaluate your policy on the environment.
+        Any training is deactivated here. Only the worker rollout will evaluate
+        your policy on the environment.
         Any exploration is deactivated.
 
         Works for a unique pair of RLLib policies.
@@ -55,19 +59,25 @@ class SelfAndCrossPlayEvaluator:
         self.experiment_defined = False
         self.checkpoints_loaded = False
 
-    def perform_evaluation_or_load_data(self, evaluation_config, stop_config, policies_to_load_from_checkpoint,
-                                        tune_analysis_per_exp:list, TrainerClass=PGTrainer, TuneTrainerClass=None,
-                                        n_cross_play_per_checkpoint:int=1, n_self_play_per_checkpoint:int=1,
+    def perform_evaluation_or_load_data(self, evaluation_config, stop_config,
+                                        policies_to_load_from_checkpoint,
+                                        tune_analysis_per_exp:list,
+                                        TrainerClass=PGTrainer,
+                                        TuneTrainerClass=None,
+                                        n_cross_play_per_checkpoint:int=1,
+                                        n_self_play_per_checkpoint:int=1,
                                         to_load_path:str=None):
         """
 
         :param evaluation_config: Normal config argument provided to tune.run().
             This RLLib config will be used to run many similar runs.
-            This config will be automatically updated to load the policies from the checkpoints you are going to provide.
+            This config will be automatically updated to load the policies from
+            the checkpoints you are going to provide.
         :param stop_config: Normal stop_config argument provided to tune.run().
         :param policies_to_load_from_checkpoint:
-        :param tune_analysis_per_exp: List of the tune_analysis you want to extract the groups of checkpoints from.
-            All the checkpoints in these tune_analysis will be extracted.
+        :param tune_analysis_per_exp: List of the tune_analysis you want to
+            extract the groups of checkpoints from. All the checkpoints in these
+            tune_analysis will be extracted.
         :param TrainerClass: (default is the PGTrainer class) Normal 1st argument (run_or_experiment) provided to
             tune.run(). You should use the one which provides the data flow you need. (Probably a simple PGTrainer will do).
         :param TuneTrainerClass: Will only be needed when you are going to evaluate policies created from a Tune
@@ -147,12 +157,15 @@ class SelfAndCrossPlayEvaluator:
 
         self.checkpoints_loaded = True
 
-    def _extract_groups_of_checkpoints(self, tune_results: Dict[str, ExperimentAnalysis]):
+    def _extract_groups_of_checkpoints(self,
+                                       tune_results: Dict[str, ExperimentAnalysis]):
         self.checkpoints = []
-        for idx, (group_name, one_tune_result) in enumerate(tune_results.items()):
-            self._extract_one_group_of_checkpoints(idx, one_tune_result, group_name)
+        for group_name, one_tune_result in tune_results.items():
+            self._extract_one_group_of_checkpoints(one_tune_result, group_name)
 
-    def _extract_one_group_of_checkpoints(self, idx, one_tune_result: ExperimentAnalysis, group_name):
+    def _extract_one_group_of_checkpoints(self,
+                                          one_tune_result: ExperimentAnalysis,
+                                          group_name):
         checkpoints_in_one_group = miscellaneous.extract_checkpoints(one_tune_result)
         self.checkpoints.extend([{"group_name": group_name, "path": checkpoint}
                                  for checkpoint in checkpoints_in_one_group])
@@ -237,6 +250,14 @@ class SelfAndCrossPlayEvaluator:
 
     def save_results(self, all_results):
         pickle.dump(all_results, open(self.save_path, "wb"))
+        self._save_results_as_json(all_results)
+
+    def _save_results_as_json(self, available_metrics_list):
+        metrics = copy.deepcopy(available_metrics_list)
+        save_path = self.save_path.split('.')[0:-1] + ['json']
+        save_path = '.'.join(save_path)
+        with open(save_path, 'w') as outfile:
+            json.dump(metrics, outfile)
 
     def load_results(self, to_load_path):
         assert to_load_path.endswith(self.results_file_name), f"to_load_path {to_load_path} should end with " \
@@ -392,7 +413,8 @@ class SelfAndCrossPlayPlotter:
         self.data_groups_per_mode = {}
 
     def _extract_performance_evaluation_points(self, metrics_for_one_evaluation_mode):
-        (mode, available_metrics_list, group_pair_id, group_pair_name) = metrics_for_one_evaluation_mode
+        (mode, available_metrics_list, group_pair_id, group_pair_name) = \
+            metrics_for_one_evaluation_mode
 
         label = self._get_label(mode, group_pair_name)
         x, y = self._extract_x_y_points(available_metrics_list)
@@ -427,9 +449,22 @@ class SelfAndCrossPlayPlotter:
         x, y = [], []
         assert len(available_metrics_list) > 0
         random.shuffle(available_metrics_list)
+
         for available_metrics in available_metrics_list:
-            x_point = available_metrics[self.x_axis_metric][self.metric_mode]
-            y_point = available_metrics[self.y_axis_metric][self.metric_mode]
+            if self.x_axis_metric in available_metrics.keys():
+                x_point = available_metrics[self.x_axis_metric][self.metric_mode]
+            else:
+                x_point = 123456789
+                warnings.warn(f"x_axis_metric {self.x_axis_metric}"
+                                  " not in available_metrics "
+                                  f"{available_metrics.keys()}")
+            if self.y_axis_metric in available_metrics.keys():
+                y_point = available_metrics[self.y_axis_metric][self.metric_mode]
+            else:
+                y_point = 123456789
+                warnings.warn(f"y_axis_metric {self.y_axis_metric}"
+                                  " not in available_metrics "
+                                  f"{available_metrics.keys()}")
             x.append(x_point)
             y.append(y_point)
         return x, y
@@ -454,31 +489,50 @@ class StatisticSummary:
         self.metric_mode = metric_mode
 
     def aggregate_stats_on_data_points(self, x, y, label):
+        # TODO refactor that to use a data structure
+        #  (like per metric and per plot?)
         self.x_means.append(sum(x) / len(x))
         self.x_se.append(np.array(x).std() / np.sqrt(len(x)))
-        self.x_labels.append(f"Metric:{self.x_axis_metric}, Metric mode:{self.metric_mode}")
+        self.x_labels.append(f"Metric:{self.x_axis_metric}, "
+                             f"Metric mode:{self.metric_mode}")
 
         self.y_means.append(sum(y) / len(y))
         self.y_se.append(np.array(y).std() / np.sqrt(len(y)))
-        self.y_labels.append(f"Metric:{self.y_axis_metric}, Metric mode:{self.metric_mode}")
+        self.y_labels.append(f"Metric:{self.y_axis_metric}, "
+                             f"Metric mode:{self.metric_mode}")
 
         self.matrix_label.append(label)
         self.x_raw.append(x)
         self.y_raw.append(y)
 
     def save_summary(self, filename_prefix, folder_dir):
-        file_name = f'{filename_prefix}_{self.y_axis_metric}_vs_{self.x_axis_metric}_matrix.json'
+        file_name = f'{filename_prefix}_{self.y_axis_metric}_' \
+                    f'vs_{self.x_axis_metric}_matrix.json'
         file_name = file_name.replace('/', '_')
         file_path = os.path.join(folder_dir, file_name)
         formated_data = {}
-        for x_mean, x_std_err, x_lbl, y_mean, y_std_err, y_lbl, lbl, x, y in zip(
-                self.x_means, self.x_se, self.x_labels, self.y_means, self.y_se,
-                self.y_labels, self.matrix_label, self.x_raw, self.y_raw):
+        for step_i in range(len(self.x_means)):
+            x_mean, x_std_err, x_lbl, y_mean, y_std_err, y_lbl, lbl, x, y = \
+                self._get_values_from_a_data_point(step_i)
             formated_data[lbl] = {
-                x_lbl: {"mean": x_mean, "std_err": x_std_err, "raw_data": str(x)},
-                y_lbl: {"mean": y_mean, "std_err": y_std_err, "raw_data": str(y)}
+                x_lbl: {"mean": x_mean,
+                        "std_err": x_std_err,
+                        "raw_data": str(x)},
+                y_lbl: {"mean": y_mean,
+                        "std_err": y_std_err,
+                        "raw_data": str(y)}
             }
         with open(file_path, 'w') as f:
             json.dump(formated_data, f, indent=4, sort_keys=True)
 
+    def _get_values_from_a_data_point(self, step_i):
+        return (self.x_means[step_i],
+                self.x_se[step_i],
+                self.x_labels[step_i],
+                self.y_means[step_i],
+                self.y_se[step_i],
+                self.y_labels[step_i],
+                self.matrix_label[step_i],
+                self.x_raw[step_i],
+                self.y_raw[step_i])
 

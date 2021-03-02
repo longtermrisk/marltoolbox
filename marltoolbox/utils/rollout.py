@@ -10,7 +10,8 @@ from gym import wrappers as gym_wrappers
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.rollout import DefaultMapping, default_policy_agent_mapping, RolloutSaver  # , keep_going
+from ray.rllib.rollout import DefaultMapping, default_policy_agent_mapping, \
+    RolloutSaver
 from ray.rllib.utils.framework import TensorStructType
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.typing import EnvInfoDict, PolicyID
@@ -92,7 +93,6 @@ def internal_rollout(worker,
         env.seed(seed)
 
     multiagent = isinstance(env, MultiAgentEnv)
-
     if policy_agent_mapping is None:
         if worker.multiagent:
             policy_agent_mapping = worker.policy_config["multiagent"]["policy_mapping_fn"]
@@ -138,6 +138,7 @@ def internal_rollout(worker,
         reward_total = 0.0
         while not done and _keep_going(steps, num_steps, episodes,
                                        num_episodes):
+
             multi_obs = obs if multiagent else {_DUMMY_AGENT_ID: obs}
             action_dict = {}
             virtual_global_timestep += 1
@@ -195,8 +196,9 @@ def internal_rollout(worker,
 def _keep_going(steps, num_steps, episodes, num_episodes):
     """
     Modified version.
-    Determine whether we've collected enough data
+    Determine whether we have collected enough data
     """
+
     if num_episodes and num_steps:
         return episodes < num_episodes and steps < num_steps
     # if num_episodes is set, this overrides num_steps

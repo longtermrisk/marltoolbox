@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 COLORS = list(mcolors.TABLEAU_COLORS)
-MARKERS = ["o", "s", "D", "*"]
+MARKERS = ["o", "s", "v", "^", "<", ">", "P", "X", "D", "*"]
 
 LOWER_ENVELOPE_SUFFIX = "_lower_envelope"
 UPPER_ENVELOPE_SUFFIX = "_upper_envelope"
@@ -30,7 +30,8 @@ class PlotConfig:
                  x_scale_multiplier: float = 1.0,
                  y_scale_multiplier: float = 1.0,
                  empty_markers=True,
-                 background_area_coord=None):
+                 background_area_coord=None,
+                 markers=None):
         """
         Lot of the parameters follow the matplotlib.pyplot API.
         See https://matplotlib.org/3.1.1/api/_as_gen/matplotlib.pyplot.html#module-matplotlib.pyplot.
@@ -56,6 +57,7 @@ class PlotConfig:
         self.jitter = jitter
         self.empty_markers = empty_markers
         self.background_area_coord = background_area_coord
+        self.markers = MARKERS if markers is None else markers
 
 
 class PlotHelper:
@@ -134,6 +136,7 @@ class PlotHelper:
         """
         fig = self._init_plot()
 
+        self.counter_labels = 0
         for group_index, (group_id, group_df) in enumerate(data_groups.items()):
             self._plot_dotes_for_one_group(self.plot_cfg.colors[group_index], group_id, group_df)
 
@@ -141,8 +144,7 @@ class PlotHelper:
 
     def _plot_dotes_for_one_group(self, group_color, group_id, group_df):
 
-        for col_index, col in enumerate(group_df.columns):
-            assert col_index < len(MARKERS)
+        for col in group_df.columns:
 
             x, y = self._select_n_points_to_plot(group_df, col)
             x, y = self._add_jitter_to_points(x, y)
@@ -152,8 +154,9 @@ class PlotHelper:
             plt.plot(x,y,
                      markerfacecolor='none' if self.plot_cfg.empty_markers else group_color,
                      markeredgecolor=group_color, linestyle='None',
-                     marker=MARKERS[col_index], color=group_color, label=label,
+                     marker=self.plot_cfg.markers[self.counter_labels], color=group_color, label=label,
                      alpha=self.plot_cfg.alpha, markersize=self.plot_cfg.markersize)
+            self.counter_labels += 1
 
     def _select_n_points_to_plot(self, group_df, col):
         if self.plot_cfg.plot_max_n_points is not None:

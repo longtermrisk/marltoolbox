@@ -44,6 +44,7 @@ DEFAULT_CONFIG = merge_dicts(
         "punishment_multiplier": 6.0,
         "rollout_length": 40,
         "n_rollout_replicas": 20,
+        "last_k": 1,
         # TODO use log level of RLLib instead of mine
         "verbose": 1,
 
@@ -156,8 +157,9 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
 
         if self.verbose > 0:
             for j, opt in enumerate(algo_to_train._optimizers):
-                self.to_log[f"algo_{working_state_idx}_{j}_lr"] = [p["lr"] for p in opt.param_groups][0]
-        self.to_log[f'algo{working_state_idx}_cur_lr'] = algo_to_train.cur_lr
+                self._to_log[f"algo_{working_state_idx}_{j}_lr"] = [p["lr"]
+                                                                    for p in opt.param_groups][0]
+        self._to_log[f'algo{working_state_idx}_cur_lr'] = algo_to_train.cur_lr
         if self.verbose > 1:
             print(f"learn_on_batch WORKING_STATES {WORKING_STATES[working_state_idx]}, ")
 
@@ -182,7 +184,7 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
                     self._plan_punishment(opp_action, coop_opp_simulated_action, worker, last_obs)
 
 
-            self.to_log['debit_threshold'] = self.debit_threshold
+            self._to_log['debit_threshold'] = self.debit_threshold
             print('debit_threshold', self.debit_threshold)
 
     def _is_punishment_planned(self):
@@ -200,16 +202,21 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
         if coop_opp_simulated_action != opp_action:
             if self.verbose > 0:
                 print("coop_opp_simulated_action != opp_action:", coop_opp_simulated_action, opp_action)
-            debit = self._compute_debit(
-                last_obs, opp_action,  worker, base_env, episode, env_index,
-                coop_opp_simulated_action)
+
+            if worker.env.step_count_in_current_episode >= worker.env.max_steps:
+                debit = 0
+            else:
+                debit = self._compute_debit(
+                    last_obs, opp_action,  worker, base_env, episode, env_index,
+                    coop_opp_simulated_action)
         else:
             if self.verbose > 0:
                 print("coop_opp_simulated_action == opp_action")
             debit = 0
         self.total_debit += debit
-        self.to_log['summed_debit'] = (
-            debit + self.to_log['summed_debit'] if 'summed_debit' in self.to_log else debit
+        self._to_log['summed_debit'] = (
+            debit + self._to_log['summed_debit'] if 'summed_debit' in
+                                                    self._to_log else debit
         )
         if self.verbose > 0:
             print(f"debit {debit}")
@@ -220,13 +227,20 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
         return self.total_debit > self.debit_threshold
 
     def _plan_punishment(self, opp_action, coop_opp_simulated_action, worker, last_obs):
-        self.n_steps_to_punish = self._compute_punishment_duration(opp_action,
-                                                                   coop_opp_simulated_action,
-                                                                   worker, last_obs)
+        if worker.env.step_count_in_current_episode >= worker.env.max_steps:
+            self.n_steps_to_punish = 0
+        else:
+            self.n_steps_to_punish = self._compute_punishment_duration(
+                opp_action,
+                coop_opp_simulated_action,
+                worker,
+                last_obs)
+
         self.total_debit = 0
-        self.to_log['summed_n_steps_to_punish'] = (
-            self.n_steps_to_punish + self.to_log['summed_n_steps_to_punish']
-            if 'summed_n_steps_to_punish' in self.to_log else self.n_steps_to_punish
+        self._to_log['summed_n_steps_to_punish'] = (
+            self.n_steps_to_punish + self._to_log['summed_n_steps_to_punish']
+            if 'summed_n_steps_to_punish' in self._to_log else
+            self.n_steps_to_punish
         )
 
     def on_episode_end(self):

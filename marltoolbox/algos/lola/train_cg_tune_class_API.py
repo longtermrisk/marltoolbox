@@ -543,35 +543,6 @@ class LOLAPGCG(tune.Trainable):
         self.aList.append(aAll)
 
 
-
-
-
-        # training after one batch is obtained
-        # sample_return0 = np.reshape(
-        #     get_monte_carlo(trainBatch0[2], self.y, self.trace_length, self.batch_size),
-        #     [self.batch_size, -1])
-        # sample_return1 = np.reshape(
-        #     get_monte_carlo(trainBatch1[2], self.y, self.trace_length, self.batch_size),
-        #     [self.batch_size, -1])
-        # # need to multiple with
-        # pow_series = np.arange(self.trace_length)
-        # discount = np.array([pow(self.gamma, item) for item in pow_series])
-        #
-        # if self.correction_reward_baseline_per_step:
-        #     sample_reward0 = discount * np.reshape(
-        #         trainBatch0[2] - np.mean(np.array(trainBatch0[2]), axis=0), [-1, self.trace_length])
-        #     sample_reward1 = discount * np.reshape(
-        #         trainBatch1[2] - np.mean(np.array(trainBatch1[2]), axis=0), [-1, self.trace_length])
-        # else:
-        #     sample_reward0 = discount * np.reshape(
-        #         trainBatch0[2] - np.mean(trainBatch0[2]), [-1, self.trace_length])
-        #     sample_reward1 = discount * np.reshape(
-        #         trainBatch1[2] - np.mean(trainBatch1[2]), [-1, self.trace_length])
-        # sample_reward0_bis = discount * np.reshape(
-        #     trainBatch0[2], [-1, self.trace_length])
-        # sample_reward1_bis = discount * np.reshape(
-        #     trainBatch1[2], [-1, self.trace_length])
-
         # need to multiple with
         pow_series = np.arange(self.trace_length)
         discount = np.array([pow(self.gamma, item) for item in pow_series])
@@ -586,17 +557,11 @@ class LOLAPGCG(tune.Trainable):
         actions0 = np.concatenate(trainBatch0[1], axis=0)
         actions1 = np.concatenate(trainBatch1[1], axis=0)
 
-        # if self.use_toolbox_env:
         ob_space_shape = list(self.env.OBSERVATION_SPACE.shape)
         last_state = np.reshape(
             np.concatenate(trainBatch1[3], axis=0),
             [self.batch_size, self.trace_length, ob_space_shape[0],
              ob_space_shape[1], ob_space_shape[2]])[:, -1, :, :, :]
-        # else:
-        #     last_state = np.reshape(
-        #         np.concatenate(trainBatch1[3], axis=0),
-        #         [self.batch_size, self.trace_length, self.env.ob_space_shape[0],
-        #          self.env.ob_space_shape[1], self.env.ob_space_shape[2]])[:, -1, :, :, :]
 
         value_0_next, value_1_next = self.sess.run(
             [self.mainPN_step[0].value, self.mainPN_step[1].value],
@@ -638,11 +603,6 @@ class LOLAPGCG(tune.Trainable):
             num_loops = 50 if self.timestep == 0 else 1
             for _ in range(num_loops):
                 self.sess.run(update_clone, feed_dict=feed_dict)
-
-            # theta_1_vals = self.mainPN[0].getparams()
-            # theta_2_vals = self.mainPN[1].getparams()
-            # theta_1_vals_clone = self.mainPN_clone[0].getparams()
-            # theta_2_vals_clone = self.mainPN_clone[1].getparams()
 
         if self.lr_decay:
             lr_decay = (self.num_episodes - self.timestep) / self.num_episodes
@@ -753,8 +713,6 @@ class LOLAPGCG(tune.Trainable):
             update1 = update1 * lr_decay
             update2 = update2 * lr_decay
 
-        # update1_to_log = update1
-        # update2_to_log = update2
         update1_sum = sum(update1) / self.bs_mul
         if self.use_DQN_exploiter and use_actions_from_exploiter:
             update2_sum = 0.0
@@ -767,9 +725,9 @@ class LOLAPGCG(tune.Trainable):
                 update(self.mainPN, self.lr, update1 / self.bs_mul, update2 / self.bs_mul, use_actions_from_exploiter)
                 # Add second_order0_sum to reward
                 per_epi = True
-                # term_to_use = v_0_grad_01
+                term_to_use = v_0_grad_01
                 # term_to_use = v_0_grad_01 - self.last_term_to_use
-                term_to_use = multiply0
+                # term_to_use = multiply0
                 # term_to_use = multiply0 - self.last_term_to_use
                 factor = 1/10
                 if per_epi:
@@ -849,9 +807,7 @@ class LOLAPGCG(tune.Trainable):
                 self.mainPN[2].actor_target_error,
                 self.mainPN[2].actor_loss,
                 self.mainPN[2].weigths_norm,
-                # self.mainPN[2].v_0_grad_01,
                 self.mainPN[2].grad,
-                # self.mainPN[2].second_order,
                 self.mainPN[2].grad_sum,
             ]
             (pg_expl_values, pg_expl_updateModel, pg_expl_update, pg_expl_player_value, pg_expl_player_target,
@@ -960,7 +916,6 @@ class LOLAPGCG(tune.Trainable):
                 "destab_diff_distrib": log_diff,
             }
             to_report.update(expl_training_info)
-
 
         return to_report
 

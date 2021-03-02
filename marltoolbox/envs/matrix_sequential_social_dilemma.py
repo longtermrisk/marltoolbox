@@ -72,7 +72,9 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
 
         observations = self._produce_observations_invariant_to_the_player_trained(action_player_0, action_player_1)
         rewards = self._get_players_rewards(action_player_0, action_player_1)
-        epi_is_done = self.step_count_in_current_episode == self.max_steps
+        epi_is_done = self.step_count_in_current_episode >= self.max_steps
+        if self.step_count_in_current_episode > self.max_steps:
+            print("WARNING self.step_count_in_current_episode >= self.max_steps")
         info = self._get_info_for_current_epi(epi_is_done)
 
         return self._to_RLLib_API(observations, rewards, epi_is_done, info)
@@ -241,8 +243,8 @@ class IteratedAsymBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilem
     NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
-    PAYOUT_MATRIX = np.array([[[+3.5, +1.0], [+0.0, +0.0]],
-                              [[+0.0, +0.0], [+1.0, +3.0]]])
+    PAYOUT_MATRIX = np.array([[[+4.0, +1.0], [+0.0, +0.0]],
+                              [[+0.0, +0.0], [+2.0, +2.0]]])
     NAME = "AsymmetricIteratedBoS"
 
 

@@ -286,3 +286,38 @@ def fing_longer_substr(str_list):
     elif len(str_list) == 1:
         substr = str_list[0]
     return substr
+
+
+def load_one_tune_analysis(checkpoints_paths:list):
+    """Helper to re-create a fake tune_analysis only containing the
+    checkpoints provided."""
+    from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
+    from ray.tune.trial import Trial
+    from ray.tune.checkpoint_manager import Checkpoint
+    from ray.tune import register_trainable
+    from ray.tune import Trainable
+
+    register_trainable("fake trial", Trainable)
+    trials = []
+    for one_checkpoint_path in checkpoints_paths:
+        one_trial = Trial(trainable_name="fake trial")
+        one_trial.checkpoint_manager.newest_persistent_checkpoint = \
+            Checkpoint(Checkpoint.PERSISTENT, value=one_checkpoint_path)
+        trials.append(one_trial)
+
+    json_file_path = _get_experiment_state_file_path(checkpoints_paths[0])
+    one_tune_analysis = ExperimentAnalysis(
+        experiment_checkpoint_path=json_file_path,
+        trials=trials,
+        default_mode="max",
+        default_metric="episode_reward_mean")
+    return one_tune_analysis
+
+def _get_experiment_state_file_path(one_checkpoint_path):
+    import difflib
+    parent_dir, head = os.path.split(one_checkpoint_path)
+    json_file = "experiment_state-" + "_".join(head.split("_")[-2:]) + ".json"
+    possible_files = os.listdir(parent_dir)
+    json_file = difflib.get_close_matches(json_file, possible_files, n=1)[0]
+    json_file_path = os.path.join(parent_dir, json_file)
+    return json_file_path

@@ -1,20 +1,20 @@
 import copy
-from collections import Iterable
-
 import datetime
-import gym
 import numbers
 import os
 import pickle
 import pprint
 import re
+from collections import Iterable
+from typing import Dict, Callable
+
+import gym
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import PolicyID, TensorType
-from typing import Dict, Callable
 
 
 def get_logging_callbacks_class(log_env_step=True,
@@ -24,7 +24,8 @@ def get_logging_callbacks_class(log_env_step=True,
     class LoggingCallbacks(DefaultCallbacks):
 
         def on_episode_step(self, *, worker: "RolloutWorker", base_env: BaseEnv,
-                            episode: MultiAgentEpisode, env_index: int, **kwargs):
+                            episode: MultiAgentEpisode, env_index: int,
+                            **kwargs):
             """Runs on each episode step.
 
             Args:
@@ -55,14 +56,18 @@ def get_logging_callbacks_class(log_env_step=True,
                     action = action[0]
                 rewards = episode._agent_reward_history[agent_id]
                 reward = rewards[-1].tolist() if len(rewards) > 0 else None
-                if reward is not None and isinstance(reward, Iterable) and len(reward) == 1:
+                if reward is not None and isinstance(reward, Iterable) and len(
+                        reward) == 1:
                     reward = reward[0]
-                data[agent_id] = {"action": action, "reward": reward, "info": info, "epi": epi}
+                data[agent_id] = {"action": action, "reward": reward,
+                                  "info": info, "epi": epi}
             self.buffer.append(data)
 
-        def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+        def on_episode_start(self, *, worker: "RolloutWorker",
+                             base_env: BaseEnv,
                              policies: Dict[PolicyID, Policy],
-                             episode: MultiAgentEpisode, env_index: int, **kwargs):
+                             episode: MultiAgentEpisode, env_index: int,
+                             **kwargs):
             """Callback run on the rollout worker before each episode starts.
 
             Args:
@@ -92,7 +97,8 @@ def get_logging_callbacks_class(log_env_step=True,
 
         def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv,
                            policies: Dict[PolicyID, Policy],
-                           episode: MultiAgentEpisode, env_index: int, **kwargs):
+                           episode: MultiAgentEpisode, env_index: int,
+                           **kwargs):
             """Runs when an episode is done.
 
             Args:
@@ -122,14 +128,16 @@ def get_logging_callbacks_class(log_env_step=True,
                 kwargs: Forward compatibility placeholder.
             """
             if log_from_policy:
-                self._update_train_result_wt_to_log(trainer, result,
-                                                    function_to_exec=self._get_log_from_policy)
+                self._update_train_result_wt_to_log(
+                    trainer, result,
+                    function_to_exec=self._get_log_from_policy)
             if log_weights:
                 if not hasattr(self, "on_train_result_counter"):
                     self.on_train_result_counter = 0
                 if self.on_train_result_counter % log_weigths_interval == 0:
-                    self._update_train_result_wt_to_log(trainer, result,
-                                                        function_to_exec=self._get_weights_from_policy)
+                    self._update_train_result_wt_to_log(
+                        trainer, result,
+                        function_to_exec=self._get_weights_from_policy)
                 self.on_train_result_counter += 1
 
             if log_full_epi:
@@ -139,7 +147,8 @@ def get_logging_callbacks_class(log_env_step=True,
                 self._get_log_from_buffer(trainer, result)
 
         @staticmethod
-        def _get_weights_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
+        def _get_weights_from_policy(policy: Policy,
+                                     policy_id: PolicyID) -> dict:
             """Gets the to_log var from a policy and rename its keys, adding the policy_id as a prefix."""
             to_log = {}
             weights = policy.get_weights()
@@ -160,7 +169,8 @@ def get_logging_callbacks_class(log_env_step=True,
                         if key not in result.keys():
                             result[key] = v
                         else:
-                            raise ValueError(f"key:{key} already exists in result.keys(): {result.keys()}")
+                            raise ValueError(
+                                f"key:{key} already exists in result.keys(): {result.keys()}")
 
         @staticmethod
         def _add_env_info_to_custom_metrics(worker, episode):
@@ -172,17 +182,20 @@ def get_logging_callbacks_class(log_env_step=True,
                         # TODO this add the logs as metrics (with mean, min, max) => this does produce too much logs
                         episode.custom_metrics[f"{k}/{agent_id}"] = v
 
-        def _update_train_result_wt_to_log(self, trainer, result: dict, function_to_exec):
+        def _update_train_result_wt_to_log(self, trainer, result: dict,
+                                           function_to_exec):
             """
-            Add logs from every policies (from policy.to_log:dict) to the results (which are then plotted in Tensorboard).
+            Add logs from every policies (from policy.to_log:dict)
+            to the results (to be plotted in Tensorboard).
             To be called from the on_train_result callback.
             """
 
-            def to_exec(worker):
+            def exec_in_each_policy(worker):
                 return worker.foreach_policy(function_to_exec)
 
             # to_log_list = trainer.workers.foreach_policy(function_to_exec)
-            to_log_list_list = trainer.workers.foreach_worker(to_exec)
+            to_log_list_list = trainer.workers.foreach_worker(
+                exec_in_each_policy)
             for worker_idx, to_log_list in enumerate(to_log_list_list):
                 for to_log in to_log_list:
                     for k, v in to_log.items():
@@ -190,7 +203,8 @@ def get_logging_callbacks_class(log_env_step=True,
                         if key not in result.keys():
                             result[key] = v
                         else:
-                            raise ValueError(f"key:{key} already exists in result.keys(): {result.keys()}")
+                            raise ValueError(
+                                f"key:{key} already exists in result.keys(): {result.keys()}")
 
         @staticmethod
         def _get_log_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
@@ -205,7 +219,8 @@ def get_logging_callbacks_class(log_env_step=True,
     return LoggingCallbacks
 
 
-def _log_action_prob_pytorch(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
+def _log_action_prob_pytorch(policy: Policy, train_batch: SampleBatch) -> Dict[
+    str, TensorType]:
     """
     Log the mean of the probability of each actions, over the training batch.
     Also log the probabilities of the last step.
@@ -224,8 +239,10 @@ def _log_action_prob_pytorch(policy: Policy, train_batch: SampleBatch) -> Dict[s
         action_dist_inputs_single = train_batch["action_dist_inputs"][-1, :]
 
         for action_i in range(policy.action_space.n):
-            to_log[f"act_dist_inputs_avg_{action_i}"] = action_dist_inputs_avg[action_i]
-            to_log[f"act_dist_inputs_single_{action_i}"] = action_dist_inputs_single[action_i]
+            to_log[f"act_dist_inputs_avg_{action_i}"] = action_dist_inputs_avg[
+                action_i]
+            to_log[f"act_dist_inputs_single_{action_i}"] = \
+                action_dist_inputs_single[action_i]
 
         assert train_batch["action_prob"].dim() == 1
         to_log[f"action_prob_avg"] = train_batch["action_prob"].mean(axis=0)
@@ -238,7 +255,8 @@ def _log_action_prob_pytorch(policy: Policy, train_batch: SampleBatch) -> Dict[s
 
             for action_i in range(policy.action_space.n):
                 to_log[f"q_values_avg_{action_i}"] = q_values_avg[action_i]
-                to_log[f"q_values_single_{action_i}"] = q_values_single[action_i]
+                to_log[f"q_values_single_{action_i}"] = q_values_single[
+                    action_i]
 
 
     else:
@@ -246,7 +264,8 @@ def _log_action_prob_pytorch(policy: Policy, train_batch: SampleBatch) -> Dict[s
     return to_log
 
 
-def stats_fn_wt_additionnal_logs(stats_function: Callable[[Policy, SampleBatch], Dict[str, TensorType]]):
+def stats_fn_wt_additionnal_logs(
+        stats_function: Callable[[Policy, SampleBatch], Dict[str, TensorType]]):
     """
     Return a function executing the given function and adding additional logs about the TRAINING BATCH
     (not the actual actions)
@@ -255,7 +274,8 @@ def stats_fn_wt_additionnal_logs(stats_function: Callable[[Policy, SampleBatch],
     :return: a function executing the stats_function and then adding additional logs
     """
 
-    def wt_additional_info(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
+    def wt_additional_info(policy: Policy, train_batch: SampleBatch) -> Dict[
+        str, TensorType]:
         to_log = stats_function(policy, train_batch)
 
         # Additional logs
@@ -292,8 +312,9 @@ def extract_all_metrics_from_results(results, limit=False):
             last_results = trial.last_result
         evaluated_params = trial.evaluated_params
 
-        metrics.append({"metric_analysis": metric_analysis, "last_results": last_results,
-                        "config": config, "evaluated_params": evaluated_params})
+        metrics.append(
+            {"metric_analysis": metric_analysis, "last_results": last_results,
+             "config": config, "evaluated_params": evaluated_params})
     return metrics
 
 
@@ -308,7 +329,8 @@ def save_metrics(results, exp_name, filename, limit=False):
 
 def filter_nested(dict_or_list, keywords_to_keep):
     if isinstance(dict_or_list, list):
-        dict_or_list = [filter_nested(v, keywords_to_keep) for v in dict_or_list]
+        dict_or_list = [filter_nested(v, keywords_to_keep) for v in
+                        dict_or_list]
         return dict_or_list
 
     dict_ = copy.deepcopy(dict_or_list)

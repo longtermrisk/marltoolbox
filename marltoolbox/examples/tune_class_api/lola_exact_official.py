@@ -1,6 +1,7 @@
 ##########
 # Additional dependencies are needed:
-# Follow the LOLA installation described in the tune_class_api/lola_pg_official.py file
+# Follow the LOLA installation described in the
+# tune_class_api/lola_pg_official.py file
 ##########
 
 import copy
@@ -8,11 +9,11 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.dqn import DQNTorchPolicy
 from ray.rllib.agents.pg import PGTorchPolicy
 
 from marltoolbox.algos.lola.train_exact_tune_class_API import LOLAExact
-from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersDilemma, IteratedMatchingPennies, \
+from marltoolbox.envs.matrix_sequential_social_dilemma import \
+    IteratedPrisonersDilemma, IteratedMatchingPennies, \
     IteratedAsymBoS
 from marltoolbox.examples.tune_class_api import lola_pg_official
 from marltoolbox.utils import policy, log, miscellaneous
@@ -27,7 +28,7 @@ def main(debug):
     hparams = {
 
         "load_plot_data": None,
-        # Example "load_plot_data": ".../SameAndCrossPlay_save.p",
+        # Example "load_plot_data": ".../SelfAndCrossPlay_save.p",
 
         "exp_name": exp_name,
         "train_n_replicates": train_n_replicates,
@@ -91,23 +92,27 @@ def get_tune_config(hp: dict) -> dict:
         }
 
     if tune_config["env"] in ("IPD", "BoS", "AsymBoS"):
-        tune_config["gamma"] = 0.96 if tune_config["gamma"] is None else tune_config["gamma"]
+        tune_config["gamma"] = 0.96 \
+            if tune_config["gamma"] is None \
+            else tune_config["gamma"]
         tune_config["save_dir"] = "dice_results_ipd"
     elif tune_config["env"] == "IMP":
-        tune_config["gamma"] = 0.9 if tune_config["gamma"] is None else tune_config["gamma"]
+        tune_config["gamma"] = 0.9 \
+            if tune_config["gamma"] is None \
+            else tune_config["gamma"]
         tune_config["save_dir"] = "dice_results_imp"
 
     stop = {"episodes_total": tune_config['num_episodes']}
-
     return tune_config, stop, env_config
 
 
 def evaluate(tune_analysis_per_exp, hp):
-    (rllib_hp, rllib_config_eval, policies_to_load, trainable_class, stop, env_config) = \
-        generate_eval_config(hp)
+    (rllib_hp, rllib_config_eval, policies_to_load,
+     trainable_class, stop, env_config) = generate_eval_config(hp)
 
-    lola_pg_official.evaluate_self_and_cross_perf(rllib_hp, rllib_config_eval, policies_to_load,
-                                                  trainable_class, stop, env_config, tune_analysis_per_exp)
+    lola_pg_official.evaluate_self_and_cross_perf(
+        rllib_hp, rllib_config_eval, policies_to_load,
+        trainable_class, stop, env_config, tune_analysis_per_exp)
 
 
 def generate_eval_config(hp):
@@ -122,7 +127,8 @@ def generate_eval_config(hp):
     tune_config['TuneTrainerClass'] = LOLAExact
 
     hp_eval["group_names"] = ["lola"]
-    hp_eval["scale_multipliers"] = (1 / tune_config['trace_length'], 1 / tune_config['trace_length'])
+    hp_eval["scale_multipliers"] = (1 / tune_config['trace_length'],
+                                    1 / tune_config['trace_length'])
     hp_eval["jitter"] = 0.05
 
     if hp_eval["env"] == "IPD":
@@ -135,8 +141,8 @@ def generate_eval_config(hp):
         hp_eval["y_limits"] = (-1.0, 1.0)
     elif hp_eval["env"] == "AsymBoS":
         hp_eval["env"] = IteratedAsymBoS
-        hp_eval["x_limits"] = (0.0, 4.0)
-        hp_eval["y_limits"] = (0.0, 4.0)
+        hp_eval["x_limits"] = (-0.1, 4.1)
+        hp_eval["y_limits"] = (-0.1, 4.1)
     else:
         raise NotImplementedError()
 
@@ -167,7 +173,8 @@ def generate_eval_config(hp):
     policies_to_load = copy.deepcopy(env_config["players_ids"])
     trainable_class = LOLAExact
 
-    return hp_eval, rllib_config_eval, policies_to_load, trainable_class, stop, env_config
+    return hp_eval, rllib_config_eval, policies_to_load, \
+           trainable_class, stop, env_config
 
 
 if __name__ == "__main__":

@@ -1,5 +1,19 @@
+import copy
+
+import numpy as np
+import time
+from ray.rllib.agents.dqn import DQNTrainer
+
 from marltoolbox.algos import amTFT
 from marltoolbox.algos.amTFT import base_policy
+from marltoolbox.algos.amTFT.base_policy import DEFAULT_NESTED_POLICY_COOP, \
+    DEFAULT_NESTED_POLICY_SELFISH, WORKING_STATES
+from marltoolbox.envs.matrix_sequential_social_dilemma import \
+    IteratedPrisonersDilemma
+from marltoolbox.examples.rllib_api.amtft_various_env import get_rllib_config, \
+    modify_hyperparams_for_the_selected_env
+from marltoolbox.utils import log, miscellaneous
+from marltoolbox.utils import postprocessing
 from test_base_policy import init_amTFT, generate_fake_discrete_actions
 
 
@@ -48,3 +62,442 @@ def test__select_algo_to_use_in_eval():
     am_tft_policy.performing_rollouts = True
     am_tft_policy.n_steps_to_punish_opponent = 1
     assert_(working_state_idx=2, active_algo_idx=base_policy.OPP_SELFISH_POLICY_IDX)
+
+
+def test__duration_found_or_continue_search():
+    am_tft_policy, env = init_amTFT(policy_class=amTFT.amTFTRolloutsTorchPolicy)
+
+    def assert_(k_to_explore, k_assert):
+        new_k_to_explore, continue_to_search_k = \
+            am_tft_policy._duration_found_or_continue_search(k_to_explore)
+        assert new_k_to_explore == k_assert
+        assert continue_to_search_k == (k_to_explore != k_assert)
+
+    am_tft_policy.debit_threshold_wt_multiplier = 2.0
+    am_tft_policy.k_opp_loss = {0: 0.0, 1: 1.0}
+    am_tft_policy.last_n_steps_played = 1.0
+    assert_(k_to_explore=1, k_assert=1)
+    am_tft_policy.last_n_steps_played = 3.0
+    assert_(k_to_explore=1, k_assert=2)
+    am_tft_policy.debit_threshold_wt_multiplier = 1.0
+    assert_(k_to_explore=1, k_assert=1)
+
+    am_tft_policy.debit_threshold_wt_multiplier = 6.0
+    am_tft_policy.k_opp_loss = {4: 0.0, 5: 5.0}
+    am_tft_policy.last_n_steps_played = 4.0
+    assert_(k_to_explore=5, k_assert=5)
+    am_tft_policy.last_n_steps_played = 6.0
+    assert_(k_to_explore=5, k_assert=6)
+    am_tft_policy.debit_threshold_wt_multiplier = 4.0
+    assert_(k_to_explore=5, k_assert=5)
+    am_tft_policy.k_opp_loss = {4: 4.0, 5: 5.0}
+    am_tft_policy.debit_threshold_wt_multiplier = 3.0
+    assert_(k_to_explore=5, k_assert=4)
+
+    am_tft_policy.debit_threshold_wt_multiplier = 6.0
+    am_tft_policy.k_opp_loss = {38: 37.5, 39: 39.0, 40: 40.0}
+    am_tft_policy.last_n_steps_played = 45
+    assert_(k_to_explore=40, k_assert=38)
+    assert_(k_to_explore=39, k_assert=38)
+    am_tft_policy.last_n_steps_played = 40
+    assert_(k_to_explore=40, k_assert=38)
+    am_tft_policy.debit_threshold_wt_multiplier = 41.0
+    am_tft_policy.last_n_steps_played = 40
+    assert_(k_to_explore=40, k_assert=40)
+    assert_(k_to_explore=39, k_assert=40)
+    am_tft_policy.last_n_steps_played = 10
+    am_tft_policy.debit_threshold_wt_multiplier = 38.0
+    assert_(k_to_explore=40, k_assert=10)
+    am_tft_policy.last_n_steps_played = 40
+    assert_(k_to_explore=40, k_assert=38)
+    am_tft_policy.debit_threshold_wt_multiplier = 41.0
+    assert_(k_to_explore=40, k_assert=40)
+    assert_(k_to_explore=39, k_assert=40)
+    am_tft_policy.debit_threshold_wt_multiplier = 39.5
+    assert_(k_to_explore=40, k_assert=40)
+
+
+class FakeEnvWtActionAsReward(IteratedPrisonersDilemma):
+
+    def step(self, actions: dict):
+        observations, rewards, epi_is_done, info = super().step(actions)
+
+        for k in rewards.keys():
+            rewards[k] = actions[k]
+
+        return observations, rewards, epi_is_done, info
+
+
+def make_FakePolicyWtDefinedActions(list_actions_to_play, ParentPolicyCLass):
+    class FakePolicyWtDefinedActions(ParentPolicyCLass):
+        def compute_actions(self, *args, **kwargs):
+            action = list_actions_to_play.pop(0)
+            return np.array([action]), [], {}
+
+    return FakePolicyWtDefinedActions
+
+
+def init_worker(n_rollout_replicas,
+                max_steps,
+                actions_list_0=None,
+                actions_list_1=None,
+                actions_list_2=None,
+                actions_list_3=None,
+                ):
+    train_n_replicates = 1
+    debug = True
+    stop_iters = 200
+    tf = False
+    pool_of_seeds = miscellaneous.get_random_seeds(train_n_replicates)
+    exp_name, _ = log.log_in_current_day_dir("testing")
+
+    hparams = {
+        "debug": debug,
+        "filter_utilitarian": False,
+
+        "train_n_replicates": train_n_replicates,
+        "n_times_more_utilitarians_seeds": 1,
+
+        "load_plot_data": None,
+
+        "load_policy_data": None,
+
+        "exp_name": exp_name,
+        "n_steps_per_epi": 20,
+        "bs_epi_mul": 4,
+        "welfare_functions": [(postprocessing.WELFARE_INEQUITY_AVERSION, "inequity_aversion"),
+                              (postprocessing.WELFARE_UTILITARIAN, "utilitarian")],
+        "seeds": pool_of_seeds,
+
+        "amTFTPolicy": amTFT.amTFTRolloutsTorchPolicy,
+
+        "explore_during_evaluation": True,
+
+        "gamma": 0.5,
+        "lambda": 0.9,
+        "alpha": 0.0,
+        "beta": 1.0,
+
+        "temperature_schedule": False,
+        "debit_threshold": 4.0,
+        "jitter": 0.05,
+        "hiddens": [64],
+        "punishment_multiplier": 6.0,
+
+        # If not in self play then amTFT will be evaluated against a naive selfish policy
+        "self_play": True,
+        # "self_play": False, # Not tested
+
+        "env": IteratedPrisonersDilemma,
+        "utilitarian_filtering_threshold": -2.5,
+        # "env": matrix_sequential_social_dilemma.IteratedAsymBoS,
+        # "utilitarian_filtering_threshold": 3.2,
+        # "env": matrix_sequential_social_dilemma.IteratedAsymChicken,
+        # "utilitarian_filtering_threshold": ...,
+        # "env": coin_game.CoinGame,
+        # "env": coin_game.AsymCoinGame,
+        # "filter_utilitarian": False,
+
+        # For training speed
+        "min_iter_time_s": 0.0 if debug else 3.0,
+
+        "overwrite_reward": True,
+        "use_adam": False,
+    }
+    hparams = modify_hyperparams_for_the_selected_env(hparams)
+
+    _, _, rllib_config = \
+        get_rllib_config(
+            hparams,
+            welfare_fn=postprocessing.WELFARE_UTILITARIAN)
+
+    rllib_config['env'] = FakeEnvWtActionAsReward
+    rllib_config['env_config']['max_steps'] = max_steps
+    rllib_config['seed'] = int(time.time())
+    for policy_id in FakeEnvWtActionAsReward({}).players_ids:
+        policy_to_modify = list(rllib_config['multiagent']["policies"][policy_id])
+        policy_to_modify[3]["rollout_length"] = max_steps
+        policy_to_modify[3]["n_rollout_replicas"] = n_rollout_replicas
+        policy_to_modify[3]["verbose"] = 1
+        if actions_list_0 is not None:
+            policy_to_modify[3]["nested_policies"][0]["Policy_class"] = \
+                make_FakePolicyWtDefinedActions(copy.deepcopy(actions_list_0),
+                                                DEFAULT_NESTED_POLICY_COOP)
+        if actions_list_1 is not None:
+            policy_to_modify[3]["nested_policies"][1]["Policy_class"] = \
+                make_FakePolicyWtDefinedActions(copy.deepcopy(actions_list_1),
+                                                DEFAULT_NESTED_POLICY_SELFISH)
+        if actions_list_2 is not None:
+            policy_to_modify[3]["nested_policies"][2]["Policy_class"] = \
+                make_FakePolicyWtDefinedActions(copy.deepcopy(actions_list_2),
+                                                DEFAULT_NESTED_POLICY_COOP)
+        if actions_list_3 is not None:
+            policy_to_modify[3]["nested_policies"][3]["Policy_class"] = \
+                make_FakePolicyWtDefinedActions(copy.deepcopy(actions_list_3),
+                                                DEFAULT_NESTED_POLICY_SELFISH)
+        rllib_config['multiagent']["policies"][policy_id] = \
+            tuple(policy_to_modify)
+
+    dqn_trainer = DQNTrainer(rllib_config)
+    worker = dqn_trainer.workers._local_worker
+
+    am_tft_policy_row = worker.get_policy("player_row")
+    am_tft_policy_col = worker.get_policy("player_col")
+    am_tft_policy_row.working_state = WORKING_STATES[2]
+    am_tft_policy_col.working_state = WORKING_STATES[2]
+
+    return worker, am_tft_policy_row, am_tft_policy_col
+
+
+def test__compute_debit_using_rollouts():
+    def assert_(worker_, am_tft_policy, last_obs, opp_action, assert_debit):
+        worker_.foreach_env(lambda env: env.reset())
+        debit = am_tft_policy._compute_debit_using_rollouts(last_obs, opp_action, worker_)
+        assert debit == assert_debit
+
+    # Never giving reward except for the opp first action
+    def init_no_extra_reward(max_steps_):
+        n_rollout_replicas = 2
+        worker_, am_tft_policy_row_, am_tft_policy_col_ = init_worker(
+            n_rollout_replicas=n_rollout_replicas,
+            max_steps=max_steps_,
+            # n steps x 2 rollouts x n_rollout_replicas//2
+            actions_list_0=[0] * (max_steps_ * 2 * n_rollout_replicas // 2),
+            actions_list_1=[0] * (max_steps_ * 2 * n_rollout_replicas // 2),
+            actions_list_2=[0] * (max_steps_ * 2 * n_rollout_replicas // 2),
+            actions_list_3=[0] * (max_steps_ * 2 * n_rollout_replicas // 2))
+        return worker_, am_tft_policy_row_, am_tft_policy_col_
+
+    max_steps = 2
+    worker, am_tft_policy_row, am_tft_policy_col = \
+        init_no_extra_reward(max_steps)
+    assert_(worker, am_tft_policy_row,
+            {"player_row": 0, "player_col": 0},
+            opp_action=0,
+            assert_debit=0)
+    assert_(worker, am_tft_policy_col,
+            {"player_row": 1, "player_col": 0},
+            opp_action=1,
+            assert_debit=1)
+
+    worker, am_tft_policy_row, am_tft_policy_col = \
+        init_no_extra_reward(max_steps)
+    assert_(worker, am_tft_policy_row,
+            {"player_row": 1, "player_col": 0},
+            opp_action=1,
+            assert_debit=1)
+    assert_(worker, am_tft_policy_col,
+            {"player_row": 1, "player_col": 1},
+            opp_action=0,
+            assert_debit=0)
+
+    # actions_list_3 (opp selfish) should never be used here
+    def init_selfish_opp_advantaged(max_steps):
+        n_rollout_replicas = 2
+        worker, am_tft_policy_row, am_tft_policy_col = init_worker(
+            n_rollout_replicas=n_rollout_replicas,
+            max_steps=max_steps,
+            # n steps x 2 rollouts x n_rollout_replicas//2
+            actions_list_0=[0] * (max_steps * 2 * n_rollout_replicas // 2),
+            actions_list_1=[0] * (max_steps * 2 * n_rollout_replicas // 2),
+            actions_list_2=[0] * (max_steps * 2 * n_rollout_replicas // 2),
+            actions_list_3=[1] * (max_steps * 2 * n_rollout_replicas // 2))
+        return worker, am_tft_policy_row, am_tft_policy_col
+
+    max_steps = 2
+    worker, am_tft_policy_row, am_tft_policy_col = \
+        init_selfish_opp_advantaged(max_steps)
+    assert_(worker, am_tft_policy_row,
+            {"player_row": 0, "player_col": 0},
+            opp_action=0,
+            assert_debit=0)
+    assert_(worker, am_tft_policy_col,
+            {"player_row": 1, "player_col": 0},
+            opp_action=1,
+            assert_debit=1)
+
+    # coop opp would have all get a reward of 1
+    def init_coop_opp_advantaged(max_steps):
+        n_rollout_replicas = 2
+        worker, am_tft_policy_row, am_tft_policy_col = init_worker(
+            n_rollout_replicas=n_rollout_replicas,
+            max_steps=max_steps,
+            # n steps x 2 rollouts x n_rollout_replicas//2
+            actions_list_0=[0] * (max_steps * 2 * n_rollout_replicas // 2),
+            actions_list_1=[0] * (max_steps * 2 * n_rollout_replicas // 2),
+            actions_list_2=[1] * (max_steps * 2 * n_rollout_replicas // 2),
+            actions_list_3=[0] * (max_steps * 2 * n_rollout_replicas // 2))
+        return worker, am_tft_policy_row, am_tft_policy_col
+
+    max_steps = 3
+    worker, am_tft_policy_row, am_tft_policy_col = \
+        init_coop_opp_advantaged(max_steps)
+    assert_(worker, am_tft_policy_row,
+            {"player_row": 1, "player_col": 0},
+            opp_action=1,
+            assert_debit=0)
+    assert_(worker, am_tft_policy_col,
+            {"player_row": 1, "player_col": 1},
+            opp_action=0,
+            assert_debit=-1)
+
+
+def test__compute_punishment_duration_from_rollouts():
+    def assert_(worker_, am_tft_policy, last_obs, assert_k,
+                total_debit, punishment_multiplier, last_k,
+                step_count_in_current_episode=0):
+        worker_.foreach_env(lambda env: env.reset())
+        worker.env.step_count_in_current_episode = step_count_in_current_episode
+        am_tft_policy.last_k = last_k
+        am_tft_policy.total_debit = total_debit
+        am_tft_policy.punishment_multiplier = punishment_multiplier
+        k = am_tft_policy._compute_punishment_duration_from_rollouts(
+            worker_, last_obs)
+        print("k, assert_k, last_k", k, assert_k, last_k)
+        assert k == assert_k
+
+    # Never giving reward
+    def init_wt_no_extra_reward(max_steps_):
+        n_rollout_replicas = 2
+        worker, am_tft_policy_row, am_tft_policy_col = init_worker(
+            n_rollout_replicas=n_rollout_replicas,
+            max_steps=max_steps_,
+            # n steps x 2 rollouts x n_rollout_replicas//2
+            actions_list_0=[0] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+            actions_list_1=[0] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+            actions_list_2=[0] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+            actions_list_3=[0] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100))
+        return worker, am_tft_policy_row, am_tft_policy_col
+
+    max_steps = 10
+    for last_k in range(1,max_steps,1):
+        worker, am_tft_policy_row, am_tft_policy_col = \
+            init_wt_no_extra_reward(max_steps_=max_steps)
+        assert_(worker, am_tft_policy_row,
+                last_obs={"player_row": 1, "player_col": 1},
+                assert_k=max(last_k-1, 0),
+                total_debit=1,
+                punishment_multiplier=2,
+                last_k=last_k)
+
+    def init_wt_reward_for_coop_opp(max_steps_):
+        n_rollout_replicas = 2
+        worker, am_tft_policy_row, am_tft_policy_col = init_worker(
+            n_rollout_replicas=n_rollout_replicas,
+            max_steps=max_steps_,
+            # n steps x 2 rollouts x n_rollout_replicas//2
+            actions_list_0=[0] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+            actions_list_1=[0] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+            actions_list_2=[1] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+            actions_list_3=[0] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100))
+        return worker, am_tft_policy_row, am_tft_policy_col
+
+    max_steps = 10
+    for last_k in range(1,max_steps,1):
+        worker, am_tft_policy_row, am_tft_policy_col = \
+            init_wt_reward_for_coop_opp(max_steps_=max_steps)
+        assert_(worker, am_tft_policy_row,
+                last_obs={"player_row": 1, "player_col": 1},
+                assert_k=2,
+                total_debit=1,
+                punishment_multiplier=2,
+                last_k=last_k)
+        worker, am_tft_policy_row, am_tft_policy_col = \
+            init_wt_reward_for_coop_opp(max_steps_=max_steps)
+        assert_(worker, am_tft_policy_row,
+                last_obs={"player_row": 0, "player_col": 1},
+                assert_k=1,
+                total_debit=0.25,
+                punishment_multiplier=2,
+                last_k=last_k)
+        worker, am_tft_policy_row, am_tft_policy_col = \
+            init_wt_reward_for_coop_opp(max_steps_=max_steps)
+        assert_(worker, am_tft_policy_row,
+                last_obs={"player_row": 0, "player_col": 1},
+                assert_k=5,
+                total_debit=1,
+                punishment_multiplier=5,
+                last_k=last_k)
+        worker, am_tft_policy_row, am_tft_policy_col = \
+            init_wt_reward_for_coop_opp(max_steps_=max_steps)
+        assert_(worker, am_tft_policy_row,
+                last_obs={"player_row": 0, "player_col": 1},
+                assert_k=6,
+                total_debit=1,
+                punishment_multiplier=5.1,
+                last_k=last_k)
+        worker, am_tft_policy_row, am_tft_policy_col = \
+            init_wt_reward_for_coop_opp(max_steps_=max_steps)
+        assert_(worker, am_tft_policy_row,
+                last_obs={"player_row": 0, "player_col": 1},
+                assert_k=5,
+                total_debit=1,
+                punishment_multiplier=4.9,
+                last_k=last_k)
+
+    def init_wt_reward_for_self_opp(max_steps_):
+        n_rollout_replicas = 2
+        worker, am_tft_policy_row, am_tft_policy_col = init_worker(
+            n_rollout_replicas=n_rollout_replicas,
+            max_steps=max_steps_,
+            # n steps x 2 rollouts x n_rollout_replicas//2
+            actions_list_0=[0] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+            actions_list_1=[0] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+            actions_list_2=[0] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+            actions_list_3=[1] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100))
+        return worker, am_tft_policy_row, am_tft_policy_col
+
+    max_steps = 10
+    for last_k in range(1, max_steps, 1):
+        worker, am_tft_policy_row, am_tft_policy_col = \
+            init_wt_reward_for_self_opp(max_steps_=max_steps)
+        assert_(worker, am_tft_policy_row,
+                last_obs={"player_row": 1, "player_col": 1},
+                assert_k=max(last_k-1, 0),
+                total_debit=1,
+                punishment_multiplier=2,
+                last_k=last_k)
+        worker, am_tft_policy_row, am_tft_policy_col = \
+            init_wt_reward_for_self_opp(max_steps_=max_steps)
+        assert_(worker, am_tft_policy_row,
+                last_obs={"player_row": 1, "player_col": 1},
+                assert_k=max(last_k-1, 0),
+                total_debit=0.1,
+                punishment_multiplier=2,
+                last_k=last_k)
+
+    def init_wt_reward_for_self_and_coop_opp(max_steps_):
+        n_rollout_replicas = 2
+        worker, am_tft_policy_row, am_tft_policy_col = init_worker(
+            n_rollout_replicas=n_rollout_replicas,
+            max_steps=max_steps_,
+            # n steps x 2 rollouts x n_rollout_replicas//2
+            actions_list_0=[0] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+            actions_list_1=[0] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+            actions_list_2=[1] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+            actions_list_3=[1] * (max_steps_ * 2 * n_rollout_replicas // 2 * 100))
+        return worker, am_tft_policy_row, am_tft_policy_col
+
+    max_steps = 10
+    for last_k in range(max_steps):
+        worker, am_tft_policy_row, am_tft_policy_col = \
+            init_wt_reward_for_self_and_coop_opp(max_steps_=max_steps)
+        assert_(worker, am_tft_policy_row,
+                last_obs={"player_row": 1, "player_col": 1},
+                assert_k=max(last_k-1, 0),
+                total_debit=1,
+                punishment_multiplier=2,
+                last_k=last_k)
+
+    max_steps = 5
+    for i in range(max_steps):
+        for last_k in range(max_steps):
+            worker, am_tft_policy_row, am_tft_policy_col = \
+                init_wt_reward_for_coop_opp(max_steps_=max_steps)
+            assert_(worker, am_tft_policy_row,
+                    last_obs={"player_row": 1, "player_col": 1},
+                    assert_k=int(min(1.5*2,max_steps-i)),
+                    total_debit=1.5,
+                    punishment_multiplier=2,
+                    last_k=last_k,
+                    step_count_in_current_episode=i)

@@ -8,10 +8,13 @@ from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 # TODO add tests for grid_size != 3
 # TODO add tests for position in episode in 5th
 
-def init_env(max_steps, env_class, seed=None, grid_size=3):
+def init_env(max_steps, env_class, seed=None, grid_size=3,
+             both_players_can_pick_the_same_coin=True):
     config = {
         "max_steps": max_steps,
         "grid_size": grid_size,
+        "both_players_can_pick_the_same_coin":
+            both_players_can_pick_the_same_coin,
     }
     env = env_class(config)
     env.seed(seed)
@@ -183,6 +186,21 @@ def test_logged_info_no_picking():
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=0.0, blue_speed=0.0, red_own=None, blue_own=None)
 
+    coin_game = init_env(max_steps, CoinGame, grid_size,
+                         both_players_can_pick_the_same_coin=False)
+    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size,
+                               both_players_can_pick_the_same_coin=False)
+
+    for env in [coin_game, asymm_coin_game]:
+        obs = env.reset()
+        check_obs(obs, grid_size)
+        assert_logger_buffer_size(env, n_steps=0)
+        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+
+        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
+                    red_speed=0.0, blue_speed=0.0, red_own=None, blue_own=None)
+
 
 def test_logged_info__red_pick_red_all_the_time():
     p_red_pos = [[1, 0], [1, 0], [1, 0], [1, 0]]
@@ -195,6 +213,21 @@ def test_logged_info__red_pick_red_all_the_time():
     n_steps = max_steps
     coin_game = init_env(max_steps, CoinGame, grid_size)
     asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+
+    for env_i, env in enumerate([coin_game, asymm_coin_game]):
+        obs = env.reset()
+        check_obs(obs, grid_size)
+        assert_logger_buffer_size(env, n_steps=0)
+        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+
+        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
+                    red_speed=1.0, blue_speed=0.0, red_own=1.0, blue_own=None)
+
+    coin_game = init_env(max_steps, CoinGame, grid_size,
+                         both_players_can_pick_the_same_coin=False)
+    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size,
+                               both_players_can_pick_the_same_coin=False)
 
     for env_i, env in enumerate([coin_game, asymm_coin_game]):
         obs = env.reset()
@@ -229,6 +262,21 @@ def test_logged_info__blue_pick_red_all_the_time():
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=0.0, blue_speed=1.0, red_own=None, blue_own=0.0)
 
+    coin_game = init_env(max_steps, CoinGame, grid_size,
+                         both_players_can_pick_the_same_coin=False)
+    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size,
+                               both_players_can_pick_the_same_coin=False)
+
+    for env_i, env in enumerate([coin_game, asymm_coin_game]):
+        obs = env.reset()
+        check_obs(obs, grid_size)
+        assert_logger_buffer_size(env, n_steps=0)
+        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+
+        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
+                    red_speed=0.0, blue_speed=1.0, red_own=None, blue_own=0.0)
+
 
 def test_logged_info__blue_pick_blue_all_the_time():
     p_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
@@ -252,6 +300,21 @@ def test_logged_info__blue_pick_blue_all_the_time():
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                     red_speed=0.0, blue_speed=1.0, red_own=None, blue_own=1.0)
 
+    coin_game = init_env(max_steps, CoinGame, grid_size,
+                         both_players_can_pick_the_same_coin=False)
+    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size,
+                               both_players_can_pick_the_same_coin=False)
+
+    for env_i, env in enumerate([coin_game, asymm_coin_game]):
+        obs = env.reset()
+        check_obs(obs, grid_size)
+        assert_logger_buffer_size(env, n_steps=0)
+        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+
+        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
+                    red_speed=0.0, blue_speed=1.0, red_own=None, blue_own=1.0)
+
 
 def test_logged_info__red_pick_blue_all_the_time():
     p_red_pos = [[1, 0], [1, 0], [1, 0], [1, 0]]
@@ -264,6 +327,21 @@ def test_logged_info__red_pick_blue_all_the_time():
     n_steps = max_steps
     coin_game = init_env(max_steps, CoinGame, grid_size)
     asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size)
+
+    for env_i, env in enumerate([coin_game, asymm_coin_game]):
+        obs = env.reset()
+        check_obs(obs, grid_size)
+        assert_logger_buffer_size(env, n_steps=0)
+        overwrite_pos(env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+
+        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
+                    red_speed=1.0, blue_speed=0.0, red_own=0.0, blue_own=None)
+
+    coin_game = init_env(max_steps, CoinGame, grid_size,
+                         both_players_can_pick_the_same_coin=False)
+    asymm_coin_game = init_env(max_steps, AsymCoinGame, grid_size,
+                               both_players_can_pick_the_same_coin=False)
 
     for env_i, env in enumerate([coin_game, asymm_coin_game]):
         obs = env.reset()
