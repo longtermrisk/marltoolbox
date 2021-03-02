@@ -1,43 +1,34 @@
-# Bargaining in MARL: Toolbox 
+# `marltoolbox`: Facilitate and speed up the research on bargaining in MARL. 
 ## Overview
 
-**Goal**: Facilitate and speed up the research on bargaining in MARL. 
+**Major features of this toolbox:**  
+This toolbox contains algorithms, environments, evaluation tools, and a lot of 
+helper functions to conduct research on bargaining in MARL.
 
-**Components:** We rely on two main components: 
-- The [`Ray/Tune/RLLib` framework](https://docs.ray.io/en/master/rllib.html):
-  which we use as a research framework (and which is agnostic to the deep learning framework used). 
-- A toolbox: this repository with specific contents related to bargaining in 
-  MARL.
+**Additionnal features of using the `Ray/Tune/RLLib` research framework:**  
+This toolbox relies on the [`Ray/Tune/RLLib` framework](https://docs.ray.io/en/master/rllib.html) 
+to provide the basic RL components and research functionalities.   
+- using components from `RLLib` with extensive configuration available
+  (e.g. using a PPO policy or a priority replay buffer)
+- track your experiments, log easily in TensorBoard, run hyperparameter search
+- be agnostic to the deep learning framework
+- create new algorithms using the very simple `Tune` API or the `RLLib` API
+- use the `RLLib` API to take advantage of a fully customizable training pipeline
+- create distributed algorithms (e.g. by using the policy factory of `RLLib`)  
+
+
+**Philosophy**: Implement when needed.
+Improve at each new use. Keep it simple. Keep it flexible.  
 
 **Support**: We <ins>actively support</ins> researchers by adding tools that they see relevant for research on 
 bargaining 
 in MARL.  
 
-**Philosophy**: Implement when needed.
-Improve at each new use. Keep it simple. Keep it flexible.  
-
-**Concrete value of this toolbox**:  
-- **with 1h of practice:**   
-    track your experiments, 
-    log easily in TensorBoard, run hyperparameter search, 
-    use the provided environments and run the provided algorithms, 
-    mostly agnostic to the deep learning framework, 
-    create custom algorithms using the `Tune` API 
-- **with 10h of practice:**  
-    use some of the components of `RLLib` 
-    (like using a PPO agent in your custom algorithms), use checkpoints, 
-    use the experimentation tools provided here, create new environments, 
-    create simple custom algorithm with the `RLLib` API
-- **with more than 10h of practice:**  
-    build custom distributed algorithms,
-    use all of the components of `RLLib`, 
-    use the fully customizable training pipeline of `RLLib`,
-    create complex custom algorithm with the `RLLib` API  
-  
-
 # Get started
 
 ## How to use this toolbox
+
+### Introduction 
 
 `RLLib` is built on top of `Tune` and `Tune` is built on top of `Ray`. 
 This toolbox `marltoolbox`, is built to work with `RLLib` 
@@ -46,7 +37,6 @@ at the cost of some functionalities.
 
 To speed up research, we advise to take advantages of the functionnalities of `Tune` and `RLLib`. 
 
-### Introduction 
 
 ###### **a) Read this quick introduction to `Tune`**  
 [`Tune`'s key concepts](https://docs.ray.io/en/master/tune/key-concepts.html) (< 5 min)  
@@ -58,7 +48,8 @@ To speed up research, we advise to take advantages of the functionnalities of `T
 [`Ray` README](https://github.com/ray-project/ray) (<5 min)  
 
 ###### **c) Introduction to this toolbox:**  
-Without any local installation, you can work through 2 tutorials to introduce this toolbox.  
+Without any local installation, you can work through 2 tutorials to introduce `marltoolbox` together with `Tune` 
+and `RLLib`.  
 Please use [Google Colab](https://colab.research.google.com/notebooks/intro.ipynb#recent=true)
 to run them:
 - [Basic - How to use the toolbox](https://github.com/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Basics_How_to_use_the_toolbox.ipynb)
@@ -223,7 +214,7 @@ but also use more and more constrained APIs.
   scratch. 
   Or if you want a seamless integration with all `RLLib` components. 
   Or if you need distributed training.  
-- **<ins>Additional</ins> functionalities:** Easily using all components from `RLLib` 
+- **<ins>Additional</ins> functionalities:** Using easily all components from `RLLib` 
   (models, environments, algorithms, exploration, schedulers, preprocessing, etc.).
   Using the customizable trainer and policy factories from `RLLib`.
   
@@ -317,7 +308,7 @@ Examples:
       not working properly**)  
     - supervised learning
     - hierarchical
-        - This is a base policy class which allows to use nested algorithms 
+        - This is a base policy class which allows the use of nested algorithms 
 - utils  
     - exploration
         - SoftQ with temperature schedule
@@ -338,32 +329,17 @@ Examples:
     - rollout
         - a rollout runner function which can be called from 
         inside a RLLib policy
-    - same_and_cross_perf
+    - self_and_cross_perf
         - a helper to evaluate the performance
-        in same and cross-play.    
-        "same-play": playing against agents from the same training run.  
+        in self-play and cross-play.    
+        "self-play": playing against agents from the same training run.  
         "cross-play": playing against agents from different training runs.  
-- examples
-    - 2 tutorials
-    - Tune function API
-        - LOLA-PG (official with slight modifications, 
-        **WIP: hyperparameters not well tuned**)
-        - LOLA-DICE (official with slight modifications, 
-        **WIP: not working properly**)
-    - Tune class API
-        - LOLA-PG (official with various improvements) 
-        - L1BR LOLA-PG
-        - LOLA-Exact (official) 
-        - LOLA-DICE (official with slight modifications)
-        - AMD (official with various improvements)
-        - AMD using RLLib agents (official with various improvements)
-    - RLLib API
-        - Inequity aversion
-        - L-TFT (Learning Tit-for-tat) 
-        - amTFT
-        - L1BR amTFT
-        - LOLA-DICE (unofficial, in the `experimental` branch, **WIP: Not working properly**)
-
+    - plot 
+        - helpers to plot results
+- scripts    
+    - aggregate_and_plot_tensorboard_data
+        - a script to aggregate the logged values from several seeds 
+          (into mean, std, etc.) and to create summary plots 
 
 # TODO / Wishlist
 - Improvements:

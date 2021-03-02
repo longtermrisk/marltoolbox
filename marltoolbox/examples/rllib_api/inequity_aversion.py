@@ -1,14 +1,16 @@
 import os
+
 import ray
 from ray import tune
 from ray.rllib.agents.pg import PGTrainer, PGTorchPolicy, pg_torch_policy
 
-# from marltoolbox.algos.inequity_aversion import InequityAversionTrainer
 from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedBoSAndPD
 from marltoolbox.utils import miscellaneous, log, postprocessing
 
 
 def main(debug):
+    exp_name, _ = log.log_in_current_day_dir("InequityAversion")
+
     ray.init(num_cpus=os.cpu_count(), num_gpus=0)
 
     stop = {"episodes_total": 10 if debug else 400}
@@ -19,8 +21,20 @@ def main(debug):
     }
 
     policies = {
-        env_config["players_ids"][0]: (None, IteratedBoSAndPD.OBSERVATION_SPACE, IteratedBoSAndPD.ACTION_SPACE, {}),
-        env_config["players_ids"][1]: (None, IteratedBoSAndPD.OBSERVATION_SPACE, IteratedBoSAndPD.ACTION_SPACE, {})}
+        env_config["players_ids"][0]:
+            (
+                None,
+                IteratedBoSAndPD.OBSERVATION_SPACE,
+                IteratedBoSAndPD.ACTION_SPACE,
+                {}
+            ),
+        env_config["players_ids"][1]:
+            (
+                None,
+                IteratedBoSAndPD.OBSERVATION_SPACE,
+                IteratedBoSAndPD.ACTION_SPACE,
+                {}
+            )}
 
     rllib_config = {
         "env": IteratedBoSAndPD,
@@ -37,7 +51,8 @@ def main(debug):
         "gamma": 0.5,
 
         "callbacks": miscellaneous.merge_callbacks(
-            log.get_logging_callbacks_class(), postprocessing.OverwriteRewardWtWelfareCallback),
+            log.get_logging_callbacks_class(),
+            postprocessing.OverwriteRewardWtWelfareCallback),
 
     }
 
@@ -53,10 +68,16 @@ def main(debug):
             pg_torch_policy.post_process_advantages
         )
     )
-    MyPGTrainer = PGTrainer.with_updates(default_policy=MyPGTorchPolicy, get_policy_class=None)
-    tune_analysis = tune.run(MyPGTrainer, stop=stop, checkpoint_freq=10, config=rllib_config)
+    MyPGTrainer = PGTrainer.with_updates(default_policy=MyPGTorchPolicy,
+                                         get_policy_class=None)
+    tune_analysis = tune.run(MyPGTrainer,
+                             stop=stop,
+                             checkpoint_freq=10,
+                             config=rllib_config,
+                             name=exp_name)
     ray.shutdown()
     return tune_analysis
+
 
 if __name__ == "__main__":
     debug_mode = True
