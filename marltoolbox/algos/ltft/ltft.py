@@ -26,7 +26,8 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 
 from marltoolbox.algos import hierarchical
 from marltoolbox.algos.supervised_learning import SPLTorchPolicy
-from marltoolbox.algos.ltft.ltft_torch_policy import LTFTCallbacks, LTFTTorchPolicy
+from marltoolbox.algos.ltft.ltft_torch_policy import \
+    LTFTCallbacks, LTFTTorchPolicy
 from marltoolbox.algos.ltft.utils import MyDQNTorchPolicy, sgd_optimizer_spl
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from marltoolbox.utils import log, miscellaneous, exploration
@@ -61,16 +62,20 @@ DEFAULT_CONFIG.update({
         # Number of replicates of the simulation of the opponent behavior
         "n_bootstrap_replicates": 50,
 
-        "callbacks": miscellaneous.merge_callbacks(LTFTCallbacks,
-                                                   log.get_logging_callbacks_class()),
+        "callbacks": miscellaneous.merge_callbacks(
+            LTFTCallbacks,
+            log.get_logging_callbacks_class()),
 
         "sgd_momentum": 0.9,
         'nested_policies': [
-            # Here the trainer need to be a DQNTrainer to provide the config for the 3 DQNTorchPolicy
+            # Here the trainer need to be a DQNTrainer to provide the config
+            # for the 3 DQNTorchPolicy
             {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
             {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
             {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
-            {"Policy_class": SPLTorchPolicy.with_updates(optimizer_fn=sgd_optimizer_spl), "config_update": {
+            {"Policy_class": SPLTorchPolicy.with_updates(
+                optimizer_fn=sgd_optimizer_spl),
+             "config_update": {
                 "learn_action": True,
                 "learn_reward": False,
                 "sgd_momentum": 0.75,

@@ -45,3 +45,4 @@ pip-delete-this-directory.txt
 rllib_bugs/
 *.log
 .ipynb_checkpoints/
+.coverage
