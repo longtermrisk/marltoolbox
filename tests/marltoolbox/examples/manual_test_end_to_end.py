@@ -24,7 +24,8 @@ def test_ppo_asym_coin_game():
 def test_ltft_ipd():
     from marltoolbox.examples.rllib_api.ltft import main
     ray.shutdown()
-    tune_analysis_self_play, tune_analysis_naive_opponent = main(debug=False)
+    tune_analysis_self_play, tune_analysis_naive_opponent = main(
+        debug=False, env="IteratedPrisonersDilemma", train_n_replicates=1)
     check_learning_achieved(tune_results=tune_analysis_self_play, min_=-42)
     check_learning_achieved(tune_results=tune_analysis_naive_opponent, max_=-78)
 

@@ -51,8 +51,11 @@ def main(debug, train_n_replicates=None, filter_utilitarian=None, env=None):
 def get_hyperparameters(debug, train_n_replicates=None,
                         filter_utilitarian=None, env=None):
 
-    train_n_replicates = 1 if debug else train_n_replicates
-    train_n_replicates = 40 if train_n_replicates is None else train_n_replicates
+    if debug:
+        train_n_replicates = 1
+    elif train_n_replicates is None:
+        train_n_replicates = 40
+
     n_times_more_utilitarians_seeds = 4
     n_seeds_to_prepare = train_n_replicates * (1 + n_times_more_utilitarians_seeds)
     pool_of_seeds = miscellaneous.get_random_seeds(n_seeds_to_prepare)

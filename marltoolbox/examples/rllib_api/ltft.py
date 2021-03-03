@@ -3,7 +3,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.dqn import DQNTorchPolicy
+from ray.rllib.agents import dqn
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -12,33 +12,40 @@ from marltoolbox.envs.matrix_sequential_social_dilemma import \
     IteratedPrisonersDilemma
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 from marltoolbox.algos import ltft
-from marltoolbox.utils import log, miscellaneous, exploration
+from marltoolbox.utils import log, miscellaneous, exploration, postprocessing
 from marltoolbox.envs.utils.wrappers import add_RewardUncertaintyEnvClassWrapper
 from marltoolbox.examples.rllib_api.amtft_various_env import \
     modify_hyperparams_for_the_selected_env
+from marltoolbox.algos.exploiters.evader import create_evader_policy_config, \
+    EvaderTorchPolicy
 
 
-def main(debug):
+def main(debug, env=None, train_n_replicates=None):
+    hparameters, exp_name = get_hyparameters(debug, env, train_n_replicates)
 
-    hparameters, exp_name = get_hyparameters(debug)
+    rllib_config, env_config, stop = get_rllib_config(hparameters, debug)
 
-    rllib_config, env_config, stop = get_rllib_config(hparameters)
-
-    ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=True)
+    ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
 
     tune_analysis_self_play = train_in_self_play(
         rllib_config, stop, exp_name)
 
-    tune_analysis_naive_opponent = train_against_naive_opponent(
+    tune_analysis_naive_opponent = train_against_opponent(
         hparameters, rllib_config, stop, exp_name, env_config)
 
     ray.shutdown()
     return tune_analysis_self_play, tune_analysis_naive_opponent
 
-def get_hyparameters(debug, env=None):
-    train_n_replicates = 1 if debug else 10
+
+def get_hyparameters(debug, env=None, train_n_replicates=None):
+
+    if debug:
+        train_n_replicates = 1
+    elif train_n_replicates is None:
+        train_n_replicates = 20
+
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
-    exp_name, _ = log.log_in_current_day_dir("LTFT_IPD")
+    exp_name, _ = log.log_in_current_day_dir("LTFT")
 
     hparameters = {
         "n_epi": 10 if debug else 200,
@@ -49,8 +56,14 @@ def get_hyparameters(debug, env=None):
         "seeds": seeds,
         "debug": debug,
 
-        # "env": "IteratedPrisonersDilemma",
-        "env": "CoinGame",
+        "env": "IteratedPrisonersDilemma",
+        # "env": "CoinGame",
+
+        # "against_evader_exploiter": None,
+        "against_evader_exploiter": {
+            "start_exploit": 0.75,
+            "copy_weights_delay": 0.05,
+        },
     }
 
     if env is not None:
@@ -60,7 +73,8 @@ def get_hyparameters(debug, env=None):
 
     return hparameters, exp_name
 
-def get_rllib_config(hp: dict):
+
+def get_rllib_config(hp: dict, debug):
     stop = {
         "episodes_total": hp["n_epi"],
     }
@@ -124,12 +138,10 @@ def get_rllib_config(hp: dict):
         },
 
         "gamma": 0.5,
-        "min_iter_time_s": 0.33,
+        "min_iter_time_s": 0.0 if debug else 10.0,
         "seed": tune.grid_search(hp["seeds"]),
 
         # === Optimization ===
-        # Adam epsilon hyper parameter
-        # "adam_epsilon": 1e-8,
         # If not None, clip gradients during optimization at this value
         "grad_clip": 1,
         # How many steps of the model to sample before learning starts.
@@ -189,9 +201,9 @@ def get_env_config(hp):
 
     return env_config
 
+
 def modify_config_for_coin_game(hp, rllib_config, env_config, stop):
     if hp["env"] in (CoinGame, AsymCoinGame):
-
         rllib_config.update({
             # === Exploration Settings ===
             # Default exploration behavior, iff `explore`=None is passed into
@@ -227,14 +239,10 @@ def train_in_self_play(rllib_config, stop, exp_name):
     return tune_analysis_self_play
 
 
-def train_against_naive_opponent(hp, rllib_config, stop, exp_name, env_config):
-    # Set player_col to use a naive policy
-    rllib_config["multiagent"]["policies"][env_config["players_ids"][1]] = (
-        DQNTorchPolicy,
-        hp["env"]().OBSERVATION_SPACE,
-        hp["env"].ACTION_SPACE,
-        {}
-    )
+def train_against_opponent(hp, rllib_config, stop, exp_name, env_config):
+    rllib_config = modify_config_for_play_agaisnt_opponent(
+        rllib_config, env_config, hp)
+
     tune_analysis_naive_opponent = ray.tune.run(
         ltft.LTFTTrainer,
         config=rllib_config,
@@ -242,6 +250,46 @@ def train_against_naive_opponent(hp, rllib_config, stop, exp_name, env_config):
         checkpoint_at_end=True, name=exp_name)
     return tune_analysis_naive_opponent
 
+
+def modify_config_for_play_agaisnt_opponent(rllib_config, env_config, hp):
+    if hp["against_evader_exploiter"] is not None:
+        rllib_config = set_config_to_use_evader_exploiter(
+            rllib_config, env_config, hp)
+    else:
+        rllib_config = set_config_to_use_naive_opponent(
+            rllib_config, env_config, hp)
+
+    return rllib_config
+
+def set_config_to_use_evader_exploiter(rllib_config, env_config, hp):
+    exploiter_hp = hp["against_evader_exploiter"]
+    train_n_steps = hp["n_epi"] * hp["n_steps_per_epi"]
+    exploiter_policy = create_evader_policy_config(
+        exploiter_policy=dqn.DQNTorchPolicy,
+        welfare_function=postprocessing.WELFARE_UTILITARIAN,
+        copy_weights_every_n_steps=
+        exploiter_hp["copy_weights_delay"] * train_n_steps,
+        start_exploit_at_step_n=
+        exploiter_hp["start_exploit"] * train_n_steps
+
+    )
+
+    rllib_config["multiagent"]["policies"][env_config["players_ids"][1]] = (
+        EvaderTorchPolicy,
+        hp["env"]().OBSERVATION_SPACE,
+        hp["env"].ACTION_SPACE,
+        exploiter_policy
+    )
+    return rllib_config
+
+def set_config_to_use_naive_opponent(rllib_config, env_config, hp):
+    rllib_config["multiagent"]["policies"][env_config["players_ids"][1]] = (
+        dqn.DQNTorchPolicy,
+        hp["env"]().OBSERVATION_SPACE,
+        hp["env"].ACTION_SPACE,
+        {}
+    )
+    return rllib_config
 
 if __name__ == "__main__":
     debug = True

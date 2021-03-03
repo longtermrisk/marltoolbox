@@ -16,7 +16,7 @@ def test_ppo_asym_coin_game():
 def test_le_ipd():
     from marltoolbox.examples.rllib_api.ltft import main
     ray.shutdown()
-    main(debug=True)
+    main(debug=True, env="IteratedPrisonersDilemma", train_n_replicates=1)
 
 
 def test_amtft_various_env():

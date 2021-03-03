@@ -1,13 +1,13 @@
 # This workflow will install Python dependencies, run tests and lint with a variety of Python versions
 # For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
 
-name: Python package
+name: weekly tests
 
 on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+  schedule:
+    # * is a special character in YAML so you have to quote this string
+    # every Wednesday and Friday at 2am
+    - cron:  '0 2 * * 3,5'
 
 jobs:
   build:
@@ -47,6 +47,6 @@ jobs:
         run: |
           jupyter nbconvert ./marltoolbox/examples/Tutorial_Evaluations_Level_1_best_response_and_self_play_and_cross_play.ipynb --to script
           python ./marltoolbox/examples/Tutorial_Evaluations_Level_1_best_response_and_self_play_and_cross_play.py
-      - name: Run long training test
+      - name: Run long training tests
         run: |
           python -m pytest ./tests/marltoolbox/examples/manual_test_end_to_end.py
