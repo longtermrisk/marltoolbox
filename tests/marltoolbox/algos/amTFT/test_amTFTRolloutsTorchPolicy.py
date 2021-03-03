@@ -11,7 +11,7 @@ from marltoolbox.algos.amTFT.base_policy import DEFAULT_NESTED_POLICY_COOP, \
 from marltoolbox.envs.matrix_sequential_social_dilemma import \
     IteratedPrisonersDilemma
 from marltoolbox.examples.rllib_api.amtft_various_env import get_rllib_config, \
-    modify_hyperparams_for_the_selected_env
+    modify_hyperparams_for_the_selected_env, get_hyperparameters
 from marltoolbox.utils import log, miscellaneous
 from marltoolbox.utils import postprocessing
 from test_base_policy import init_amTFT, generate_fake_discrete_actions
@@ -146,65 +146,11 @@ def init_worker(n_rollout_replicas,
                 ):
     train_n_replicates = 1
     debug = True
-    stop_iters = 200
-    tf = False
-    pool_of_seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("testing")
 
-    hparams = {
-        "debug": debug,
-        "filter_utilitarian": False,
-
-        "train_n_replicates": train_n_replicates,
-        "n_times_more_utilitarians_seeds": 1,
-
-        "load_plot_data": None,
-
-        "load_policy_data": None,
-
-        "exp_name": exp_name,
-        "n_steps_per_epi": 20,
-        "bs_epi_mul": 4,
-        "welfare_functions": [(postprocessing.WELFARE_INEQUITY_AVERSION, "inequity_aversion"),
-                              (postprocessing.WELFARE_UTILITARIAN, "utilitarian")],
-        "seeds": pool_of_seeds,
-
-        "amTFTPolicy": amTFT.amTFTRolloutsTorchPolicy,
-
-        "explore_during_evaluation": True,
-
-        "gamma": 0.5,
-        "lambda": 0.9,
-        "alpha": 0.0,
-        "beta": 1.0,
-
-        "temperature_schedule": False,
-        "debit_threshold": 4.0,
-        "jitter": 0.05,
-        "hiddens": [64],
-        "punishment_multiplier": 6.0,
-
-        # If not in self play then amTFT will be evaluated against a naive selfish policy
-        "self_play": True,
-        # "self_play": False, # Not tested
-
-        "env": IteratedPrisonersDilemma,
-        "utilitarian_filtering_threshold": -2.5,
-        # "env": matrix_sequential_social_dilemma.IteratedAsymBoS,
-        # "utilitarian_filtering_threshold": 3.2,
-        # "env": matrix_sequential_social_dilemma.IteratedAsymChicken,
-        # "utilitarian_filtering_threshold": ...,
-        # "env": coin_game.CoinGame,
-        # "env": coin_game.AsymCoinGame,
-        # "filter_utilitarian": False,
-
-        # For training speed
-        "min_iter_time_s": 0.0 if debug else 3.0,
-
-        "overwrite_reward": True,
-        "use_adam": False,
-    }
-    hparams = modify_hyperparams_for_the_selected_env(hparams)
+    hparams = get_hyperparameters(
+        debug, train_n_replicates, filter_utilitarian=False,
+        env="IteratedPrisonersDilemma")
 
     _, _, rllib_config = \
         get_rllib_config(

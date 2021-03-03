@@ -6,7 +6,7 @@ import pickle
 import pprint
 import re
 from collections import Iterable
-from typing import Dict, Callable
+from typing import Dict, Callable, TYPE_CHECKING
 
 import gym
 from ray.rllib.agents.callbacks import DefaultCallbacks
@@ -16,6 +16,8 @@ from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import PolicyID, TensorType
 
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import RolloutWorker
 
 def get_logging_callbacks_class(log_env_step=True,
                                 log_from_policy=True,

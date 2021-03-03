@@ -2,16 +2,19 @@
 # Code from: https://github.com/tobiasbaumann1/Adaptive_Mechanism_Design
 ##########
 import copy
-import os
+
 import logging
 import math
+import os
 import ray
 import time
 from ray import tune
 
-logging.basicConfig(filename='main.log', level=logging.DEBUG, filemode='w')
-from marltoolbox.algos.adaptive_mechanism_design.amd import AdaptiveMechanismDesign
+from marltoolbox.algos.adaptive_mechanism_design.amd import \
+    AdaptiveMechanismDesign
 from marltoolbox.utils import log
+
+logger = logging.getLogger(__name__)
 
 
 def train(tune_hp):
@@ -36,7 +39,9 @@ def train(tune_hp):
         }
 
     ray.init(num_cpus=os.cpu_count(), num_gpus=0)
-    training_results = tune.run(AdaptiveMechanismDesign, name=tune_hp["exp_name"], config=tune_config, stop=stop)
+    training_results = tune.run(AdaptiveMechanismDesign,
+                                name=tune_hp["exp_name"], config=tune_config,
+                                stop=stop)
     ray.shutdown()
     return training_results
 
@@ -57,7 +62,8 @@ def add_env_hp(hp):
             "weight_decay": 0.0,
             # TODO rename to lr planner scaler...
             "loss_mul_planner": 1.0,
-            # since I am using greed = 1 instead of -1 then I don't need mean = -2.0
+            # since I am using greed = 1 instead of -1 then
+            # I don't need mean = -2.0
             "mean_theta": 0.0,
             "std_theta": 0.1,
             "planner_clip_norm": None,  # no clipping
@@ -66,39 +72,34 @@ def add_env_hp(hp):
 
             "normalize_planner": True,
 
-
-
-
-
-
             "normalize_against_v": False,
 
         })
 
         if not hp["use_simple_agents"]:
             hp.update({
-            # Good not use_simple_agents
-            "add_state_grad": False,
-            "no_weights_decay_planner": False,
-            "weight_decay_pl_mul": 1.0,
-            "use_adam_optimizer": False,
-            "momentum": 0.9,
-            "planner_momentum": 0.9,
-            "planner_std_theta_mul": 2.5,
-            "loss_mul_planner": 100.0 * 100,
-            "cost_param": 0.0002 / 2 / 2 / 10 / 100,
-            "use_softmax_hot": False,
-            "square_cost": False,
+                # Good not use_simple_agents
+                "add_state_grad": False,
+                "no_weights_decay_planner": False,
+                "weight_decay_pl_mul": 1.0,
+                "use_adam_optimizer": False,
+                "momentum": 0.9,
+                "planner_momentum": 0.9,
+                "planner_std_theta_mul": 2.5,
+                "loss_mul_planner": 100.0 * 100,
+                "cost_param": 0.0002 / 2 / 2 / 10 / 100,
+                "use_softmax_hot": False,
+                "square_cost": False,
             })
 
             if not hp["add_state_grad"]:
                 hp.update({
-                # Good add_state
-                "n_steps_per_epi": 20,
-                "lr": 0.01 / 3,
-                "loss_mul_planner": 100.0 * 100,
-                "weight_decay_pl_mul": 1.0 * 1000 * 3 * 3,
-                "use_v_pl": True,
+                    # Good add_state
+                    "n_steps_per_epi": 20,
+                    "lr": 0.01 / 3,
+                    "loss_mul_planner": 100.0 * 100,
+                    "weight_decay_pl_mul": 1.0 * 1000 * 3 * 3,
+                    "use_v_pl": True,
                 })
 
     if hp["env"] == "CoinGame":
@@ -110,7 +111,7 @@ def add_env_hp(hp):
             # "n_episodes": 10 if hp["debug"] else 1000000,
 
             "use_v_pl": True,
-            "lr": 0.01/3.0,
+            "lr": 0.01 / 3.0,
             "gamma": 0.5,
             "n_steps_per_epi": 20,
             "use_simple_agents": False,
@@ -145,10 +146,12 @@ def add_env_hp(hp):
 
 def main(debug, use_rllib_policy=False):
     """
-    The planner is not modified yet to work with policies/agents created with RLLib.
+    The planner is not modified yet to work with
+    policies/agents created with RLLib.
     """
     if use_rllib_policy:
-        print("WARNING: not possible to use the planner with use_rllib_polcy:", use_rllib_policy)
+        logger.warning(f"not possible to use the planner with "
+                       "use_rllib_polcy: {use_rllib_policy}")
 
     train_n_replicates = 1 if debug else 5
     timestamp = int(time.time())
@@ -165,7 +168,9 @@ def main(debug, use_rllib_policy=False):
         "fear": 1,
 
         # "greed": -1,
-        "greed": 1, # Selecting greed = 1 to be sure that the agents without planner learns DD
+        # Selecting greed = 1 to be sure that
+        # the agents without planner learns DD
+        "greed": 1,
         # (needed when using the  not simple network)
 
         "with_redistribution": False,

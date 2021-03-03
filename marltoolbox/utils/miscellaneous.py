@@ -1,4 +1,5 @@
 import copy
+from typing import TYPE_CHECKING
 
 import inspect
 import os
@@ -10,6 +11,9 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AgentID, PolicyID
 from typing import Dict
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import RolloutWorker
 
 OVERWRITE_KEY = "OVERWRITE_KEY:"
 

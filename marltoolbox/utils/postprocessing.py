@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Callable, TYPE_CHECKING
 
 import numpy as np
 from ray.rllib.agents.callbacks import DefaultCallbacks
@@ -7,6 +7,9 @@ from ray.rllib.evaluation.postprocessing import discount
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AgentID, PolicyID
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import RolloutWorker
 
 WELFARE_UTILITARIAN = "utilitarian_welfare"
 WELFARE_INEQUITY_AVERSION = "inequity_aversion_welfare"

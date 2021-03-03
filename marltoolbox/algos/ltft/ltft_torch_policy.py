@@ -15,10 +15,14 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.typing import AgentID, PolicyID
 from ray.rllib.utils.typing import TensorType
-from typing import List, Union, Optional, Dict, Tuple
+from typing import List, Union, Optional, Dict, Tuple, TYPE_CHECKING
+from ray.rllib.utils.annotations import override
 
 from marltoolbox.algos import hierarchical
 from marltoolbox.utils import postprocessing
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import RolloutWorker
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +121,7 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         self.add_welfare_fn = postprocessing.get_postprocessing_welfare_function(
             add_utilitarian_welfare=True, add_opponent_action=True, add_opponent_neg_reward=True)
 
+    @override(hierarchical.HierarchicalTorchPolicy)
     def compute_actions(
             self,
             obs_batch: Union[List[TensorType], TensorType],
@@ -139,6 +144,7 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
 
         return actions, [], extra_fetches
 
+    @override(hierarchical.HierarchicalTorchPolicy)
     def learn_on_batch(self, samples: SampleBatch):
         learner_stats = {"learner_stats": {}}
 
@@ -243,6 +249,7 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         self.to_log["being_punished_by_LE"] = self.being_punished_by_LE
         self.detected_defection = False
 
+    @override(Policy)
     def postprocess_trajectory(
             self, sample_batch: SampleBatch,
             other_agent_batches: Optional[Dict[AgentID, Tuple[

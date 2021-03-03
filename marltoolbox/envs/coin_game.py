@@ -27,7 +27,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         np.array([-1, 0]),
     ]
 
-    def __init__(self, config: dict):
+    def __init__(self, config: Dict={}):
 
         if "players_ids" in config:
             assert isinstance(config["players_ids"], Iterable) and len(config["players_ids"]) == self.NUM_AGENTS
@@ -281,7 +281,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
 class AsymCoinGame(CoinGame):
     NAME = "AsymCoinGame"
 
-    def __init__(self, config={}):
+    def __init__(self, config:dict={}):
         if "asymmetric" in config:
             assert config["asymmetric"]
         else:

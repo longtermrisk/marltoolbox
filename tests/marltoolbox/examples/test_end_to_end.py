@@ -10,7 +10,7 @@ def test_pg_ipd():
 def test_ppo_asym_coin_game():
     from marltoolbox.examples.rllib_api.ppo_asymmetric_coin_game import main
     ray.shutdown()
-    main(stop_iters=3, tf=False, debug=True)
+    main(debug=True, stop_iters=3, tf=False)
 
 
 def test_le_ipd():
@@ -22,7 +22,7 @@ def test_le_ipd():
 def test_amtft_various_env():
     from marltoolbox.examples.rllib_api.amtft_various_env import main
     ray.shutdown()
-    main(debug=True)
+    main(debug=True, env="IteratedPrisonersDilemma")
 
 
 def test_inequity_aversion():
@@ -34,7 +34,7 @@ def test_inequity_aversion():
 def test_l1br_amtft():
     from marltoolbox.examples.rllib_api.l1br_amtft import main
     ray.shutdown()
-    main(debug=True)
+    main(debug=True, env="IteratedPrisonersDilemma")
 
 
 def test_lola_dice_tune_fn_api():

@@ -10,6 +10,7 @@ torch, nn = try_import_torch()
 
 from marltoolbox.envs.matrix_sequential_social_dilemma import \
     IteratedPrisonersDilemma
+from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 from marltoolbox.algos import ltft
 from marltoolbox.utils import log, miscellaneous, exploration
 from marltoolbox.envs.utils.wrappers import add_RewardUncertaintyEnvClassWrapper
@@ -18,9 +19,27 @@ from marltoolbox.examples.rllib_api.amtft_various_env import \
 
 
 def main(debug):
+
+    hparameters, exp_name = get_hyparameters(debug)
+
+    rllib_config, env_config, stop = get_rllib_config(hparameters)
+
+    ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=True)
+
+    tune_analysis_self_play = train_in_self_play(
+        rllib_config, stop, exp_name)
+
+    tune_analysis_naive_opponent = train_against_naive_opponent(
+        rllib_config, stop, exp_name, env_config)
+
+    ray.shutdown()
+    return tune_analysis_self_play, tune_analysis_naive_opponent
+
+def get_hyparameters(debug, env=None):
     train_n_replicates = 1 if debug else 1
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("LTFT_IPD")
+    env = None
 
     hparameters = {
         "n_epi": 10 if debug else 200,
@@ -31,31 +50,23 @@ def main(debug):
         "seeds": seeds,
         "debug": debug,
 
-        "env": IteratedPrisonersDilemma,
-        # "env": CoinGame,
+        "env": "IteratedPrisonersDilemma",
+        # "env": "CoinGame",
     }
+
+    if env is not None:
+        hparameters["env"] = env
 
     hparameters = modify_hyperparams_for_the_selected_env(hparameters)
 
-    rllib_config, env_config, stop = get_rllib_config(hparameters)
-    ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=True)
-    tune_analysis_self_play = train_in_self_play(
-        rllib_config, stop, exp_name)
-    tune_analysis_naive_opponent = train_against_naive_opponent(
-        rllib_config, stop, exp_name, env_config)
-    ray.shutdown()
-    return tune_analysis_self_play, tune_analysis_naive_opponent
-
+    return hparameters, exp_name
 
 def get_rllib_config(hp: dict):
     stop = {
         "episodes_total": hp["n_epi"],  # 4000 steps in 200 epi
     }
 
-    env_config = {
-        "players_ids": ["player_row", "player_col"],
-        "max_steps": hp["n_steps_per_epi"],
-    }
+    env_config = get_env_config(hp)
 
     ltft_config = ltft.prepare_default_config(
         lr=hp["base_lr"],
@@ -73,14 +84,14 @@ def get_rllib_config(hp: dict):
         "env_config": env_config,
         "multiagent": {
             "policies": {
-                "player_row": (
+                env_config["players_ids"][0]: (
                     None,
-                    hp["env"].OBSERVATION_SPACE,
+                    hp["env"]({}).OBSERVATION_SPACE,
                     hp["env"].ACTION_SPACE,
                     {}),
-                "player_col": (
+                env_config["players_ids"][1]: (
                     None,
-                    hp["env"].OBSERVATION_SPACE,
+                    hp["env"]({}).OBSERVATION_SPACE,
                     hp["env"].ACTION_SPACE,
                     {}),
             },
@@ -156,17 +167,31 @@ def get_rllib_config(hp: dict):
     })
 
     hp, rllib_config, env_config, stop = \
-        add_env_config(hp, rllib_config, env_config, stop)
+        modify_config_for_coin_game(hp, rllib_config, env_config, stop)
 
     return rllib_config, env_config, stop
 
 
-def add_env_config(hp, rllib_config, env_config, stop):
-    if "CoinGame" in hp["env"].NAME:
-        env_config.update({
+def get_env_config(hp):
+    if hp["env"] in (IteratedPrisonersDilemma,):
+        env_config = {
+            "players_ids": ["player_row", "player_col"],
+            "max_steps": hp["n_steps_per_epi"],
+        }
+
+    elif hp["env"] in (CoinGame, AsymCoinGame):
+        env_config = {
             "grid_size": 3,
             "players_ids": ["player_red", "player_blue"],
-        })
+            "max_steps": hp["n_steps_per_epi"],
+        }
+    else:
+        raise NotImplementedError()
+
+    return env_config
+
+def modify_config_for_coin_game(hp, rllib_config, env_config, stop):
+    if hp["env"] in (CoinGame, AsymCoinGame):
 
         rllib_config.update({
             # === Exploration Settings ===

@@ -62,6 +62,7 @@ def main(debug, stop_iters=2000, tf=False):
         "callbacks": log.get_logging_callbacks_class(),
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": "tf" if tf else "torch",
+        "num_workers": 0,
     }
 
     tune_analysis = tune.run(PPOTrainer, config=rllib_config, stop=stop,

@@ -19,8 +19,9 @@ setup(
         'numba>=0.51.2', 'matplotlib>=3.3.2'
     ],
     extras_require={
-        "lola": ['click', 'gym>=0.10.5', 'mock', 'numpy>=1.11', 'dm-sonnet==1.20', 'tensorflow>=1.8.0,<2.0.0',
+        "lola": ['click', 'gym>=0.10.5', 'mock', 'numpy>=1.11',
+                 'dm-sonnet==1.20', 'tensorflow>=1.8.0,<2.0.0',
                  'trueskill', 'seaborn==0.9.0'],
-        "test": ['pytest'],
+        "ci": ['pytest', 'pytest-cov', 'flake8', 'ipython', 'nbconvert'],
     },
 )

@@ -7,9 +7,8 @@ import os
 import ray
 from ray import tune
 
-import marltoolbox.algos.lola.envs as lola_envs
 import marltoolbox.algos.lola_dice.envs as lola_dice_envs
-from marltoolbox.algos.lola import train_cg, train_exact, train_pg
+from marltoolbox.algos.lola import train_cg, train_pg
 from marltoolbox.envs.vectorized_coin_game import CoinGame, AsymCoinGame
 from marltoolbox.utils import log
 
@@ -22,9 +21,9 @@ def trainer_fn(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
          weigth_decay, **kwargs):
     # Instantiate the environment
     if exp_name == "IPD":
-        env = lola_envs.IPD(trace_length)
+        raise NotImplementedError()
     elif exp_name == "IMP":
-        env = lola_envs.IMP(trace_length)
+        raise NotImplementedError()
     elif exp_name == "CoinGame":
         if use_toolbox_env:
             env = CoinGame(config={
@@ -54,17 +53,7 @@ def trainer_fn(exp_name, num_episodes, trace_length, exact, pseudo, grid_size,
 
     # Import the right training function
     if exact:
-        train_exact.train(env,
-                          num_episodes=num_episodes,
-                          trace_length=trace_length,
-                          simple_net=simple_net,
-                          corrections=lola_update,
-                          pseudo=pseudo,
-                          num_hidden=hidden,
-                          reg=reg,
-                          lr=lr,
-                          lr_correction=lr_correction,
-                          gamma=gamma)
+        raise NotImplementedError()
     elif exp_name in ("IPD", "IMP"):
         train_pg.train(env,
                        num_episodes=num_episodes,

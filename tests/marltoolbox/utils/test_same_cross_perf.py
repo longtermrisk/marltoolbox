@@ -32,8 +32,9 @@ def _train_pg_in_ipd(train_n_replicates):
 
     rllib_config, stop_config = get_rllib_config(seeds, debug, stop_iters, tf)
     tune_analysis = tune.run(PGTrainer, config=rllib_config, stop=stop_config,
-                             checkpoint_freq=0, checkpoint_at_end=True, name=exp_name,
-                             metric="episode_reward_mean", mode="max")
+                             checkpoint_freq=0, checkpoint_at_end=True,
+                             name=exp_name, metric="episode_reward_mean",
+                             mode="max")
     ray.shutdown()
     return tune_analysis, seeds
 
@@ -52,10 +53,14 @@ def test__config_is_for_two_players():
 
 def test__is_policy_to_load():
     evaluator = _init_evaluator()
-    assert evaluator._is_policy_to_load(policy_id="Ok", policies_to_load_from_checkpoint=["All"])
-    assert evaluator._is_policy_to_load(policy_id="Ok", policies_to_load_from_checkpoint=["Ok"])
-    assert not evaluator._is_policy_to_load(policy_id="NotOk", policies_to_load_from_checkpoint=["Ok"])
-    assert not evaluator._is_policy_to_load(policy_id="NotOk", policies_to_load_from_checkpoint=[])
+    assert evaluator._is_policy_to_load(
+        policy_id="Ok", policies_to_load_from_checkpoint=["All"])
+    assert evaluator._is_policy_to_load(
+        policy_id="Ok", policies_to_load_from_checkpoint=["Ok"])
+    assert not evaluator._is_policy_to_load(
+        policy_id="NotOk", policies_to_load_from_checkpoint=["Ok"])
+    assert not evaluator._is_policy_to_load(
+        policy_id="NotOk", policies_to_load_from_checkpoint=[])
 
 def test__extract_groups_of_checkpoints():
     evaluator = _init_evaluator()
@@ -75,7 +80,8 @@ def test__get_opponents_per_checkpoints():
     exp_name, train_n_replicates = "", 3
     _load_tune_analysis(evaluator, train_n_replicates, exp_name)
     n_cross_play_per_checkpoint = train_n_replicates - 1
-    opponents_per_checkpoint = evaluator._get_opponents_per_checkpoints(n_cross_play_per_checkpoint)
+    opponents_per_checkpoint = evaluator._get_opponents_per_checkpoints(
+        n_cross_play_per_checkpoint)
     for checkpoint_idx, opponents in enumerate(opponents_per_checkpoint):
         for opp_idx in opponents:
             assert opp_idx != checkpoint_idx

@@ -16,6 +16,72 @@ from marltoolbox.utils import log, \
 from marltoolbox.examples.rllib_api import amtft_various_env
 
 
+def main(debug, env=None):
+    hparams, exp_name = get_hyperparameters(debug, env)
+
+    ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=hparams["debug"])
+
+    lvl0_tune_analysis = train_lvl0_population(hp=hparams)
+    tune_analysis_lvl1 = train_lvl1_agents(hp_lvl1=copy.deepcopy(hparams), tune_analysis_lvl0=lvl0_tune_analysis)
+    print(tune_analysis_lvl1.results_df.columns)
+    print(tune_analysis_lvl1.results_df.head())
+
+    ray.shutdown()
+
+def get_hyperparameters(debug, env):
+    exp_name, _ = log.log_in_current_day_dir("L1BR_amTFT")
+
+    train_n_replicates = 4 if debug else 8
+    pool_of_seeds = miscellaneous.get_random_seeds(train_n_replicates)
+    hparams = {
+        "debug": debug,
+        "filter_utilitarian": False,
+
+        "train_n_replicates": train_n_replicates,
+        "seeds": pool_of_seeds,
+
+        "exp_name": exp_name,
+        "n_steps_per_epi": 20,
+        "bs_epi_mul": 4,
+        "welfare_functions": [
+            (postprocessing.WELFARE_UTILITARIAN, "utilitarian")],
+
+        "amTFTPolicy": amTFT.amTFTRolloutsTorchPolicy,
+        "explore_during_evaluation": True,
+
+        "n_seeds_lvl0": train_n_replicates,
+        "n_seeds_lvl1": train_n_replicates // 2,
+
+        "gamma": 0.5,
+        "lambda": 0.9,
+        "alpha": 0.0,
+        "beta": 1.0,
+
+        "temperature_schedule": False,
+        "debit_threshold": 4.0,
+        "jitter": 0.05,
+        "hiddens": [64],
+
+        "env": "IteratedPrisonersDilemma",
+        # "env": "IteratedAsymBoS",
+        # "env": "IteratedAsymChicken",
+        # "env": "CoinGame",
+        # "env": "AsymCoinGame",
+
+        # For training speed
+        "min_iter_time_s": 0.0 if debug else 3.0,
+
+        "overwrite_reward": True,
+        "use_adam": False,
+    }
+
+    if env is not None:
+        hparams["env"] = env
+
+    hparams = amtft_various_env.modify_hyperparams_for_the_selected_env(hparams)
+
+    return hparams, exp_name
+
 def train_lvl0_population(hp):
     assert len(hp["welfare_functions"]) == 1
     lvl0_tune_analysis_per_welfare = amtft_various_env.train_for_each_welfare_function(hp)
@@ -71,61 +137,6 @@ def modify_conf_for_lvl1_training(hp_lvl1, env_config, rllib_config_lvl1, lvl0_c
     return rllib_config_lvl1
 
 
-def main(debug):
-    exp_name, _ = log.log_in_current_day_dir("L1BR_amTFT")
-
-    train_n_replicates = 4 if debug else 8
-    pool_of_seeds = miscellaneous.get_random_seeds(train_n_replicates)
-    hparams = {
-        "debug": debug,
-        "filter_utilitarian": False,
-
-        "train_n_replicates": train_n_replicates,
-        "seeds": pool_of_seeds,
-
-        "exp_name": exp_name,
-        "n_steps_per_epi": 20,
-        "bs_epi_mul": 4,
-        "welfare_functions": [(postprocessing.WELFARE_UTILITARIAN, "utilitarian")],
-
-        "amTFTPolicy": amTFT.amTFTRolloutsTorchPolicy,
-        "explore_during_evaluation": True,
-
-        "n_seeds_lvl0": train_n_replicates,
-        "n_seeds_lvl1": train_n_replicates//2,
-
-        "gamma": 0.5,
-        "lambda": 0.9,
-        "alpha": 0.0,
-        "beta": 1.0,
-
-        "temperature_schedule": False,
-        "debit_threshold": 4.0,
-        "jitter": 0.05,
-        "hiddens": [64],
-
-        "env": matrix_sequential_social_dilemma.IteratedPrisonersDilemma,
-        # "env": matrix_sequential_social_dilemma.IteratedAsymBoS,
-        # "env": matrix_sequential_social_dilemma.IteratedAsymChicken,
-        # "env": coin_game.CoinGame
-        # "env": coin_game.AsymCoinGame
-
-        # For training speed
-        "min_iter_time_s": 0.0 if debug else 3.0,
-
-        "overwrite_reward": True,
-        "use_adam": False,
-    }
-
-    ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=hparams["debug"])
-
-    hparams = amtft_various_env.modify_hyperparams_for_the_selected_env(hparams)
-    lvl0_tune_analysis = train_lvl0_population(hp=hparams)
-    tune_analysis_lvl1 = train_lvl1_agents(hp_lvl1=copy.deepcopy(hparams), tune_analysis_lvl0=lvl0_tune_analysis)
-    print(tune_analysis_lvl1.results_df.columns)
-    print(tune_analysis_lvl1.results_df.head())
-
-    ray.shutdown()
 
 if __name__ == "__main__":
     debug_mode = True

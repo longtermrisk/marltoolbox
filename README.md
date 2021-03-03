@@ -118,7 +118,7 @@ pip install --upgrade pip
 ```bash
 ## Install dependencies
 ### For RLLib
-conda install psutil
+conda install -y psutil
 ### (optional) To be able to use most of the gym environments
 sudo apt-get install -y libglu1-mesa-dev libgl1-mesa-dev libosmesa6-dev xvfb ffmpeg curl patchelf libglfw3 libglfw3-dev cmake zlib1g zlib1g-dev swig
 
