@@ -1,5 +1,6 @@
 import copy
 from typing import TYPE_CHECKING
+import logging
 
 import inspect
 import os
@@ -14,6 +15,8 @@ from typing import Dict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
+
+logger = logging.getLogger(__name__)
 
 OVERWRITE_KEY = "OVERWRITE_KEY:"
 
@@ -325,3 +328,24 @@ def _get_experiment_state_file_path(one_checkpoint_path):
     json_file = difflib.get_close_matches(json_file, possible_files, n=1)[0]
     json_file_path = os.path.join(parent_dir, json_file)
     return json_file_path
+
+
+def check_learning_achieved(tune_results, metric="episode_reward_mean",
+                            trial_idx=0,
+                            max_: float = None,
+                            min_: float = None,
+                            equal_: float = None):
+    assert max_ is not None or min_ is not None or equal_ is not None
+
+    logger.info(f"trial {trial_idx} achieved "
+                f"{tune_results.trials[trial_idx].last_result[metric]}"
+                f" on metric {metric}")
+    print(f"trial {trial_idx} achieved "
+                f"{tune_results.trials[trial_idx].last_result[metric]}"
+                f" on metric {metric}")
+    if min_ is not None:
+        assert tune_results.trials[trial_idx].last_result[metric] > min_
+    if max_ is not None:
+        assert tune_results.trials[trial_idx].last_result[metric] < max_
+    if equal_ is not None:
+        assert tune_results.trials[trial_idx].last_result[metric] == equal_

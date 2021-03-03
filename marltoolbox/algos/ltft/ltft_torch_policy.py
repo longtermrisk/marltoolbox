@@ -4,6 +4,7 @@
 
 import logging
 import copy
+import random
 from collections import deque
 
 import numpy as np
@@ -163,10 +164,11 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
 
             if len(samples_copy[samples_copy.ACTIONS]) > 0:
                 learner_stats["learner_stats"][f"learner_stats_algo{policy_n}"] = algo.learn_on_batch(samples_copy)
-                # self.to_log[f'algo{policy_n}_cur_lr'] = algo.cur_lr
+                # self._to_log[f'algo{policy_n}_cur_lr'] = algo.cur_lr
             # For debugging purpose log the true lr (to be compared to algo.cur_lr)
             # for j, opt in enumerate(algo._optimizers):
-            #     self.to_log[f"algo_{policy_n}_{j}_lr"] = [p["lr"] for p in opt.param_groups][0]
+            #     self._to_log[f"algo_{policy_n}_{j}_lr"] = [p["lr"] for p in
+            #     opt.param_groups][0]
 
         return learner_stats
 
@@ -226,7 +228,7 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
                 self.detected_defection = True
 
         # Averaged by episode
-        self.to_log["coop_frac"] = (self.n_cooperation_steps_in_current_epi /
+        self._to_log["coop_frac"] = (self.n_cooperation_steps_in_current_epi /
                                     (self.n_punishment_steps_in_current_epi + self.n_cooperation_steps_in_current_epi))
         self.n_cooperation_steps_in_current_epi = 0
         self.n_punishment_steps_in_current_epi = 0
@@ -243,10 +245,10 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         if self.remaining_punishing_time <= 0:
             self.active_algo_idx = self.COOP_POLICY_IDX
 
-        self.to_log["remaining_punishing_time"] = self.remaining_punishing_time
-        self.to_log["active_algo_idx"] = self.active_algo_idx
-        self.to_log["detected_defection"] = self.detected_defection
-        self.to_log["being_punished_by_LE"] = self.being_punished_by_LE
+        self._to_log["remaining_punishing_time"] = self.remaining_punishing_time
+        self._to_log["active_algo_idx"] = self.active_algo_idx
+        self._to_log["detected_defection"] = self.detected_defection
+        self._to_log["being_punished_by_LE"] = self.being_punished_by_LE
         self.detected_defection = False
 
     @override(Policy)
@@ -266,17 +268,19 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         log_likelihood_opponent_cooperating = float(log_likelihood_opponent_cooperating)
         log_likelihood_approximated_opponent = float(log_likelihood_approximated_opponent)
 
-        self.to_log["log_likelihood_opponent_cooperating"] = log_likelihood_opponent_cooperating
-        self.to_log["log_likelihood_approximated_opponent"] = log_likelihood_approximated_opponent
+        self._to_log["log_likelihood_opponent_cooperating"] = \
+            log_likelihood_opponent_cooperating
+        self._to_log["log_likelihood_approximated_opponent"] = \
+            log_likelihood_approximated_opponent
         data_queue.append([log_likelihood_opponent_cooperating,
                            log_likelihood_approximated_opponent])
 
     def _bootstrap_replicats(self, data_queue, last_step_is_mandatory):
         data_array = np.array(list(data_queue), dtype=np.object)
         maximum_idx = data_array.shape[0] - 1
-        bstrap_idx = np.random.random_integers(0, high=maximum_idx,
-                                               size=(self.n_bootstrap_replicates,
-                                                     self.n_steps_in_bootstrap_replicates))
+        bstrap_idx = np.random.randint(0, high=maximum_idx+1,
+                                           size=(self.n_bootstrap_replicates,
+                                                 self.n_steps_in_bootstrap_replicates))
         if last_step_is_mandatory:
             # TODO only add it if it is not already present
             bstrap_idx[:, -1] = [maximum_idx for _ in range(self.n_bootstrap_replicates)]
@@ -301,7 +305,7 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         percentile_0_5_value = np.percentile(log_lik_check_coop, 50, interpolation="linear")
 
         if log:
-            self.to_log.update({
+            self._to_log.update({
                 "percentile_value": percentile_value,
                 "percentile_0_5_value": percentile_0_5_value,
                 "log_lik_check_coop_std": log_lik_check_coop.std(),
@@ -312,7 +316,8 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
     def _update_defection_metric(self, epi_defection_metric):
         self.defection_carac_queue.append(epi_defection_metric)
         self.defection_metric = sum(self.defection_carac_queue) / len(self.defection_carac_queue)
-        self.to_log["defection_metric"] = round(float(self.defection_metric), 4)
+        self._to_log["defection_metric"] = round(float(
+            self.defection_metric), 4)
 
 
 # Modified from torch_policy_template
@@ -398,7 +403,8 @@ class LTFTCallbacks(DefaultCallbacks):
                     policy.on_episode_step(opp_obs, opp_a, False)
 
     def _is_callback_implemented_in_policy(self, policy, callback_method):
-        return hasattr(policy, callback_method) and callable(hasattr(policy, callback_method))
+        return hasattr(policy, callback_method) and \
+               callable(getattr(policy, callback_method))
 
     def on_episode_end(self, *, worker, base_env, policies, episode, env_index, **kwargs):
         for polidy_ID, policy in policies.items():

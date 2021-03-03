@@ -210,7 +210,10 @@ def get_logging_callbacks_class(log_env_step=True,
 
         @staticmethod
         def _get_log_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
-            """Gets the to_log var from a policy and rename its keys, adding the policy_id as a prefix."""
+            """
+            Gets the to_log var from a policy and rename its keys,
+            adding the policy_id as a prefix.
+            """
             to_log = {}
             if hasattr(policy, "to_log"):
                 for k, v in policy.to_log.items():

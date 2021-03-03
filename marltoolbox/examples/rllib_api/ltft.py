@@ -36,10 +36,9 @@ def main(debug):
     return tune_analysis_self_play, tune_analysis_naive_opponent
 
 def get_hyparameters(debug, env=None):
-    train_n_replicates = 4 if debug else 1
+    train_n_replicates = 1 if debug else 10
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("LTFT_IPD")
-    env = None
 
     hparameters = {
         "n_epi": 10 if debug else 200,
@@ -50,8 +49,8 @@ def get_hyparameters(debug, env=None):
         "seeds": seeds,
         "debug": debug,
 
-        "env": "IteratedPrisonersDilemma",
-        # "env": "CoinGame",
+        # "env": "IteratedPrisonersDilemma",
+        "env": "CoinGame",
     }
 
     if env is not None:
@@ -245,5 +244,5 @@ def train_against_naive_opponent(hp, rllib_config, stop, exp_name, env_config):
 
 
 if __name__ == "__main__":
-    debug = False
+    debug = True
     main(debug)
