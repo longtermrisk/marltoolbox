@@ -130,7 +130,7 @@ cd marltoolbox
 ### Default install
 pip install -e .
 ### If you are planning to use LOLA then run instead:
-conda install python=3.6
+conda install -y python=3.6
 pip install -e .[lola]
 ```
 **Test the installation**
@@ -276,7 +276,7 @@ Examples:
 - Hardcoded fixed Policy:
 [`rock_paper_scissors_multiagent.py`](https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py)  
 (in the `run_heuristic_vs_learned` function)
-- Policy with nested Policies: `ltft_ipd.py` (toolbox example)
+- Policy with nested Policies: `ltft.py` (toolbox example)
 
 #### 4) Using custom dataflows in `RLLib` (custom Trainer or Trainer's execution_plan)
 Examples:

@@ -5,6 +5,7 @@
 import logging
 from abc import ABC
 from collections import Iterable
+from typing import Dict
 
 import numpy as np
 from gym.spaces import Discrete
@@ -24,7 +25,7 @@ class MatrixSequentialSocialDilemma(
     A multi-agent abstract class for two player matrix games.
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: Dict = {}):
         """
         PAYOUT_MATRIX: Numpy array. Along the dimension N, the action of the Nth player change.
                        The last dimension is used to select the player whose reward you want to know.

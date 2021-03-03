@@ -30,13 +30,13 @@ def main(debug):
         rllib_config, stop, exp_name)
 
     tune_analysis_naive_opponent = train_against_naive_opponent(
-        rllib_config, stop, exp_name, env_config)
+        hparameters, rllib_config, stop, exp_name, env_config)
 
     ray.shutdown()
     return tune_analysis_self_play, tune_analysis_naive_opponent
 
 def get_hyparameters(debug, env=None):
-    train_n_replicates = 1 if debug else 1
+    train_n_replicates = 4 if debug else 1
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("LTFT_IPD")
     env = None
@@ -63,7 +63,7 @@ def get_hyparameters(debug, env=None):
 
 def get_rllib_config(hp: dict):
     stop = {
-        "episodes_total": hp["n_epi"],  # 4000 steps in 200 epi
+        "episodes_total": hp["n_epi"],
     }
 
     env_config = get_env_config(hp)
@@ -228,12 +228,12 @@ def train_in_self_play(rllib_config, stop, exp_name):
     return tune_analysis_self_play
 
 
-def train_against_naive_opponent(rllib_config, stop, exp_name, env_config):
+def train_against_naive_opponent(hp, rllib_config, stop, exp_name, env_config):
     # Set player_col to use a naive policy
     rllib_config["multiagent"]["policies"][env_config["players_ids"][1]] = (
         DQNTorchPolicy,
-        IteratedPrisonersDilemma.OBSERVATION_SPACE,
-        IteratedPrisonersDilemma.ACTION_SPACE,
+        hp["env"]().OBSERVATION_SPACE,
+        hp["env"].ACTION_SPACE,
         {}
     )
     tune_analysis_naive_opponent = ray.tune.run(

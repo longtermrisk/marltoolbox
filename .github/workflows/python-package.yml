@@ -39,11 +39,13 @@ jobs:
       - name: Test with pytest
         run: |
           python -m pytest tests --cov
-      - name: Test notebooks
+      - name: Test Tutorial_Basics_How_to_use_the_toolbox
         run: |
-          ipython nbconvert ./marltoolbox/examples/Tutorial_Basics_How_to_use_the_toolbox.ipynb --to script
-          ipython nbconvert ./marltoolbox/examples/Tutorial_Evaluations_Level_1_best_response_and_self_play_and_cross_play.ipynb --to script
+          jupyter nbconvert ./marltoolbox/examples/Tutorial_Basics_How_to_use_the_toolbox.ipynb --to script
           python ./marltoolbox/examples/Tutorial_Basics_How_to_use_the_toolbox.py
+      - name: Test Tutorial_Evaluations_Level_1_best_response_and_self_play_and_cross_play
+        run: |
+          jupyter nbconvert ./marltoolbox/examples/Tutorial_Evaluations_Level_1_best_response_and_self_play_and_cross_play.ipynb --to script
           python ./marltoolbox/examples/Tutorial_Evaluations_Level_1_best_response_and_self_play_and_cross_play.ipynb
       - name: Run long training test
         run: |
