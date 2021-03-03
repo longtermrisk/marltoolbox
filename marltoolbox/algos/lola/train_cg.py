@@ -6,8 +6,6 @@ import numpy as np
 import tensorflow as tf
 from ray import tune
 
-# from . import logger
-
 from .corrections import *
 from .networks import *
 from .utils import *

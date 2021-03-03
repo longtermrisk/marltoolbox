@@ -6,8 +6,6 @@ import tensorflow as tf
 
 from ray import tune
 
-from . import logger
-
 from .corrections import *
 from .networks import *
 from .utils import *
@@ -282,10 +280,5 @@ def train(env, *, num_episodes, trace_length, batch_size, gamma,
                     log_items['pi_2_3'] = np.exp(log_pi1[3][0])
                     log_items['pi_2_4'] = np.exp(log_pi1[4][0])
 
-
-                for key in sorted(log_items.keys()):
-                    logger.record_tabular(key, log_items[key])
-                logger.dump_tabular()
-                logger.info('')
 
                 tune.report(**log_items)
