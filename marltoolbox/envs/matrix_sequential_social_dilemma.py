@@ -1,7 +1,8 @@
 ##########
-# Part of the code modified from: https://github.com/alshedivat/lola/tree/master/lola
+# Part of the code modified from:
+# https://github.com/alshedivat/lola/tree/master/lola
 ##########
-
+import logging
 from abc import ABC
 from collections import Iterable
 
@@ -11,10 +12,14 @@ from gym.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 from marltoolbox.envs.utils.interfaces import InfoAccumulationInterface
-from marltoolbox.envs.utils.mixins import TwoPlayersTwoActionsInfoMixin, NPlayersNDiscreteActionsInfoMixin
+from marltoolbox.envs.utils.mixins import TwoPlayersTwoActionsInfoMixin, \
+    NPlayersNDiscreteActionsInfoMixin
+
+logger = logging.getLogger(__name__)
 
 
-class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, ABC):
+class MatrixSequentialSocialDilemma(
+    InfoAccumulationInterface, MultiAgentEnv, ABC):
     """
     A multi-agent abstract class for two player matrix games.
     """
@@ -32,9 +37,11 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
         assert "reward_randomness" not in config.keys()
         assert self.PAYOUT_MATRIX is not None
         if "players_ids" in config:
-            assert isinstance(config["players_ids"], Iterable) and len(config["players_ids"]) == self.NUM_AGENTS
+            assert isinstance(config["players_ids"], Iterable) and len(
+                config["players_ids"]) == self.NUM_AGENTS
 
-        self.players_ids = config.get("players_ids", ["player_row", "player_col"])
+        self.players_ids = config.get("players_ids",
+                                      ["player_row", "player_col"])
         self.player_row_id, self.player_col_id = self.players_ids
         self.max_steps = config.get("max_steps", 20)
         self.output_additional_info = config.get("output_additional_info", True)
@@ -65,23 +72,29 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
         :return: observations, rewards, done, info
         """
         self.step_count_in_current_episode += 1
-        action_player_0, action_player_1 = actions[self.player_row_id], actions[self.player_col_id]
+        action_player_0, action_player_1 = actions[self.player_row_id], actions[
+            self.player_col_id]
 
         if self.output_additional_info:
             self._accumulate_info(action_player_0, action_player_1)
 
-        observations = self._produce_observations_invariant_to_the_player_trained(action_player_0, action_player_1)
+        observations = \
+            self._produce_observations_invariant_to_the_player_trained(
+                action_player_0, action_player_1)
         rewards = self._get_players_rewards(action_player_0, action_player_1)
         epi_is_done = self.step_count_in_current_episode >= self.max_steps
         if self.step_count_in_current_episode > self.max_steps:
-            print("WARNING self.step_count_in_current_episode >= self.max_steps")
+            logger.warning(
+                "self.step_count_in_current_episode >= self.max_steps")
         info = self._get_info_for_current_epi(epi_is_done)
 
         return self._to_RLLib_API(observations, rewards, epi_is_done, info)
 
-    def _produce_observations_invariant_to_the_player_trained(self, action_player_0: int, action_player_1: int):
+    def _produce_observations_invariant_to_the_player_trained(
+            self, action_player_0: int, action_player_1: int):
         """
-        We want to be able to use a policy trained as player 1 for evaluation as player 2 and vice versa.
+        We want to be able to use a policy trained as player 1
+        for evaluation as player 2 and vice versa.
         """
         return [action_player_0 * self.NUM_ACTIONS + action_player_1,
                 action_player_1 * self.NUM_ACTIONS + action_player_0]
@@ -90,7 +103,8 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
         return [self.PAYOUT_MATRIX[action_player_0][action_player_1][0],
                 self.PAYOUT_MATRIX[action_player_0][action_player_1][1]]
 
-    def _to_RLLib_API(self, observations: list, rewards: list, epi_is_done: bool, info: dict):
+    def _to_RLLib_API(self, observations: list, rewards: list,
+                      epi_is_done: bool, info: dict):
 
         observations = {
             self.player_row_id: observations[0],
@@ -129,7 +143,8 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv, AB
         return self.NAME
 
 
-class IteratedMatchingPennies(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
+class IteratedMatchingPennies(TwoPlayersTwoActionsInfoMixin,
+                              MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Matching Pennies game.
     """
@@ -143,7 +158,8 @@ class IteratedMatchingPennies(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSoc
     NAME = "IMP"
 
 
-class IteratedPrisonersDilemma(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
+class IteratedPrisonersDilemma(TwoPlayersTwoActionsInfoMixin,
+                               MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Prisoner's Dilemma game.
     """
@@ -158,7 +174,8 @@ class IteratedPrisonersDilemma(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSo
     NAME = "IPD"
 
 
-class IteratedAsymPrisonersDilemma(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
+class IteratedAsymPrisonersDilemma(TwoPlayersTwoActionsInfoMixin,
+                                   MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Asymmetric Prisoner's Dilemma game.
     """
@@ -173,7 +190,8 @@ class IteratedAsymPrisonersDilemma(TwoPlayersTwoActionsInfoMixin, MatrixSequenti
     NAME = "IPD"
 
 
-class IteratedStagHunt(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
+class IteratedStagHunt(TwoPlayersTwoActionsInfoMixin,
+                       MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Stag Hunt game.
     """
@@ -188,7 +206,8 @@ class IteratedStagHunt(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDile
     NAME = "IteratedStagHunt"
 
 
-class IteratedChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
+class IteratedChicken(TwoPlayersTwoActionsInfoMixin,
+                      MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Chicken game.
     """
@@ -203,7 +222,8 @@ class IteratedChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilem
     NAME = "IteratedChicken"
 
 
-class IteratedAsymChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
+class IteratedAsymChicken(TwoPlayersTwoActionsInfoMixin,
+                          MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Asymmetric Chicken game.
     """
@@ -233,7 +253,8 @@ class IteratedBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     NAME = "IteratedBoS"
 
 
-class IteratedAsymBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
+class IteratedAsymBoS(TwoPlayersTwoActionsInfoMixin,
+                      MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the BoS game.
     """
@@ -249,7 +270,8 @@ class IteratedAsymBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilem
 
 
 def define_greed_fear_matrix_game(greed, fear):
-    class GreedFearGame(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
+    class GreedFearGame(TwoPlayersTwoActionsInfoMixin,
+                        MatrixSequentialSocialDilemma):
         NUM_AGENTS = 2
         NUM_ACTIONS = 2
         NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
@@ -269,7 +291,8 @@ def define_greed_fear_matrix_game(greed, fear):
     return GreedFearGame
 
 
-class IteratedBoSAndPD(NPlayersNDiscreteActionsInfoMixin, MatrixSequentialSocialDilemma):
+class IteratedBoSAndPD(NPlayersNDiscreteActionsInfoMixin,
+                       MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the BOTS + PD game.
     """
