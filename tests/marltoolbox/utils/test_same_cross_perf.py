@@ -94,9 +94,12 @@ def test__produce_config_variations():
     _load_tune_analysis(evaluator, train_n_replicates, exp_name)
 
     def assert_(n_same_play_per_checkpoint, n_cross_play_per_checkpoint):
-        opponents_per_checkpoint = evaluator._get_opponents_per_checkpoints(n_cross_play_per_checkpoint)
-        all_config_variations, all_metadata = evaluator._produce_config_variations(
-            n_same_play_per_checkpoint, n_cross_play_per_checkpoint, opponents_per_checkpoint)
+        opponents_per_checkpoint = \
+            evaluator._get_opponents_per_checkpoints(n_cross_play_per_checkpoint)
+        all_config_variations, all_metadata = \
+            evaluator._produce_config_variations(
+                n_same_play_per_checkpoint, n_cross_play_per_checkpoint,
+                opponents_per_checkpoint)
 
         assert len(all_config_variations) == \
                (n_cross_play_per_checkpoint + n_same_play_per_checkpoint)*train_n_replicates
@@ -113,8 +116,9 @@ def test__prepare_one_master_config_dict():
     _load_tune_analysis(evaluator, train_n_replicates, exp_name)
 
     def assert_(n_same_play_per_checkpoint, n_cross_play_per_checkpoint):
-        master_config, all_metadata = evaluator._prepare_one_master_config_dict(n_same_play_per_checkpoint,
-                                                                                n_cross_play_per_checkpoint)
+        master_config, all_metadata = \
+            evaluator._prepare_one_master_config_dict(
+                n_same_play_per_checkpoint, n_cross_play_per_checkpoint)
 
         assert len(master_config["multiagent"]["policies"]["grid_search"]) == \
                (n_cross_play_per_checkpoint + n_same_play_per_checkpoint)*train_n_replicates

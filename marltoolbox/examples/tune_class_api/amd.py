@@ -17,6 +17,65 @@ from marltoolbox.utils import log
 logger = logging.getLogger(__name__)
 
 
+def main(debug, use_rllib_policy=False):
+    """
+    The planner is not modified yet to work with
+    policies/agents created with RLLib.
+    """
+    if use_rllib_policy:
+        logger.warning(f"not possible to use the planner with "
+                       "use_rllib_polcy: {use_rllib_policy}")
+
+    train_n_replicates = 1 if debug else 5
+    timestamp = int(time.time())
+    seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
+
+    exp_name, _ = log.log_in_current_day_dir("adaptive_mechanism_design")
+
+    hyperparameters = {
+        "exp_name": exp_name,
+        "seed": tune.grid_search(seeds),
+        "debug": debug,
+        "report_every_n": 1,
+
+        "fear": 1,
+
+        # "greed": -1,
+        # Selecting greed = 1 to be sure that
+        # the agents without planner learns DD
+        "greed": 1,
+        # (needed when using the  not simple network)
+
+        "with_redistribution": False,
+        "n_planning_eps": math.inf,
+
+        "value_fn_variant": 'exact',
+        # "value_fn_variant": 'estimated',
+        # "value_fn_variant": tune.grid_search(['exact', 'estimated']),
+
+        "action_flip_prob": 0,
+        "n_players": 2,
+
+        "with_planner": True and not use_rllib_policy,
+        # "with_planner": False,
+        # "with_planner": tune.grid_search([True, False]),
+
+        # "env": "FearGreedMatrix",
+        "env": "CoinGame",
+
+        "normalize_against_vp": False,
+        "normalize_against_v": False,
+        "normalize_vp_separated": False,
+
+        "use_rllib_polcy": use_rllib_policy,
+
+    }
+
+    hyperparameters = add_env_hp(hyperparameters)
+
+    train(hyperparameters)
+
+
 def train(tune_hp):
     tune_config = copy.deepcopy(tune_hp)
 
@@ -35,7 +94,6 @@ def train(tune_hp):
             "players_ids": ["player_red", "player_blue"],
             "max_steps": tune_hp["n_steps_per_epi"],
             "get_additional_info": True,
-            # "flatten_obs": True,
         }
 
     ray.init(num_cpus=os.cpu_count(), num_gpus=0)
@@ -143,64 +201,6 @@ def add_env_hp(hp):
 
     return hp
 
-
-def main(debug, use_rllib_policy=False):
-    """
-    The planner is not modified yet to work with
-    policies/agents created with RLLib.
-    """
-    if use_rllib_policy:
-        logger.warning(f"not possible to use the planner with "
-                       "use_rllib_polcy: {use_rllib_policy}")
-
-    train_n_replicates = 1 if debug else 5
-    timestamp = int(time.time())
-    seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
-
-    exp_name, _ = log.log_in_current_day_dir("adaptive_mechanism_design")
-
-    hyperparameters = {
-        "exp_name": exp_name,
-        "seed": tune.grid_search(seeds),
-        "debug": debug,
-        "report_every_n": 1,
-
-        "fear": 1,
-
-        # "greed": -1,
-        # Selecting greed = 1 to be sure that
-        # the agents without planner learns DD
-        "greed": 1,
-        # (needed when using the  not simple network)
-
-        "with_redistribution": False,
-        "n_planning_eps": math.inf,
-
-        "value_fn_variant": 'exact',
-        # "value_fn_variant": 'estimated',
-        # "value_fn_variant": tune.grid_search(['exact', 'estimated']),
-
-        "action_flip_prob": 0,
-        "n_players": 2,
-
-        "with_planner": True and not use_rllib_policy,
-        # "with_planner": False,
-        # "with_planner": tune.grid_search([True, False]),
-
-        # "env": "FearGreedMatrix",
-        "env": "CoinGame",
-
-        "normalize_against_vp": False,
-        "normalize_against_v": False,
-        "normalize_vp_separated": False,
-
-        "use_rllib_polcy": use_rllib_policy,
-
-    }
-
-    hyperparameters = add_env_hp(hyperparameters)
-
-    train(hyperparameters)
 
 
 if __name__ == "__main__":

@@ -17,7 +17,8 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 from ray import tune
 
-from marltoolbox.algos.lola.utils import GetFlatWtSess, SetFromFlatWtSess, flatgrad
+from marltoolbox.algos.lola.utils import \
+    GetFlatWtSess, SetFromFlatWtSess, flatgrad
 
 
 class Qnetwork:

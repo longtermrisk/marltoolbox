@@ -102,7 +102,8 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         self.defection_metric = 0
         if not self.average_defection_value:
             self.average_defection_value_len = 1
-        self.defection_carac_queue = deque(maxlen=self.average_defection_value_len)
+        self.defection_carac_queue = deque(
+            maxlen=self.average_defection_value_len)
         self.remaining_punishing_time = 0
         self.being_punished_by_LE = False
 
@@ -119,8 +120,11 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         self.n_cooperation_steps_in_current_epi = 0
         self.n_punishment_steps_in_current_epi = 0
 
-        self.add_welfare_fn = postprocessing.get_postprocessing_welfare_function(
-            add_utilitarian_welfare=True, add_opponent_action=True, add_opponent_neg_reward=True)
+        self.add_welfare_fn = \
+            postprocessing.get_postprocessing_welfare_function(
+                add_utilitarian_welfare=True,
+                add_opponent_action=True,
+                add_opponent_neg_reward=True)
 
     @override(hierarchical.HierarchicalTorchPolicy)
     def compute_actions(

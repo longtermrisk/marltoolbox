@@ -349,3 +349,17 @@ def check_learning_achieved(tune_results, metric="episode_reward_mean",
         assert tune_results.trials[trial_idx].last_result[metric] < max_
     if equal_ is not None:
         assert tune_results.trials[trial_idx].last_result[metric] == equal_
+
+def assert_if_key_in_dict_then_args_are_none(dict_, key, *args):
+    if key in dict_.keys():
+        for arg in args:
+            assert arg is None
+
+def read_from_dict_default_to_args(dict_, key, *args):
+    if key in dict_.keys():
+        return dict_[key]
+
+    if len(args) == 1:
+        return args[0]
+
+    return args

@@ -13,11 +13,12 @@ from marltoolbox.envs.matrix_sequential_social_dilemma import \
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 from marltoolbox.algos import ltft
 from marltoolbox.utils import log, miscellaneous, exploration, postprocessing
-from marltoolbox.envs.utils.wrappers import add_RewardUncertaintyEnvClassWrapper
+from marltoolbox.envs.utils.wrappers import \
+    add_RewardUncertaintyEnvClassWrapper
 from marltoolbox.examples.rllib_api.amtft_various_env import \
     modify_hyperparams_for_the_selected_env
-from marltoolbox.algos.exploiters.evader import create_evader_policy_config, \
-    EvaderTorchPolicy
+from marltoolbox.algos.exploiters.influence_evader import \
+    create_evader_policy_config, InfluenceEvaderTorchPolicy
 
 
 def main(debug, env=None, train_n_replicates=None):
@@ -38,7 +39,6 @@ def main(debug, env=None, train_n_replicates=None):
 
 
 def get_hyparameters(debug, env=None, train_n_replicates=None):
-
     if debug:
         train_n_replicates = 1
     elif train_n_replicates is None:
@@ -170,7 +170,8 @@ def get_rllib_config(hp: dict, debug):
         # === Debug Settings ===
         "log_level": "INFO",
         # Callbacks that will be run during various phases of training. See the
-        # `DefaultCallbacks` class and `examples/custom_metrics_and_callbacks.py`
+        # `DefaultCallbacks` class and
+        # `examples/custom_metrics_and_callbacks.py`
         # for more usage information.
         "callbacks": miscellaneous.merge_callbacks(
             ltft.LTFTCallbacks,
@@ -212,11 +213,12 @@ def modify_config_for_coin_game(hp, rllib_config, env_config, stop):
             "explore": True,
             # Provide a dict specifying the Exploration object's config.
             "exploration_config": {
-                # The Exploration class to use. In the simplest case, this is the name
-                # (str) of any class present in the `rllib.utils.exploration` package.
-                # You can also provide the python class directly or the full location
-                # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-                # EpsilonGreedy").
+                # The Exploration class to use. In the simplest case,
+                # this is the name (str) of any class present in the
+                # `rllib.utils.exploration` package.
+                # You can also provide the python class directly or
+                # the full location of your class (e.g.
+                # "ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy").
                 "type": exploration.SoftQSchedule,
                 # Add constructor kwargs here (if any).
                 "temperature_schedule": hp["temperature_schedule"],
@@ -261,26 +263,28 @@ def modify_config_for_play_agaisnt_opponent(rllib_config, env_config, hp):
 
     return rllib_config
 
+
 def set_config_to_use_evader_exploiter(rllib_config, env_config, hp):
     exploiter_hp = hp["against_evader_exploiter"]
-    train_n_steps = hp["n_epi"] * hp["n_steps_per_epi"]
+    n_steps_during_training = hp["n_epi"] * hp["n_steps_per_epi"]
     exploiter_policy = create_evader_policy_config(
         exploiter_policy=dqn.DQNTorchPolicy,
         welfare_function=postprocessing.WELFARE_UTILITARIAN,
         copy_weights_every_n_steps=
-        exploiter_hp["copy_weights_delay"] * train_n_steps,
+        exploiter_hp["copy_weights_delay"] * n_steps_during_training,
         start_exploit_at_step_n=
-        exploiter_hp["start_exploit"] * train_n_steps
+        exploiter_hp["start_exploit"] * n_steps_during_training
 
     )
 
     rllib_config["multiagent"]["policies"][env_config["players_ids"][1]] = (
-        EvaderTorchPolicy,
+        InfluenceEvaderTorchPolicy,
         hp["env"]().OBSERVATION_SPACE,
         hp["env"].ACTION_SPACE,
         exploiter_policy
     )
     return rllib_config
+
 
 def set_config_to_use_naive_opponent(rllib_config, env_config, hp):
     rllib_config["multiagent"]["policies"][env_config["players_ids"][1]] = (
@@ -290,6 +294,7 @@ def set_config_to_use_naive_opponent(rllib_config, env_config, hp):
         {}
     )
     return rllib_config
+
 
 if __name__ == "__main__":
     debug = True

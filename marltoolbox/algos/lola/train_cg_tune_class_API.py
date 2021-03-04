@@ -18,7 +18,7 @@ from ray import tune
 from marltoolbox.algos.lola.corrections import corrections_func, simple_actor_training_func
 from marltoolbox.algos.lola.networks import Pnetwork, DQNAgent
 from marltoolbox.algos.lola.utils import get_monte_carlo, make_cube
-from marltoolbox.envs.vectorized_coin_game import CoinGame, AsymCoinGame
+from marltoolbox.envs.vectorized_coin_game import VectorizedCoinGame, AsymVectorizedCoinGame
 
 
 def update(mainPN, lr, final_delta_1_v, final_delta_2_v, use_actions_from_exploiter=False):
@@ -62,26 +62,40 @@ def train_dqn_policy(dqn_data_buffer, dqn_exploiter):
 class LOLAPGCG(tune.Trainable):
 
     def _init_lola(self, env, seed, num_episodes, trace_length, batch_size,
-                   lola_update, opp_model, grid_size, gamma, hidden, bs_mul, lr,
+                   lola_update, opp_model, grid_size, gamma, hidden, bs_mul,
+                   lr, env_config,
                    mem_efficient=True,
-                   #asymmetry=False,
                    warmup=False,
-                   changed_config=False, ac_lr=1.0, summary_len=20, use_MAE=False,
+                   changed_config=False,
+                   ac_lr=1.0,
+                   summary_len=20,
+                   use_MAE=False,
                    # use_toolbox_env=False,
-                   clip_lola_update_norm=False, clip_loss_norm=False,
-                   entropy_coeff=0.0, weigth_decay=0.0, lola_correction_multiplier=1.0,
+                   clip_lola_update_norm=False,
+                   clip_loss_norm=False,
+                   entropy_coeff=0.0,
+                   weigth_decay=0.0,
+                   lola_correction_multiplier=1.0,
                    clip_lola_correction_norm=False,
-                   clip_lola_actor_norm=False, use_critic=False,
-                   lr_decay=False, correction_reward_baseline_per_step=False,
+                   clip_lola_actor_norm=False,
+                   use_critic=False,
+                   lr_decay=False,
+                   correction_reward_baseline_per_step=False,
                    playing_against_exploiter=False,
-                   # debug=False,
                    train_exploiter_n_times_per_epi=1,
-                   exploiter_base_lr=0.1, exploiter_decay_lr_in_n_epi=1500,
-                   exploiter_stop_training_after_n_epi=1500, exploiter_rolling_avg=0.0,
-                   exploiter_thresholds=None, use_DQN_exploiter=False,
-                   use_PG_exploiter=False, start_using_exploiter_at_update_n=0,
-                   use_exploiter_on_fraction_of_batch=1.0, every_n_updates_copy_weights = 100,
-                   use_destabilizer= False, adding_scaled_weights=False, always_train_PG=False,
+                   exploiter_base_lr=0.1,
+                   exploiter_decay_lr_in_n_epi=1500,
+                   exploiter_stop_training_after_n_epi=1500,
+                   exploiter_rolling_avg=0.0,
+                   exploiter_thresholds=None,
+                   use_DQN_exploiter=False,
+                   use_PG_exploiter=False,
+                   start_using_exploiter_at_update_n=0,
+                   use_exploiter_on_fraction_of_batch=1.0,
+                   every_n_updates_copy_weights = 100,
+                   use_destabilizer= False,
+                   adding_scaled_weights=False,
+                   always_train_PG=False,
                    **kwargs):
 
         print("args not used:", kwargs)
@@ -92,27 +106,11 @@ class LOLAPGCG(tune.Trainable):
         corrections = lola_update
 
         # Instantiate the environment
-        if env == CoinGame:
-            # if use_toolbox_env:
-            self.env = CoinGame(config={
-                "batch_size": batch_size,
-                "max_steps": trace_length,
-                "grid_size": grid_size,
-                "get_additional_info": True,
-            })
-            # else:
-            #     self.env = lola_dice_envs.CG(trace_length, batch_size, grid_size)
+        if env == VectorizedCoinGame:
+            self.env = VectorizedCoinGame(env_config)
             self.env.seed(seed)
-        elif env == AsymCoinGame:
-            # if use_toolbox_env:
-            self.env = AsymCoinGame(config={
-                "batch_size": batch_size,
-                "max_steps": trace_length,
-                "grid_size": grid_size,
-                "get_additional_info": True,
-            })
-            # else:
-            #     self.env = lola_dice_envs.AsymCG(trace_length, batch_size, grid_size)
+        elif env == AsymVectorizedCoinGame:
+            self.env = AsymVectorizedCoinGame(env_config)
             self.env.seed(seed)
         else:
             raise ValueError(f"exp_name: {env}")
@@ -132,7 +130,7 @@ class LOLAPGCG(tune.Trainable):
         self.bs_mul = bs_mul
         self.lr = lr
         self.mem_efficient = mem_efficient
-        self.asymmetry = env == AsymCoinGame
+        self.asymmetry = env == AsymVectorizedCoinGame
         self.warmup = warmup
         self.changed_config = changed_config
         self.ac_lr = ac_lr
@@ -345,6 +343,8 @@ class LOLAPGCG(tune.Trainable):
         #     sP = obs[0]
         # else:
         obs = self.env.reset()
+        # TODO this prevents us to use
+        #  _obs_invariant_to_the_player_trained
         sP = obs["player_red"]
 
         s = sP
@@ -420,6 +420,8 @@ class LOLAPGCG(tune.Trainable):
                        "player_blue": a_all[1]}
             obs, r, d, info = self.env.step(actions)
             d = np.array([d["__all__"] for _ in range(self.batch_size)])
+            # TODO this prevents us to use
+            #  _obs_invariant_to_the_player_trained
             s1P = obs["player_red"]
             if 'player_red' in info.keys():
                 last_info.update({f"player_red_{k}": v for k, v in info['player_red'].items()})
@@ -498,24 +500,20 @@ class LOLAPGCG(tune.Trainable):
 
             s1 = s1P
 
-            trainBatch0[1].append(a_all[0])  # is the same as a_all_exploiter[0]
+            # is the same as a_all_exploiter[0]
+            trainBatch0[1].append(a_all[0])
             trainBatch0[2].append(r[0])
             trainBatch1[2].append(r[1])
             trainBatch0[3].append(s1)
             trainBatch1[3].append(s1)
-            # trainBatch0[4].append(d)
-            # trainBatch1[4].append(d)
-            # trainBatch0[5].append(lstm_state[0])
-            # trainBatch1[5].append(lstm_state[1])
 
             a_all = np.transpose(np.vstack(a_all))
 
             if self.use_DQN_exploiter:
-                self.exploiter.add_data_in_rllib_batch_builder(s, s1P, trainBatch1, d, self.timestep)
+                self.exploiter.add_data_in_rllib_batch_builder(
+                    s, s1P, trainBatch1, d, self.timestep)
 
             self.total_steps += 1
-            # for agent_role, agent in enumerate(these_agents):
-            #     self.episodes_reward[agent] += r[agent_role]
 
             for index in range(self.batch_size):
                 r_pb = [r[0][index], r[1][index]]
@@ -529,8 +527,6 @@ class LOLAPGCG(tune.Trainable):
 
                 for agent_n in range(a_all.shape[1]):
                     aAll[int(a_all[index, agent_n] + 4*agent_n)] += 1
-                # aAll[a_all[index, 0]] += 1
-                # aAll[a_all[index, 1] + 4] += 1
 
             s_old = s
             s = s1
@@ -547,10 +543,12 @@ class LOLAPGCG(tune.Trainable):
         pow_series = np.arange(self.trace_length)
         discount = np.array([pow(self.gamma, item) for item in pow_series])
 
-        sample_return0, sample_reward0, sample_reward0_bis = self.compute_centered_discounted_r(
-            rewards=trainBatch0[2], discount=discount)
-        sample_return1, sample_reward1, sample_reward1_bis = self.compute_centered_discounted_r(
-            rewards=trainBatch1[2], discount=discount)
+        sample_return0, sample_reward0, sample_reward0_bis = \
+            self.compute_centered_discounted_r(
+                rewards=trainBatch0[2], discount=discount)
+        sample_return1, sample_reward1, sample_reward1_bis = \
+            self.compute_centered_discounted_r(
+                rewards=trainBatch1[2], discount=discount)
 
         state_input0 = np.concatenate(trainBatch0[0], axis=0)
         state_input1 = np.concatenate(trainBatch1[0], axis=0)
@@ -972,6 +970,32 @@ class LOLAPGCG(tune.Trainable):
         self.sess.close()
         super().cleanup()
 
+    def compute_actions(self, policy_id: str, obs_batch: list):
+        # because of the LSTM
+        assert len(obs_batch) == 1
+
+        for single_obs in obs_batch:
+            agent_to_use = self._get_agent_to_use(policy_id)
+            obs = self._preprocess_obs(single_obs, agent_to_use)
+            a, lstm_s = self.sess.run(
+                [
+                    self.mainPN_step[agent_to_use].predict,
+                    self.mainPN_step[agent_to_use].lstm_state_output
+                ],
+                feed_dict={
+                    self.mainPN_step[agent_to_use].state_input: obs,
+                    self.mainPN_step[agent_to_use].lstm_state:
+                        self.lstm_state[agent_to_use],
+                    self.mainPN_step[agent_to_use].is_training: False,
+                }
+            )
+            self.lstm_state[agent_to_use] = lstm_s
+        action = self._post_process_action(a)
+
+        state_out = []
+        extra_fetches = {}
+        return action, state_out, extra_fetches
+
     def _get_agent_to_use(self, policy_id):
         if policy_id == "player_red":
             agent_n = 0
@@ -989,7 +1013,6 @@ class LOLAPGCG(tune.Trainable):
             self.obs_batch.append(single_obs)
         self.obs_batch.append(single_obs)
         single_obs = np.concatenate(list(self.obs_batch), axis=0)
-
         return single_obs
 
     def _post_process_action(self, action):
@@ -999,32 +1022,8 @@ class LOLAPGCG(tune.Trainable):
 
         return action[None, ...]  # add batch dim
 
-    def compute_actions(self, policy_id: str, obs_batch: list):
-        # because of the LSTM
-        assert len(obs_batch) == 1
-
-        for single_obs in obs_batch:
-            agent_to_use = self._get_agent_to_use(policy_id)
-            obs = self._preprocess_obs(single_obs, agent_to_use)
-            a, lstm_s = self.sess.run(
-                [
-                    self.mainPN_step[agent_to_use].predict,
-                    self.mainPN_step[agent_to_use].lstm_state_output
-                ],
-                feed_dict={
-                    self.mainPN_step[agent_to_use].state_input: obs,
-                    self.mainPN_step[agent_to_use].lstm_state: self.lstm_state[agent_to_use],
-                    self.mainPN_step[agent_to_use].is_training: False,
-                }
-            )
-            self.lstm_state[agent_to_use] = lstm_s
-        action = self._post_process_action(a)
-
-        state_out = []
-        extra_fetches = {}
-        return action, state_out, extra_fetches
-
     def reset_compute_actions_state(self):
         self.lstm_state = []
         for agent in range(self.n_agents):
-            self.lstm_state.append(np.zeros((self.batch_size, self.h_size[agent] * 2)))
+            self.lstm_state.append(
+                np.zeros((self.batch_size, self.h_size[agent] * 2)))

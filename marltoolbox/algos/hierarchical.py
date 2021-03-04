@@ -195,6 +195,5 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
     def postprocess_trajectory(self, sample_batch,
                                other_agent_batches=None,
                                episode=None):
-        print("postprocess_trajectory", self.active_algo_idx)
         return self.algorithms[self.active_algo_idx].postprocess_trajectory(
             sample_batch, other_agent_batches, episode)

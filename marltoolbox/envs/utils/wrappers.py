@@ -1,6 +1,7 @@
 import numpy as np
 
-def add_RewardUncertaintyEnvClassWrapper(EnvClass, reward_uncertainty_std, reward_uncertainty_mean=0.0):
+def add_RewardUncertaintyEnvClassWrapper(
+        EnvClass, reward_uncertainty_std, reward_uncertainty_mean=0.0):
     class RewardUncertaintyEnvClassWrapper(EnvClass):
 
         def step(self, action):
@@ -9,7 +10,9 @@ def add_RewardUncertaintyEnvClassWrapper(EnvClass, reward_uncertainty_std, rewar
 
         def reward_wrapper(self, reward_dict):
             for k in reward_dict.keys():
-                reward_dict[k] += np.random.normal(loc=reward_uncertainty_mean, scale=reward_uncertainty_std, size=())
+                reward_dict[k] += np.random.normal(loc=reward_uncertainty_mean,
+                                                   scale=reward_uncertainty_std,
+                                                   size=())
             return reward_dict
 
     return RewardUncertaintyEnvClassWrapper

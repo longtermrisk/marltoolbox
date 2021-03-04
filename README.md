@@ -1,5 +1,23 @@
 # `marltoolbox`: Facilitate and speed up the research on bargaining in MARL. 
+![CI](https://github.com/longtermrisk/marltoolbox/actions/workflows/testing.yml/badge.svg)
+![CI](https://github.com/longtermrisk/marltoolbox/actions/workflows/weekly_tests.yml/badge.svg)
+
+## Table of contents
+
+<!--ts-->
+- [Overview](#overview)
+- [Get started](#get-started)
+  * [How to use this toolbox](#how-to-use-this-toolbox)
+  * [Toolbox installation](#toolbox-installation)
+  * [Training models](#training-models)
+- [Some usages](#some-usages)
+- [Main contents of the toolbox](#main-contents-of-the-toolbox)
+- [TODO and wishlist](#todo-and-wishlist)
+
+<!--te-->
+
 ## Overview
+
 
 **Major features of this toolbox:**  
 This toolbox contains algorithms, environments, evaluation tools, and a lot of 
@@ -28,7 +46,7 @@ in MARL.
 
 ## How to use this toolbox
 
-### Introduction 
+<b>Introduction</b>
 
 `RLLib` is built on top of `Tune` and `Tune` is built on top of `Ray`. 
 This toolbox `marltoolbox`, is built to work with `RLLib` 
@@ -57,7 +75,13 @@ to run them:
 - [Evaluations - "Level 1 best-response" and "self-play and cross-play"](https://github.com/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Evaluations_Level_1_best_response_and_self_play_and_cross_play.ipynb)
   (~ 30 mins) [(in Colab)](https://colab.research.google.com/github/longtermrisk/marltoolbox/blob/master/marltoolbox/examples/Tutorial_Evaluations_Level_1_best_response_and_self_play_and_cross_play.ipynb)
 
-### Advanced: 
+<details>
+
+<summary>
+<b>Advanced introduction</b>
+
+</summary>
+
 
 To explore `Tune` further:
 - [`Tune` documentation](https://docs.ray.io/en/latest/tune/user-guide.html) 
@@ -74,17 +98,32 @@ where `RLLib` is used to train a PPO algorithm
 To explore the toolbox `marltoolbox` further, take a look at 
 [our examples](https://github.com/longtermrisk/marltoolbox/tree/master/marltoolbox/examples).
 
+
+</details>
+
+
 ## Toolbox installation
 
 The installation is tested with Ubuntu 18.04 LTS (preferred) and 20.04 LTS.  
 It requires less than 20 Go of space including all the dependencies like PyTorch, etc.
 
-**Optional**: Connect to your virtual machine(VM) on Google Cloud Platform(GCP) with:
+
+<details>
+
+<summary>
+(Optional) Connect to your virtual machine(VM) on Google Cloud Platform(GCP)
+</summary>
+
 ```bash
 gcloud compute ssh {replace-by-instance-name}
 ```
+</details>
+<details>
 
-**Optional**: Do some basic upgrade and install some basic requirements (e.g. needed on a new VM)
+<summary>
+(Optional) Do some basic upgrade and install some basic requirements (e.g. needed on a new VM)
+</summary>
+
 ```bash
 sudo apt update
 sudo apt upgrade
@@ -92,8 +131,13 @@ sudo apt-get install build-essential
 # Run this command another time (especially needed with Ubuntu 20.04 LTS)
 sudo apt-get install build-essential
 ```
+</details>
+<details>
 
-**Optional**: Use a virtual environment
+<summary>
+(Optional) Use a virtual environment
+</summary>
+
 ```bash
 # If needed, install conda:
 ## Follow instruction at
@@ -113,6 +157,8 @@ conda create -n marltoolbox python=3.8.5
 conda activate marltoolbox
 pip install --upgrade pip
 ```
+</details>
+
 
 **Install the toolbox: `marltoolbox`**
 ```bash
@@ -151,7 +197,13 @@ tensorboard --logdir ~/ray_results
 gcloud compute ssh {replace-by-instance-name} -- -NfL 6006:localhost:6006
 ## Go to your browser to visualize the url http://localhost:6006/
 ```
-**Optional**: Install additional deep learning libraries (PyTorch CPU only is installed by default)
+
+<details>
+
+<summary>
+(Optional) Install additional deep learning libraries (PyTorch CPU only is installed by default)
+</summary>
+
 ```bash
 # Install PyTorch with GPU
 # Check cuda version
@@ -170,6 +222,8 @@ python
 pip install tensorflow
 ```
 
+</details>
+
 
 ## Training models
 
@@ -185,7 +239,12 @@ They support increasing functionalities
 but also use more and more constrained APIs. 
  
 
-**<ins>Tune function API</ins>** (the less constrained, not recommended) 
+<details>
+
+<summary>
+<b><ins>Tune function API</ins></b> (the less constrained, not recommended) 
+</summary>
+
 - **Constraints:** With the `Tune` function API, you only need to provide the training 
   function. [See the `Tune` documentation](https://docs.ray.io/en/master/tune/key-concepts.html).     
 - **Best used:** If you want to very quickly run some code from an external repository.
@@ -193,8 +252,15 @@ but also use more and more constrained APIs.
   Easily plot values to TensorBoard and visualizing the plots in live. 
   Tracking your experiments and hyperparameters. Hyperparameter search.
   Early stopping.
+  
+</details>
 
-**<ins>Tune class API</ins>** (very few constraints, recommended)  
+<details>
+
+<summary>
+<b><ins>Tune class API</ins></b> (very few constraints, recommended)   
+</summary>
+
 - **Constraints:** You need to provide a Trainer class with at minimum a setup method and a 
   step method. [See the `Tune` documentation](https://docs.ray.io/en/master/tune/key-concepts.html).    
 - **Best used:** If you want to run some code from an external repository 
@@ -204,9 +270,17 @@ but also use more and more constrained APIs.
   when using experimentation tools from `marltoolbox.utils`.
 - **<ins>Additional</ins> functionalities:** Cleaner format. Checkpoints. Allow conversion to the `RLLib` policy API.   
   The trained agents can be converted to the `RLLib` policy API for evaluation only.
-  This allows you to use functionalities which rely on the `RLLib` API (but not training). 
+  This allows you to use functionalities which rely on the `RLLib` API (but not training).
+  
+</details>
 
-**<ins>RLLib API</ins>** (quite constrained, recommended)  
+
+<details>
+
+<summary>
+<b><ins>RLLib API</ins></b> (quite constrained, recommended)  
+</summary>
+
 - **Constraints:** You need to use the `RLLib` API (trainer, policy, callbacks, etc.). 
   For information, `RLLib` trainer classes are specific implementations of the `Tune` class API 
   (just above). [See the `RLLib` documentation](https://docs.ray.io/en/master/rllib-toc.html).  
@@ -218,10 +292,15 @@ but also use more and more constrained APIs.
   (models, environments, algorithms, exploration, schedulers, preprocessing, etc.).
   Using the customizable trainer and policy factories from `RLLib`.
   
-# Some usages:
+</details>
 
-#### 0) Fall back to the `Tune` APIs when using the `RLLib` API is too costly
-You can find such examples in `marltoolbox.examples.tune_class_api` and in `marltoolbox.examples.tune_function_api`.  
+# Some usages
+
+<details>
+
+<summary>
+Fall back to the <code>Tune</code> APIs when using the <code>RLLib</code> API is too costly
+</summary>
 
 If the setup you want to train already exist, has a training loop 
 and if the cost to convert it into `RLLib` is too expensive,
@@ -240,7 +319,23 @@ And thus, you do not want to invest time in the conversion to `RLLib`.
 - Some points above and you are only starting to use `RLLib`  
 - etc.
 
-#### 1) Using components directly provided by `RLLib`  
+###### Tutorials: 
+- Tutorial_Basics_How_to_use_the_toolbox.ipynb
+
+###### Examples: 
+
+You can find such examples in `marltoolbox.examples.tune_class_api` and in `marltoolbox.examples.tune_function_api`.  
+
+</details>
+
+<details>
+
+<summary>
+Using components directly provided by <code>RLLib</code> 
+</summary>
+
+###### Tutorials: 
+- Tutorial_Basics_How_to_use_the_toolbox.ipynb
 
 ###### a) Examples using the `Tune` class API:
 - Using an A3C policy: `amd.py` with `use_rllib_policy = True` (toolbox example)
@@ -258,19 +353,33 @@ And thus, you do not want to invest time in the conversion to `RLLib`.
 - Policy Gradient (PG) and the rock paper scissors environment:
 [`rock_paper_scissors_multiagent.py`](https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py)
 (in the `run_same_policy` function)
+</details>
 
-#### 2) Customizing existing algorithms from `RLLib`
-Examples:  
+<details>
+
+<summary>
+Customizing existing algorithms from <code>RLLib</code>
+</summary>
+
+###### Examples:  
 - Customize policy's postprocessing (processing after env.step) and trainer:
 inequity_aversion.py (toolbox example)
 - Change the loss function of the Policy Gradient (PG) Policy:
 [`rock_paper_scissors_multiagent.py`](https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py)  
 (in the `run_with_custom_entropy_loss` function) 
 
-#### 3) Creating and using new custom policies in `RLLib`
-In RLLib, customizing a policy allows to change its training and evaluation logics.    
+</details>
 
-Examples:  
+
+<details>
+
+<summary>
+Creating and using new custom policies in <code>RLLib</code>
+</summary>
+
+In `RLLib`, customizing a policy allows to change its training and evaluation logics.    
+
+###### Examples:  
 - Hardcoded random Policy:
 [`multi_agent_custom_policy.py`](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_custom_policy.py)
 - Hardcoded fixed Policy:
@@ -278,90 +387,181 @@ Examples:
 (in the `run_heuristic_vs_learned` function)
 - Policy with nested Policies: `ltft.py` (toolbox example)
 
-#### 4) Using custom dataflows in `RLLib` (custom Trainer or Trainer's execution_plan)
-Examples:
+</details>
+
+<details>
+
+<summary>
+Using custom dataflows in <code>RLLib</code> (custom Trainer or Trainer's execution_plan)
+</summary>
+
+###### Examples:
 - Training 2 different policies with 2 different Trainers 
 (less complex but less sample efficient than the 2nd method below):
 [`multi_agent_two_trainers.py`](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py)
 - Training 2 different policies with a custom Trainer (more complex, more sample efficient):
 [`two_trainer_workflow.py`](https://github.com/ray-project/ray/blob/master/rllib/examples/two_trainer_workflow.py)
 
-#### 5) Using experimentation tools from the toolbox
-Examples:
+</details>
+
+<details>
+
+<summary>
+Using experimentation tools from the toolbox
+</summary>
+
+###### Tutorials: 
+- Evaluations_Level_1_best_response_and_self_play_and_cross_play.ipynb
+
+###### Examples:
 - Training a level 1 best response: `l1br_amtft.py` (toolbox example)
 - Evaluating same-play and cross-play performances: `amtft_various_env.py` (toolbox example)
 
+</details>
 
-# Main content of the toolbox
-- envs
-    - various matrix social dilemmas
-    - various coin games
-- algos
-    - AMD ([Adaptive Mechanism Design](https://arxiv.org/abs/1806.04067))
-    - amTFT ([Approximate Markov Tit-For-Tat](https://arxiv.org/abs/1707.01068))
-    - LTFT ([Learning Tit-For-Tat](https://longtermrisk.org/files/toward_cooperation_learning_games_oct_2020.pdf), 
-      **simplified version**)
-    - LOLA-Exact, LOLA-PG
-    - LOLA-DICE ([paper](https://arxiv.org/pdf/1802.05098.pdf), 
-      [unofficial](https://github.com/alexis-jacq/LOLA_DiCE), 
-      in the `experimental` branch, **WIP: 
-      not working properly**)  
-    - supervised learning
-    - hierarchical
-        - This is a base policy class which allows the use of nested algorithms 
-- utils  
-    - exploration
-        - SoftQ with temperature schedule
-    - log
-        - callbacks to log values from environments and policies
-    - lvl1_best_response 
-        - helper functions to train level 1 exploiters
-    - policy
-        - helper to transform a trained Tune Trainer
-        into frozen RLLib policies
-    - postprocessing
-        - helpers to compute welfare functions 
-        and add this data in the evaluation batch 
-        (the batches sampled by the evaluation workers)
-    - restore
-        - helpers to load a checkpoint only for 
-        a chosen policy (instead of for all existing policies as RLLib does) 
-    - rollout
-        - a rollout runner function which can be called from 
-        inside a RLLib policy
-    - self_and_cross_perf
-        - a helper to evaluate the performance
-        in self-play and cross-play.    
-        "self-play": playing against agents from the same training run.  
-        "cross-play": playing against agents from different training runs.  
-    - plot 
-        - helpers to plot results
-- scripts    
-    - aggregate_and_plot_tensorboard_data
-        - a script to aggregate the logged values from several seeds 
-          (into mean, std, etc.) and to create summary plots 
 
-# TODO / Wishlist
-- Improvements:
-    - Add unit tests for the algorithms
-    - Refactor the algorithm to make them more readable  
-    - Use the logger everywhere
-    - Add and improve docstrings
-    - Set good hyper-parameters in the custom examples 
-    - Report all results directly in Weights&Biases (saving download time from VM)
-- Add new algorithms:
-    - Multi-agent adversarial IRL
-    - Multi-agent generative adversarial imitation learning
-    - Model-based RL like PETS, MPC
-    - Opponent modeling like k-level
-    - Capability to use algorithms from OpenSpiel like MCTS
-- Add new functionalities:
-    - Reward uncertainty
-    - Full / partial observability of opponent actions
-    - (partial) Parameter transparency
-    - Easy benchmarking with metrics specific to MARL
-    - (more on) Exploitability evaluation 
-    - Performance against a suite of other MARL algorithms
-- Add new environments:
+
+
+
+# Main contents of the toolbox
+
+<details>
+
+<summary>
+Environments
+</summary>
+
+  - various matrix social dilemmas
+  - various coin games
+
+</details>
+
+<details>
+
+<summary>
+Algorithms
+</summary>
+
+  - AMD ([Adaptive Mechanism Design](https://arxiv.org/abs/1806.04067))
+  - amTFT ([Approximate Markov Tit-For-Tat](https://arxiv.org/abs/1707.01068))
+  - LTFT ([Learning Tit-For-Tat](https://longtermrisk.org/files/toward_cooperation_learning_games_oct_2020.pdf), 
+    **simplified version**)
+  - LOLA-Exact, LOLA-PG
+  - LOLA-DICE ([paper](https://arxiv.org/pdf/1802.05098.pdf), 
+    [unofficial](https://github.com/alexis-jacq/LOLA_DiCE), 
+    in the `experimental` branch, **WIP: 
+    not working properly**)  
+  - supervised learning
+  - population
+      - This policy plays an episode by sampling a policy 
+        from a population of similar policies
+  - hierarchical
+      - It is a base policy class which allows the use of nested algorithms 
+
+</details>
+
+<details>
+
+<summary>
+Utils
+</summary>
+
+  - exploration
+      - SoftQ with temperature schedule
+  - log
+      - callbacks to log values from environments and policies
+  - lvl1_best_response 
+      - helper functions to train level 1 exploiters
+  - policy
+      - helper to transform a trained Tune Trainer
+      into frozen RLLib policies
+  - postprocessing
+      - helpers to compute welfare functions 
+      and add this data in the evaluation batch 
+      (the batches sampled by the evaluation workers)
+  - restore
+      - helpers to load a checkpoint only for 
+      a chosen policy (instead of for all existing policies as RLLib does) 
+  - rollout
+      - a rollout runner function which can be called from 
+      inside a RLLib policy
+  - self_and_cross_perf
+      - a helper to evaluate the performance
+      in self-play and cross-play.    
+      "self-play": playing against agents from the same training run.  
+      "cross-play": playing against agents from different training runs.  
+  - plot 
+      - helpers to plot results
+
+</details>
+
+
+<details>
+
+<summary>
+Scripts
+</summary>
+
+  - aggregate_and_plot_tensorboard_data
+      - a script to aggregate the logged values from several seeds 
+        (into mean, std, etc.) and to create summary plots 
+
+</details>
+
+# TODO and wishlist
+<details>
+
+<summary>
+Improvements
+</summary>
+
+  - Add unit tests for the algorithms
+  - Refactor the algorithm to make them more readable  
+  - Use the logger everywhere
+  - Add and improve docstrings
+  - Set good hyper-parameters in the custom examples 
+  - Report all results directly in Weights&Biases (saving download time from VM)
+
+</details>
+
+<details>
+
+<summary>
+New algorithms
+</summary>
+
+  - Multi-agent adversarial IRL
+  - Multi-agent generative adversarial imitation learning
+  - Model-based RL like PETS, MPC
+  - Opponent modeling like k-level
+  - Capability to use algorithms from OpenSpiel like MCTS
+
+</details>
+
+<details>
+
+<summary>
+New functionalities
+</summary>
+
+  - Reward uncertainty
+  - Full / partial observability of opponent actions
+  - (partial) Parameter transparency
+  - Easy benchmarking with metrics specific to MARL
+  - (more on) Exploitability evaluation 
+  - Performance against a suite of other MARL algorithms
+
+</details>
+
+<details>
+
+<summary>
+New environments
+</summary>
+
     - Capability to use environments from OpenSpiel
     - (iterated) Ultimatum game (including variants)
+
+</details>
+
+

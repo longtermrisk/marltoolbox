@@ -48,7 +48,7 @@ class L1BRConfigurationHelper:
 
         self.rllib_config_to_modif = population.modify_config_to_use_population(
             config=self.rllib_config_to_modif,
-            opponent_policy_id=self.policy_id_for_lvl0_agents,
+            population_policy_id=self.policy_id_for_lvl0_agents,
             opponents_checkpoints=miscellaneous.seed_to_checkpoint(
                 checkpoints_per_population)
         )

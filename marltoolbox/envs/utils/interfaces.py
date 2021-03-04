@@ -16,5 +16,5 @@ class InfoAccumulationInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def _accumulate_info(self, ac0, ac1):
+    def _accumulate_info(self, *args, **kwargs):
         raise NotImplementedError()

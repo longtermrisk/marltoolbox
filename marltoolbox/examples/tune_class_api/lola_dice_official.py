@@ -13,8 +13,8 @@ from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 
 from marltoolbox.algos.lola_dice.train_tune_class_API import LOLADICE
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
-from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersDilemma, IteratedMatchingPennies, \
-    IteratedAsymBoS
+from marltoolbox.envs.matrix_sequential_social_dilemma import \
+    IteratedPrisonersDilemma, IteratedMatchingPennies, IteratedAsymBoS
 from marltoolbox.examples.tune_class_api import lola_pg_official
 from marltoolbox.utils import policy, log
 
@@ -119,11 +119,13 @@ def generate_eval_config(hp, debug):
         hp_eval["x_limits"] = (-1.0, 3.0)
         hp_eval["y_limits"] = (-1.0, 3.0)
         hp_eval["jitter"] = 0.02
+        env_config["force_vectorize"] = False
     elif hp_eval["env"] == "AsymCoinGame":
         hp_eval["env"] = AsymCoinGame
         hp_eval["x_limits"] = (-1.0, 3.0)
         hp_eval["y_limits"] = (-1.0, 3.0)
         hp_eval["jitter"] = 0.02
+        env_config["force_vectorize"] = False
     else:
         raise NotImplementedError()
 

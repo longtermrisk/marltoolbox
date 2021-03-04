@@ -5,6 +5,6 @@ from marltoolbox.envs.matrix_sequential_social_dilemma import \
     define_greed_fear_matrix_game
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 from marltoolbox.envs.vectorized_coin_game import \
-    AsymCoinGame as VectorizedAsymCoinGame
+    AsymVectorizedCoinGame as VectorizedAsymCoinGame
 from marltoolbox.envs.vectorized_coin_game import \
-    CoinGame as VectorizedCoinGame
+    VectorizedCoinGame as VectorizedCoinGame

@@ -2,15 +2,15 @@
 # Part of the code modified from:
 # https://github.com/alshedivat/lola/tree/master/lola
 ##########
-import logging
-from abc import ABC
 from collections import Iterable
-from typing import Dict
 
+import logging
 import numpy as np
+from abc import ABC
 from gym.spaces import Discrete
 from gym.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from typing import Dict
 
 from marltoolbox.envs.utils.interfaces import InfoAccumulationInterface
 from marltoolbox.envs.utils.mixins import TwoPlayersTwoActionsInfoMixin, \
@@ -23,17 +23,21 @@ class MatrixSequentialSocialDilemma(
     InfoAccumulationInterface, MultiAgentEnv, ABC):
     """
     A multi-agent abstract class for two player matrix games.
+
+    PAYOUT_MATRIX: Numpy array. Along the dimension N, the action of the
+    Nth player change. The last dimension is used to select the player
+    whose reward you want to know.
+
+    max_steps: number of step in one episode
+
+    players_ids: list of the RLLib agent id of each player
+
+    output_additional_info: ask the environment to aggregate information
+    about the last episode and output them as info at the end of the
+    episode.
     """
 
     def __init__(self, config: Dict = {}):
-        """
-        PAYOUT_MATRIX: Numpy array. Along the dimension N, the action of the Nth player change.
-                       The last dimension is used to select the player whose reward you want to know.
-        max_steps: number of step in one episode
-        players_ids: list of the RLLib agent id of each player
-        output_additional_info: ask the environment to aggregate information about the last episode and output them
-                       as info at the end of the episode.
-        """
 
         assert "reward_randomness" not in config.keys()
         assert self.PAYOUT_MATRIX is not None
@@ -73,16 +77,17 @@ class MatrixSequentialSocialDilemma(
         :return: observations, rewards, done, info
         """
         self.step_count_in_current_episode += 1
-        action_player_0, action_player_1 = actions[self.player_row_id], actions[
-            self.player_col_id]
+        action_player_row = actions[self.player_row_id]
+        action_player_col = actions[self.player_col_id]
 
         if self.output_additional_info:
-            self._accumulate_info(action_player_0, action_player_1)
+            self._accumulate_info(action_player_row, action_player_col)
 
         observations = \
             self._produce_observations_invariant_to_the_player_trained(
-                action_player_0, action_player_1)
-        rewards = self._get_players_rewards(action_player_0, action_player_1)
+                action_player_row, action_player_col)
+        rewards = self._get_players_rewards(action_player_row,
+                                            action_player_col)
         epi_is_done = self.step_count_in_current_episode >= self.max_steps
         if self.step_count_in_current_episode > self.max_steps:
             logger.warning(
@@ -239,7 +244,8 @@ class IteratedAsymChicken(TwoPlayersTwoActionsInfoMixin,
     NAME = "AsymmetricIteratedChicken"
 
 
-class IteratedBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
+class IteratedBoS(TwoPlayersTwoActionsInfoMixin,
+                  MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the BoS game.
     """

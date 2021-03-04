@@ -13,18 +13,25 @@ from ray import tune
 from ray.rllib.agents.a3c.a3c import DEFAULT_CONFIG as a3c_config
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.evaluation.sample_batch_builder import MultiAgentSampleBatchBuilder
+from ray.rllib.evaluation.sample_batch_builder import \
+    MultiAgentSampleBatchBuilder
 
-from marltoolbox.algos.adaptive_mechanism_design.agent import Actor_Critic_Agent, Critic_Variant, Simple_Agent, \
+from marltoolbox.algos.adaptive_mechanism_design.agent import \
+    Actor_Critic_Agent, Critic_Variant, Simple_Agent, \
     convert_from_rllib_env_format, convert_to_rllib_env_format
-from marltoolbox.algos.adaptive_mechanism_design.planning_agent import Planning_Agent
-from marltoolbox.envs.matrix_sequential_social_dilemma import define_greed_fear_matrix_game
-from marltoolbox.envs.vectorized_coin_game import CoinGame
+from marltoolbox.algos.adaptive_mechanism_design.planning_agent import \
+    Planning_Agent
+from marltoolbox.envs.matrix_sequential_social_dilemma import \
+    define_greed_fear_matrix_game
+from marltoolbox.envs.coin_game import CoinGame
 
 
-def create_population(env, n_agents, n_units, use_simple_agents=False,
-                      lr=0.01, gamma=0.9, weight_decay=0.0, mean_theta=-2.0, std_theta=0.5,
-                      entropy_coeff=0.001, use_adam_optimizer=True, momentum=0.9, use_rllib_polcy=False):
+def create_population(
+        env, n_agents, n_units, use_simple_agents=False,
+      lr=0.01, gamma=0.9, weight_decay=0.0, mean_theta=-2.0, std_theta=0.5,
+      entropy_coeff=0.001, use_adam_optimizer=True, momentum=0.9,
+        use_rllib_polcy=False):
+
     if use_rllib_polcy:
         agent_config = a3c_config
         agent_config.update({

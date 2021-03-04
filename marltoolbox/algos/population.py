@@ -106,11 +106,12 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
             self.active_checkpoint_idx = 0
 
     def _load_checkpoint(self):
-        # print("self.policy_checkpoints[self.active_checkpoint_idx]",
-        #       self.policy_checkpoints[self.active_checkpoint_idx])
-        restore.load_one_policy_checkpoint(policy_id=self.policy_id_to_load, policy=self.algorithms[0],
-                                           checkpoint_path=self.policy_checkpoints[self.active_checkpoint_idx],
-                                           using_Tune_class=hasattr(self.algorithms[0], "tune_config"))
+        restore.load_one_policy_checkpoint(
+            policy_id=self.policy_id_to_load,
+            policy=self.algorithms[0],
+            checkpoint_path=
+                self.policy_checkpoints[self.active_checkpoint_idx],
+            using_Tune_class=hasattr(self.algorithms[0], "tune_config"))
 
     def _freeze_algo(self):
         if hasattr(self.algorithms[0].model, "eval"):
@@ -134,7 +135,6 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
             timestep: Optional[int] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
         return self.algorithms[0].compute_actions(obs_batch)
 
     def learn_on_batch(self, samples: SampleBatch):
@@ -146,8 +146,9 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
                 learner_stats["learner_stats"][f"algo_{i}"] = stats
             return learner_stats
         else:
-            raise NotImplementedError("Policies in PopulationOfAlgo are freezed thus "
-                                      "PopulationOfAlgo.learn_on_batch should not be called")
+            raise NotImplementedError(
+                "Policies in PopulationOfAlgo are freezed thus "
+                "PopulationOfAlgo.learn_on_batch should not be called")
     @property
     def to_log(self):
         return self.algorithms[self.active_algo_idx].to_log
@@ -156,25 +157,37 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
     def to_log(self, value):
         self.algorithms[self.active_algo_idx].to_log = value
 
-def modify_config_to_use_population(config: dict, opponent_policy_id: str, opponents_checkpoints: list):
-    population_policy = copy.deepcopy(list(config["multiagent"]["policies"][opponent_policy_id]))
+    def postprocess_trajectory(self, sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        return sample_batch
 
-    population_policy = _convert_to_population_policy(population_policy, config,
-                                                      opponent_policy_id, opponents_checkpoints)
+def modify_config_to_use_population(
+        config: dict, population_policy_id: str, opponents_checkpoints: list):
+    population_policy = copy.deepcopy(
+        list(config["multiagent"]["policies"][population_policy_id]))
 
-    miscellaneous.overwrite_config(dict_=config,
-                                   key=f"multiagent.policies.{opponent_policy_id}", value=population_policy)
+    population_policy = _convert_to_population_policy(
+        population_policy, config, population_policy_id, opponents_checkpoints)
+
+    miscellaneous.overwrite_config(
+        dict_=config,
+        key=f"multiagent.policies.{population_policy_id}",
+        value=population_policy)
     return config
 
 
-def _convert_to_population_policy(population_policy, config, opponent_policy_id, opponents_checkpoints):
+def _convert_to_population_policy(
+        population_policy, config, opponent_policy_id, opponents_checkpoints):
     population_policy[0] = PopulationOfIdenticalAlgo
     population_policy[3].update(DEFAULT_CONFIG_UPDATE)
     population_policy[3]["policy_id_to_load"] = opponent_policy_id
     population_policy[3]["nested_policies"] = [
         # You need to provide the policy class for every nested Policies
-        {"Policy_class": copy.deepcopy(config["multiagent"]["policies"][opponent_policy_id][0]),
-         "config_update": copy.deepcopy(config["multiagent"]["policies"][opponent_policy_id][3])},
+        {"Policy_class": copy.deepcopy(
+            config["multiagent"]["policies"][opponent_policy_id][0]),
+         "config_update": copy.deepcopy(
+             config["multiagent"]["policies"][opponent_policy_id][3])},
     ]
     population_policy[3]["policy_checkpoints"] = opponents_checkpoints
     return population_policy

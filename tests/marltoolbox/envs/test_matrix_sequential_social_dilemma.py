@@ -1,6 +1,20 @@
 import random
 
-from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS
+from marltoolbox.envs.matrix_sequential_social_dilemma import \
+    IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS
+
+ENVS = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt,
+        IteratedBoS]
+
+
+def test_reset():
+    max_steps = 20
+    env_all = [init_env(max_steps, env_class) for env_class in ENVS]
+
+    for env in env_all:
+        obs = env.reset()
+        check_obs(obs, env)
+        assert_logger_buffer_size_two_players(env, n_steps=0)
 
 
 def init_env(max_steps, env_class, seed=None):
@@ -26,28 +40,17 @@ def assert_logger_buffer_size_two_players(env, n_steps):
     assert len(env.dc_count) == n_steps
 
 
-def test_reset():
-    max_steps = 20
-    env_class_all = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS]
-    env_all = [init_env(max_steps, env_class) for env_class in env_class_all]
-
-    for env in env_all:
-        obs = env.reset()
-        check_obs(obs, env)
-        assert_logger_buffer_size_two_players(env, n_steps=0)
-
-
 def test_step():
     max_steps = 20
-    env_class_all = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS]
-    env_all = [init_env(max_steps, env_class) for env_class in env_class_all]
+    env_all = [init_env(max_steps, env_class) for env_class in ENVS]
 
     for env in env_all:
         obs = env.reset()
         check_obs(obs, env)
         assert_logger_buffer_size_two_players(env, n_steps=0)
 
-        actions = {policy_id: random.randint(0, env.NUM_ACTIONS - 1) for policy_id in env.players_ids}
+        actions = {policy_id: random.randint(0, env.NUM_ACTIONS - 1)
+                   for policy_id in env.players_ids}
         obs, reward, done, info = env.step(actions)
         check_obs(obs, env)
         assert_logger_buffer_size_two_players(env, n_steps=1)
@@ -56,8 +59,7 @@ def test_step():
 
 def test_multiple_steps():
     max_steps = 20
-    env_class_all = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS]
-    env_all = [init_env(max_steps, env_class) for env_class in env_class_all]
+    env_all = [init_env(max_steps, env_class) for env_class in ENVS]
     n_steps = int(max_steps * 0.75)
 
     for env in env_all:
@@ -66,7 +68,8 @@ def test_multiple_steps():
         assert_logger_buffer_size_two_players(env, n_steps=0)
 
         for step_i in range(1, n_steps, 1):
-            actions = {policy_id: random.randint(0, env.NUM_ACTIONS - 1) for policy_id in env.players_ids}
+            actions = {policy_id: random.randint(0, env.NUM_ACTIONS - 1)
+                       for policy_id in env.players_ids}
             obs, reward, done, info = env.step(actions)
             check_obs(obs, env)
             assert_logger_buffer_size_two_players(env, n_steps=step_i)
@@ -75,8 +78,7 @@ def test_multiple_steps():
 
 def test_multiple_episodes():
     max_steps = 20
-    env_class_all = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS]
-    env_all = [init_env(max_steps, env_class) for env_class in env_class_all]
+    env_all = [init_env(max_steps, env_class) for env_class in ENVS]
     n_steps = int(max_steps * 8.25)
 
     for env in env_all:
@@ -87,11 +89,13 @@ def test_multiple_episodes():
         step_i = 0
         for _ in range(n_steps):
             step_i += 1
-            actions = {policy_id: random.randint(0, env.NUM_ACTIONS - 1) for policy_id in env.players_ids}
+            actions = {policy_id: random.randint(0, env.NUM_ACTIONS - 1)
+                       for policy_id in env.players_ids}
             obs, reward, done, info = env.step(actions)
             check_obs(obs, env)
             assert_logger_buffer_size_two_players(env, n_steps=step_i)
-            assert not done["__all__"] or (step_i == max_steps and done["__all__"])
+            assert not done["__all__"] or \
+                   (step_i == max_steps and done["__all__"])
             if done["__all__"]:
                 obs = env.reset()
                 check_obs(obs, env)
@@ -130,8 +134,7 @@ def test_logged_info_full_CC():
     p_row_act = [0, 0, 0, 0]
     p_col_act = [0, 0, 0, 0]
     max_steps = 4
-    env_class_all = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS]
-    env_all = [init_env(max_steps, env_class) for env_class in env_class_all]
+    env_all = [init_env(max_steps, env_class) for env_class in ENVS]
     n_steps = int(max_steps * 8.25)
 
     for env in env_all:
@@ -147,8 +150,7 @@ def test_logged_info_full_DD():
     p_row_act = [1, 1, 1, 1]
     p_col_act = [1, 1, 1, 1]
     max_steps = 4
-    env_class_all = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS]
-    env_all = [init_env(max_steps, env_class) for env_class in env_class_all]
+    env_all = [init_env(max_steps, env_class) for env_class in ENVS]
     n_steps = int(max_steps * 8.25)
 
     for env in env_all:
@@ -164,8 +166,7 @@ def test_logged_info_full_CD():
     p_row_act = [0, 0, 0, 0]
     p_col_act = [1, 1, 1, 1]
     max_steps = 4
-    env_class_all = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS]
-    env_all = [init_env(max_steps, env_class) for env_class in env_class_all]
+    env_all = [init_env(max_steps, env_class) for env_class in ENVS]
     n_steps = int(max_steps * 8.25)
 
     for env in env_all:
@@ -181,8 +182,7 @@ def test_logged_info_full_DC():
     p_row_act = [1, 1, 1, 1]
     p_col_act = [0, 0, 0, 0]
     max_steps = 4
-    env_class_all = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS]
-    env_all = [init_env(max_steps, env_class) for env_class in env_class_all]
+    env_all = [init_env(max_steps, env_class) for env_class in ENVS]
     n_steps = int(max_steps * 8.25)
 
     for env in env_all:
@@ -198,8 +198,7 @@ def test_logged_info_mix_CC_DD():
     p_row_act = [0, 1, 1, 1]
     p_col_act = [0, 1, 1, 1]
     max_steps = 4
-    env_class_all = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS]
-    env_all = [init_env(max_steps, env_class) for env_class in env_class_all]
+    env_all = [init_env(max_steps, env_class) for env_class in ENVS]
     n_steps = int(max_steps * 8.25)
 
     for env in env_all:
@@ -215,8 +214,7 @@ def test_logged_info_mix_CD_CD():
     p_row_act = [1, 0, 1, 0]
     p_col_act = [0, 1, 0, 1]
     max_steps = 4
-    env_class_all = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS]
-    env_all = [init_env(max_steps, env_class) for env_class in env_class_all]
+    env_all = [init_env(max_steps, env_class) for env_class in ENVS]
     n_steps = int(max_steps * 8.25)
 
     for env in env_all:
@@ -227,12 +225,12 @@ def test_logged_info_mix_CD_CD():
         assert_info(n_steps, p_row_act, p_col_act, env, max_steps,
                     CC=0.0, DD=0.0, CD=0.5, DC=0.5)
 
+
 def test_observations_are_invariant_to_the_player_trained():
     p_row_act = [0, 1, 1, 0]
     p_col_act = [0, 1, 0, 1]
     max_steps = 4
-    env_class_all = [IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS]
-    env_all = [init_env(max_steps, env_class) for env_class in env_class_all]
+    env_all = [init_env(max_steps, env_class) for env_class in ENVS]
     n_steps = 4
 
     for env in env_all:

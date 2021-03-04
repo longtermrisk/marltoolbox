@@ -9,7 +9,8 @@ from ray import tune
 from marltoolbox.algos.lola.corrections import *
 from marltoolbox.algos.lola.networks import *
 from marltoolbox.algos.lola.utils import *
-from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersDilemma, IteratedBoS
+from marltoolbox.envs.matrix_sequential_social_dilemma import \
+    IteratedPrisonersDilemma, IteratedBoS
 
 
 def update(mainQN, lr, final_delta_1_v, final_delta_2_v):
