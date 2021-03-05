@@ -67,8 +67,8 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
             try:
                 return object.__getattribute__(
                     self.algorithms[self.active_algo_idx], attr)
-            except AttributeError:
-                raise initial
+            except AttributeError as secondary:
+                raise type(initial)(f'{initial.args} and {secondary.args}')
 
     @property
     def to_log(self):

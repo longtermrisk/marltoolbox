@@ -4,8 +4,9 @@ import os
 import ray
 from ray import tune
 from ray.rllib.agents import dqn
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.agents.dqn.dqn_torch_policy import postprocess_nstep_and_prio
+from ray.rllib.utils.framework import try_import_torch
+
 torch, nn = try_import_torch()
 
 from marltoolbox.envs.matrix_sequential_social_dilemma import \
@@ -89,13 +90,13 @@ def get_rllib_config(hp: dict, debug):
         n_epi=hp["n_epi"],
         n_steps_per_epi=hp["n_steps_per_epi"])
 
-    MyUncertainEnv = add_RewardUncertaintyEnvClassWrapper(
+    my_uncertain_env_class = add_RewardUncertaintyEnvClassWrapper(
         hp["env"],
         reward_uncertainty_std=0.1)
 
     rllib_config = copy.deepcopy(ltft_config)
     rllib_config.update({
-        "env": MyUncertainEnv,
+        "env": my_uncertain_env_class,
         "env_config": env_config,
         "multiagent": {
             "policies": {
@@ -267,6 +268,7 @@ def modify_config_for_play_agaisnt_opponent(rllib_config, env_config, hp):
 
     return rllib_config
 
+
 def set_config_to_use_evader_exploiter(rllib_config, env_config, hp):
     exploiter_hp = hp["against_evader_exploiter"]
     n_steps_during_training = hp["n_epi"] * hp["n_steps_per_epi"]
@@ -286,7 +288,7 @@ def set_config_to_use_evader_exploiter(rllib_config, env_config, hp):
         'nested_policies': [
             # You need to provide the policy class for every nested Policies
             {"Policy_class": MyCoopDQNTorchPolicy,
-             "config_update": {ADD_UTILITARIAN_WELFARE:True}},
+             "config_update": {ADD_UTILITARIAN_WELFARE: True}},
             {"Policy_class": MyDQNTorchPolicy,
              "config_update": {}}
         ],
@@ -313,5 +315,5 @@ def set_config_to_use_naive_opponent(rllib_config, env_config, hp):
 
 
 if __name__ == "__main__":
-    debug = True
-    main(debug=False, train_n_replicates=1)
+    debug_mode = True
+    main(debug=debug_mode)

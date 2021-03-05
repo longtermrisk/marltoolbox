@@ -137,7 +137,12 @@ def welfares_postprocessing_fn(
             add_nash_w, add_egalitarian_w, \
             add_opponent_a, add_opponent_neg_r = parameters
 
-        assert len(set(sample_batch[sample_batch.EPS_ID])) == 1
+        assert len(set(sample_batch[sample_batch.EPS_ID])) == 1, \
+            "design to work on one complete episode"
+        assert sample_batch[sample_batch.DONES][-1], \
+            "design to work on one complete episode, dones: " \
+            f"{sample_batch[sample_batch.DONES]}"
+
         if add_utilitarian_w:
             logger.debug(f"add utilitarian welfare to batch of policy"
                          f" {policy}")

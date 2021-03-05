@@ -62,7 +62,7 @@ def generate_fake_multiagent_batch(env, policies):
             "prev_actions": fake_actions[player_id],
             "rewards": rewards[player_id],
             "prev_rewards": rewards[player_id],
-            "dones": done[player_id],
+            "dones": True,
         }
         multi_agent_batch_builder.add_values(agent_id=player_id, policy_id=player_id, **step_player_values)
     multiagent_batch = multi_agent_batch_builder.build_and_reset()
