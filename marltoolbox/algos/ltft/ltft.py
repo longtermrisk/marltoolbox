@@ -116,6 +116,8 @@ DEFAULT_CONFIG.update({
                 outside_value=0.1,
                 framework="torch")
         },
+
+        "log_level": "DEBUG",
     }
 )
 

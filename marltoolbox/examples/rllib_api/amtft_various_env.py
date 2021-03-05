@@ -465,7 +465,7 @@ def get_nested_policy_class(hp, welfare_fn):
     CoopNestedPolicyClass = NestedPolicyClass.with_updates(
         # TODO problem: this prevent to use HP searches on gamma etc.
         postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
-            postprocessing.get_postprocessing_welfare_function(
+            postprocessing.welfares_postprocessing_fn(
                 add_utilitarian_welfare=
                 (welfare_fn == postprocessing.WELFARE_UTILITARIAN),
                 add_inequity_aversion_welfare=

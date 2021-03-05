@@ -5,20 +5,22 @@ import ray
 from ray import tune
 from ray.rllib.agents import dqn
 from ray.rllib.utils.framework import try_import_torch
-
+from ray.rllib.agents.dqn.dqn_torch_policy import postprocess_nstep_and_prio
 torch, nn = try_import_torch()
 
 from marltoolbox.envs.matrix_sequential_social_dilemma import \
     IteratedPrisonersDilemma
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 from marltoolbox.algos import ltft
+from marltoolbox.algos.ltft.utils import MyDQNTorchPolicy
 from marltoolbox.utils import log, miscellaneous, exploration, postprocessing
 from marltoolbox.envs.utils.wrappers import \
     add_RewardUncertaintyEnvClassWrapper
 from marltoolbox.examples.rllib_api.amtft_various_env import \
     modify_hyperparams_for_the_selected_env
 from marltoolbox.algos.exploiters.influence_evader import \
-    create_evader_policy_config, InfluenceEvaderTorchPolicy
+    InfluenceEvaderTorchPolicy
+from marltoolbox.utils.postprocessing import ADD_UTILITARIAN_WELFARE
 
 
 def main(debug, env=None, train_n_replicates=None):
@@ -61,8 +63,8 @@ def get_hyparameters(debug, env=None, train_n_replicates=None):
 
         # "against_evader_exploiter": None,
         "against_evader_exploiter": {
-            "start_exploit": 0.75,
-            "copy_weights_delay": 0.05,
+            "start_exploit": 0.50,
+            "copy_weights_delay": 0.10,
         },
     }
 
@@ -138,7 +140,9 @@ def get_rllib_config(hp: dict, debug):
         },
 
         "gamma": 0.5,
-        "min_iter_time_s": 0.0 if debug else 10.0,
+        "min_iter_time_s":
+            0.0 if debug else
+            10.0 if hp["env"] in (CoinGame, AsymCoinGame) else 1.0,
         "seed": tune.grid_search(hp["seeds"]),
 
         # === Optimization ===
@@ -263,26 +267,38 @@ def modify_config_for_play_agaisnt_opponent(rllib_config, env_config, hp):
 
     return rllib_config
 
-
 def set_config_to_use_evader_exploiter(rllib_config, env_config, hp):
     exploiter_hp = hp["against_evader_exploiter"]
     n_steps_during_training = hp["n_epi"] * hp["n_steps_per_epi"]
-    exploiter_policy = create_evader_policy_config(
-        exploiter_policy=dqn.DQNTorchPolicy,
-        welfare_function=postprocessing.WELFARE_UTILITARIAN,
-        copy_weights_every_n_steps=
-        exploiter_hp["copy_weights_delay"] * n_steps_during_training,
-        start_exploit_at_step_n=
-        exploiter_hp["start_exploit"] * n_steps_during_training
 
+    MyCoopDQNTorchPolicy = MyDQNTorchPolicy.with_updates(
+        postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
+            postprocessing.welfares_postprocessing_fn(),
+            postprocess_nstep_and_prio
+        )
     )
+    exploiter_policy_config = {
+        "copy_weights_every_n_steps":
+            exploiter_hp["copy_weights_delay"] * n_steps_during_training,
+        "start_exploit_at_step_n":
+            exploiter_hp["start_exploit"] * n_steps_during_training,
+        "welfare_key": postprocessing.WELFARE_UTILITARIAN,
+        'nested_policies': [
+            # You need to provide the policy class for every nested Policies
+            {"Policy_class": MyCoopDQNTorchPolicy,
+             "config_update": {ADD_UTILITARIAN_WELFARE:True}},
+            {"Policy_class": MyDQNTorchPolicy,
+             "config_update": {}}
+        ],
+    }
 
     rllib_config["multiagent"]["policies"][env_config["players_ids"][1]] = (
         InfluenceEvaderTorchPolicy,
         hp["env"]().OBSERVATION_SPACE,
         hp["env"].ACTION_SPACE,
-        exploiter_policy
+        exploiter_policy_config
     )
+
     return rllib_config
 
 
@@ -298,4 +314,4 @@ def set_config_to_use_naive_opponent(rllib_config, env_config, hp):
 
 if __name__ == "__main__":
     debug = True
-    main(debug)
+    main(debug=False, train_n_replicates=1)

@@ -40,6 +40,8 @@ def get_tune_config(hp: dict) -> dict:
         config["trace_length"] = 150 if config["trace_length"] is None else config["trace_length"]
         config["make_optimizer"] = ("make_sgd_optimizer", {})
 
+        # BE CAREFUL CHANGES TO env_config WILL NOT
+        # IMPACT THE ENV DURING THE TRAINING
         env_config = {
             "players_ids": ["player_row", "player_col"],
             "batch_size": config["batch_size"],
@@ -62,18 +64,24 @@ def get_tune_config(hp: dict) -> dict:
         config["make_policy"] = ("make_conv_policy", {})
         config["base_lr"] = 0.005
 
+        # BE CAREFUL CHANGES TO env_config WILL NOT
+        # IMPACT THE ENV DURING THE TRAINING
         env_config = {
             "players_ids": ["player_row", "player_col"],
             "batch_size": config["batch_size"],
             "max_steps": config["trace_length"],
             "get_additional_info": True,
             "grid_size": config["grid_size"],
+            "both_players_can_pick_the_same_coin": False,
+            "force_vectorize": False,
+            "same_obs_for_each_player": True,
         }
 
     config["lr_inner"] = config["lr_inner"] * config["base_lr"]
     config["lr_outer"] = config["lr_outer"] * config["base_lr"]
     config["lr_value"] = config["lr_value"] * config["base_lr"]
     config["lr_om"] = config["lr_om"] * config["base_lr"]
+    config["env_config"] = env_config
 
     stop = {"episodes_total": config['epochs']}
 
@@ -119,13 +127,11 @@ def generate_eval_config(hp, debug):
         hp_eval["x_limits"] = (-1.0, 3.0)
         hp_eval["y_limits"] = (-1.0, 3.0)
         hp_eval["jitter"] = 0.02
-        env_config["force_vectorize"] = False
     elif hp_eval["env"] == "AsymCoinGame":
         hp_eval["env"] = AsymCoinGame
         hp_eval["x_limits"] = (-1.0, 3.0)
         hp_eval["y_limits"] = (-1.0, 3.0)
         hp_eval["jitter"] = 0.02
-        env_config["force_vectorize"] = False
     else:
         raise NotImplementedError()
 

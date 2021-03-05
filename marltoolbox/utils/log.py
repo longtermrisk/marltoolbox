@@ -132,7 +132,7 @@ def get_logging_callbacks_class(log_env_step=True,
             if log_from_policy:
                 self._update_train_result_wt_to_log(
                     trainer, result,
-                    function_to_exec=self._get_log_from_policy)
+                    function_to_exec=get_log_from_policy)
             if log_weights:
                 if not hasattr(self, "on_train_result_counter"):
                     self.on_train_result_counter = 0
@@ -208,20 +208,21 @@ def get_logging_callbacks_class(log_env_step=True,
                             raise ValueError(
                                 f"key:{key} already exists in result.keys(): {result.keys()}")
 
-        @staticmethod
-        def _get_log_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
-            """
-            Gets the to_log var from a policy and rename its keys,
-            adding the policy_id as a prefix.
-            """
-            to_log = {}
-            if hasattr(policy, "to_log"):
-                for k, v in policy.to_log.items():
-                    to_log[f"{k}/{policy_id}"] = v
-                policy.to_log = {}
-            return to_log
 
     return LoggingCallbacks
+
+
+def get_log_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
+    """
+    Gets the to_log var from a policy and rename its keys,
+    adding the policy_id as a prefix.
+    """
+    to_log = {}
+    if hasattr(policy, "to_log"):
+        for k, v in policy.to_log.items():
+            to_log[f"{k}/{policy_id}"] = v
+        policy.to_log = {}
+    return to_log
 
 
 def _log_action_prob_pytorch(policy: Policy, train_batch: SampleBatch) -> Dict[

@@ -1,11 +1,12 @@
 import copy
+import random
 
 import numpy as np
-import random
 
 from marltoolbox.envs.vectorized_coin_game import VectorizedCoinGame, \
     AsymVectorizedCoinGame
-from test_coin_game import assert_obs_is_symmetrical
+from test_coin_game import \
+    assert_obs_is_symmetrical, assert_obs_is_not_symmetrical
 
 
 # TODO add tests for grid_size != 3
@@ -21,18 +22,23 @@ def test_reset():
         assert_logger_buffer_size(env, n_steps=0)
 
 
-def init_several_env(max_steps, batch_size, grid_size):
-    coin_game = init_env(max_steps, batch_size, VectorizedCoinGame, grid_size)
+def init_several_env(max_steps, batch_size, grid_size,
+                     same_obs_for_each_player=False):
+    coin_game = init_env(max_steps, batch_size, VectorizedCoinGame, grid_size,
+                         same_obs_for_each_player=same_obs_for_each_player)
     asymm_coin_game = \
-        init_env(max_steps, batch_size, AsymVectorizedCoinGame, grid_size)
+        init_env(max_steps, batch_size, AsymVectorizedCoinGame, grid_size,
+                 same_obs_for_each_player=same_obs_for_each_player)
     return [coin_game, asymm_coin_game]
 
 
-def init_env(max_steps, batch_size, env_class, seed=None, grid_size=3):
+def init_env(max_steps, batch_size, env_class, seed=None, grid_size=3,
+             same_obs_for_each_player=False):
     config = {
         "max_steps": max_steps,
         "batch_size": batch_size,
         "grid_size": grid_size,
+        "same_obs_for_each_player": same_obs_for_each_player,
     }
     env = env_class(config)
     env.seed(seed)
@@ -165,8 +171,9 @@ def assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act, env,
                       p_red_pos, p_blue_pos, c_red_pos, c_blue_pos)
         actions = {"player_red": [p_red_act[(step_i + delta) % n_steps_in_epi]
                                   for delta in batch_deltas],
-                   "player_blue": [p_blue_act[(step_i + delta) % n_steps_in_epi]
-                                   for delta in batch_deltas]}
+                   "player_blue": [
+                       p_blue_act[(step_i + delta) % n_steps_in_epi]
+                       for delta in batch_deltas]}
         step_i += 1
 
         obs, reward, done, info = env.step(actions)
@@ -569,9 +576,12 @@ def test_observations_are_invariant_to_the_player_trained_wt_step():
                 obs_step_odd = obs
             elif step_i % 2 == 0:
                 assert np.all(
-                    obs[env.players_ids[0]] == obs_step_odd[env.players_ids[1]])
+                    obs[env.players_ids[0]] == obs_step_odd[
+                        env.players_ids[1]])
                 assert np.all(
-                    obs[env.players_ids[1]] == obs_step_odd[env.players_ids[0]])
+                    obs[env.players_ids[1]] == obs_step_odd[
+                        env.players_ids[0]])
+            assert_obs_is_symmetrical(obs, env)
 
             if step_i == max_steps:
                 break
@@ -598,6 +608,97 @@ def test_observations_are_invariant_to_the_player_trained_wt_reset():
     for env_i, env in enumerate(envs):
         obs = env.reset()
         assert_obs_is_symmetrical(obs, env)
+        step_i = 0
+
+        for _ in range(n_steps):
+            overwrite_pos(step_i, batch_deltas, max_steps, env, p_red_pos,
+                          p_blue_pos, c_red_pos, c_blue_pos)
+            actions = {"player_red": [p_red_act[(step_i + delta) % max_steps]
+                                      for delta in batch_deltas],
+                       "player_blue": [p_blue_act[(step_i + delta) % max_steps]
+                                       for delta in batch_deltas]}
+            _, _, _, _ = env.step(actions)
+
+            step_i += 1
+
+            if step_i == max_steps:
+                break
+
+
+def test_observations_are_not_invariant_to_the_player_trained_wt_step():
+    p_red_pos = [[0, 0], [0, 0], [1, 1], [1, 1], [0, 0],
+                 [1, 1], [2, 0], [0, 1], [2, 2], [1, 2]]
+    p_blue_pos = [[0, 0], [0, 0], [1, 1], [1, 1], [1, 1],
+                  [0, 0], [0, 1], [2, 0], [1, 2], [2, 2]]
+    p_red_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    c_red_pos = [[1, 1], None, [0, 1], None, None,
+                 [2, 2], [0, 0], None, None, [2, 1]]
+    c_blue_pos = [None, [1, 1], None, [0, 1], [2, 2],
+                  None, None, [0, 0], [2, 1], None]
+    max_steps, batch_size, grid_size = 10, 52, 3
+    n_steps = max_steps
+    envs = init_several_env(max_steps, batch_size, grid_size,
+                            same_obs_for_each_player=True)
+
+    batch_deltas = [i % max_steps if i % 2 == 0 else i % max_steps - 1
+                    for i in range(batch_size)]
+
+    for env_i, env in enumerate(envs):
+        _ = env.reset()
+        step_i = 0
+
+        for _ in range(n_steps):
+            overwrite_pos(step_i, batch_deltas, max_steps, env, p_red_pos,
+                          p_blue_pos,
+                          c_red_pos, c_blue_pos)
+            actions = {"player_red": [p_red_act[(step_i + delta) % max_steps]
+                                      for delta in batch_deltas],
+                       "player_blue": [p_blue_act[(step_i + delta) % max_steps]
+                                       for delta in batch_deltas]}
+            obs, reward, done, info = env.step(actions)
+
+            step_i += 1
+            # assert that observations are not
+            # symmetrical respective to the
+            # actions
+            if step_i % 2 == 1:
+                obs_step_odd = obs
+            elif step_i % 2 == 0:
+                assert np.any(
+                    obs[env.players_ids[0]] != obs_step_odd[env.players_ids[
+                        1]])
+                assert np.any(
+                    obs[env.players_ids[1]] != obs_step_odd[env.players_ids[
+                        0]])
+            assert_obs_is_not_symmetrical(obs, env)
+
+            if step_i == max_steps:
+                break
+
+
+def test_observations_are_not_invariant_to_the_player_trained_wt_reset():
+    p_red_pos = [[0, 0], [0, 0], [1, 1], [1, 1], [0, 0],
+                 [1, 1], [2, 0], [0, 1], [2, 2], [1, 2]]
+    p_blue_pos = [[0, 0], [0, 0], [1, 1], [1, 1], [1, 1],
+                  [0, 0], [0, 1], [2, 0], [1, 2], [2, 2]]
+    p_red_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    c_red_pos = [[1, 1], None, [0, 1], None, None,
+                 [2, 2], [0, 0], None, None, [2, 1]]
+    c_blue_pos = [None, [1, 1], None, [0, 1], [2, 2],
+                  None, None, [0, 0], [2, 1], None]
+    max_steps, batch_size, grid_size = 10, 52, 3
+    n_steps = max_steps
+    envs = init_several_env(max_steps, batch_size, grid_size,
+                            same_obs_for_each_player=True)
+
+    batch_deltas = [i % max_steps if i % 2 == 0 else i % max_steps - 1
+                    for i in range(batch_size)]
+
+    for env_i, env in enumerate(envs):
+        obs = env.reset()
+        assert_obs_is_not_symmetrical(obs, env)
         step_i = 0
 
         for _ in range(n_steps):

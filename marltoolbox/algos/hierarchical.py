@@ -183,14 +183,6 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         return all_optimizers
 
     # TODO Move this in helper functions
-    def _filter_sample_batch(self, samples: SampleBatch, filter_key,
-                             remove=True, copy_data=False) -> SampleBatch:
-        filter = samples.data[filter_key]
-        if remove:
-            # torch logical not
-            filter = ~ filter
-        return SampleBatch({k: np.array(v, copy=copy_data)[filter]
-                            for (k, v) in samples.data.items()})
 
     def postprocess_trajectory(self, sample_batch,
                                other_agent_batches=None,

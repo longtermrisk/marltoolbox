@@ -30,7 +30,7 @@ OPP_SELFISH_POLICY_IDX = 3
 DEFAULT_NESTED_POLICY_SELFISH = DQNTorchPolicy.with_updates(stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats))
 DEFAULT_NESTED_POLICY_COOP = DEFAULT_NESTED_POLICY_SELFISH.with_updates(
         postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
-            postprocessing.get_postprocessing_welfare_function(add_utilitarian_welfare=True,),
+            postprocessing.welfares_postprocessing_fn(add_utilitarian_welfare=True, ),
             postprocess_nstep_and_prio
         )
     )

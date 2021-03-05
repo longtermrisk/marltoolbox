@@ -58,7 +58,7 @@ def main(debug):
 
     MyPGTorchPolicy = PGTorchPolicy.with_updates(
         postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
-            postprocessing.get_postprocessing_welfare_function(
+            postprocessing.welfares_postprocessing_fn(
                 add_inequity_aversion_welfare=True,
                 inequity_aversion_beta=1.0,
                 inequity_aversion_alpha=0.0,

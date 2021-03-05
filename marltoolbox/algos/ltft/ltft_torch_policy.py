@@ -1,5 +1,8 @@
 ##########
-# Code modified from: https://github.com/Manuscrit/SLM-Lab/blob/support_multi_agents_with_awareness/slm_lab/agent/algorithm/meta_algorithm/learning_equilibrium.py
+# Code modified from:
+# https://github.com/Manuscrit/SLM-Lab/blob/
+# support_multi_agents_with_awareness/slm_lab/
+# agent/algorithm/meta_algorithm/learning_equilibrium.py
 ##########
 
 import logging
@@ -21,6 +24,7 @@ from ray.rllib.utils.annotations import override
 
 from marltoolbox.algos import hierarchical
 from marltoolbox.utils import postprocessing
+from marltoolbox.utils.miscellaneous import filter_sample_batch
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
@@ -44,12 +48,6 @@ LTFT_DEFAULT_CONFIG_UPDATE = merge_dicts(
     }
 )
 
-# TODO Must make the SPL policy train on the last data, not on the last data sampled from a buffer (like with DQN)
-WARNING_MESSAGE = "TODO LTFT: The supervised learning(SPL) policy also use the batch sampled by the DQN data flow. " \
-                  "This makes the SPL learns an average of the opponent policy and not the true current policy => " \
-                  "this is not the original behavior. Must make the SPL policy train on the last data, not on the " \
-                  "last data sampled from a buffer (like with DQN)."
-
 class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
     """
     Learning Tit-for-tat (LTFT) policy
@@ -66,8 +64,6 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
     INITIALLY_ACTIVE_ALGO = COOP_POLICY_IDX
 
     def __init__(self, observation_space, action_space, config, **kwargs):
-
-        print("WARNING_MESSAGE", WARNING_MESSAGE)
 
         super().__init__(observation_space, action_space, config,
                          after_init_nested=(lambda policy: [torch.nn.init.normal_(p, mean=0.0, std=0.1)
@@ -121,7 +117,7 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         self.n_punishment_steps_in_current_epi = 0
 
         self.add_welfare_fn = \
-            postprocessing.get_postprocessing_welfare_function(
+            postprocessing.welfares_postprocessing_fn(
                 add_utilitarian_welfare=True,
                 add_opponent_action=True,
                 add_opponent_neg_reward=True)
@@ -193,9 +189,9 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
             samples_copy[samples_copy.REWARDS] = np.array(samples_copy.data[
                                                               postprocessing.WELFARE_UTILITARIAN])
             if policy_n == self.COOP_POLICY_IDX:
-                samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="punishing")
+                samples_copy = filter_sample_batch(samples_copy, remove=True, filter_key="punishing")
             elif policy_n == self.COOP_OPP_POLICY_IDX:
-                samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="being_punished")
+                samples_copy = filter_sample_batch(samples_copy, remove=True, filter_key="being_punished")
             else:
                 raise ValueError()
         elif policy_n == self.PUNITIVE_POLICY_IDX:
@@ -204,7 +200,7 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         elif policy_n == self.SPL_OPP_POLICY_IDX:
             samples_copy[samples_copy.ACTIONS] = np.array(samples_copy.data[
                                                               postprocessing.OPPONENT_ACTIONS])
-            samples_copy = self._filter_sample_batch(samples_copy, remove=True, filter_key="being_punished")
+            samples_copy = filter_sample_batch(samples_copy, remove=True, filter_key="being_punished")
         else:
             raise ValueError()
 
@@ -245,6 +241,7 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
             self.active_algo_idx = self.PUNITIVE_POLICY_IDX
             self.remaining_punishing_time = self.punishment_time
             print("DEFECTION DETECTED")
+            logger.info("DEFECTION DETECTED")
 
         if self.remaining_punishing_time <= 0:
             self.active_algo_idx = self.COOP_POLICY_IDX
@@ -291,8 +288,8 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         bstrap_replts_data = data_array[bstrap_idx]
         return bstrap_replts_data
 
-    def _compare_log_likelihood_on_boostrapped_sequences(self, data_queue, log=True,
-                                                         last_step_is_mandatory=False):
+    def _compare_log_likelihood_on_boostrapped_sequences(
+            self, data_queue, log=True, last_step_is_mandatory=False):
 
         bstrap_replts_data = self._bootstrap_replicats(data_queue, last_step_is_mandatory)
 
@@ -393,7 +390,8 @@ class LTFTCallbacks(DefaultCallbacks):
         for agent_id, policy in worker.policy_map.items():
             self._inform_agent_being_punished_or_not(episode, agent_id, policy, agent_ids)
 
-    def _inform_agent_being_punished_or_not(self, episode, agent_id, policy, agent_ids):
+    def _inform_agent_being_punished_or_not(
+            self, episode, agent_id, policy, agent_ids):
 
             opp_agent_id = [one_id for one_id in agent_ids if one_id != agent_id][0]
             if self._is_callback_implemented_in_policy(policy, 'on_episode_step'):
@@ -410,7 +408,8 @@ class LTFTCallbacks(DefaultCallbacks):
         return hasattr(policy, callback_method) and \
                callable(getattr(policy, callback_method))
 
-    def on_episode_end(self, *, worker, base_env, policies, episode, env_index, **kwargs):
+    def on_episode_end(
+            self, *, worker, base_env, policies, episode, env_index, **kwargs):
         for polidy_ID, policy in policies.items():
             if self._is_callback_implemented_in_policy(policy, 'on_episode_end'):
                 policy.on_episode_end()
@@ -426,7 +425,8 @@ class LTFTCallbacks(DefaultCallbacks):
         assert len(all_agent_keys) == 1, "LE only works for 2 agents"
         opp_policy_id = all_agent_keys[0]
 
-        opp_is_broadcast_punishment_state = "punishing" in original_batches[opp_policy_id][1].data.keys()
+        opp_is_broadcast_punishment_state = \
+            "punishing" in original_batches[opp_policy_id][1].data.keys()
         if opp_is_broadcast_punishment_state:
             postprocessed_batch.data['being_punished'] = \
                 copy.deepcopy(original_batches[all_agent_keys[0]][1].data["punishing"])

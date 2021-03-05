@@ -62,6 +62,7 @@ class LOLADICE(tune.Trainable):
         print("args not used:",kwargs)
 
         # Instantiate the environment
+        # TODO use the env from the toolbox (with RLLib API)
         if env == "IPD":
             self.env = lola_dice_envs.IPD(max_steps=trace_length, batch_size=batch_size)
         elif env == "AsymBoS":

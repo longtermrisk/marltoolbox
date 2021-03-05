@@ -1,6 +1,7 @@
 import copy
 from typing import TYPE_CHECKING
 import logging
+import numpy as np
 
 import inspect
 import os
@@ -363,3 +364,12 @@ def read_from_dict_default_to_args(dict_, key, *args):
         return args[0]
 
     return args
+
+def filter_sample_batch(samples: SampleBatch, filter_key,
+                         remove=True, copy_data=False) -> SampleBatch:
+    filter = samples.data[filter_key]
+    if remove:
+        # torch logical not
+        filter = ~ filter
+    return SampleBatch({k: np.array(v, copy=copy_data)[filter]
+                        for (k, v) in samples.data.items()})

@@ -1,4 +1,5 @@
 from typing import List, Dict, TYPE_CHECKING
+import logging
 
 import numpy as np
 from ray.rllib.agents.callbacks import DefaultCallbacks
@@ -14,6 +15,8 @@ from marltoolbox.utils.miscellaneous import \
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
 
+logger = logging.getLogger(__name__)
+
 WELFARE_UTILITARIAN = "utilitarian_welfare"
 WELFARE_INEQUITY_AVERSION = "inequity_aversion_welfare"
 WELFARE_NASH = "nash_welfare"
@@ -26,8 +29,17 @@ OPPONENT_NEGATIVE_REWARD = "opponent_negative_reward"
 DISCOUNTED_RETURNS = "discounted_returns"
 REWARDS_UNDER_DEFECTION = "rewards_under_defection"
 
+ADD_UTILITARIAN_WELFARE = "add_utilitarian_welfare"
+ADD_INEQUITY_AVERSION_WELFARE = "add_inequity_aversion_welfare"
+ADD_NASH_WELFARE = "add_nash_welfare"
+ADD_EGALITARIAN_WELFARE = "add_egalitarian_welfare"
+ADD_OPPONENT_ACTION = "add_opponent_action"
+ADD_OPPONENT_NEG_REWARD = "add_opponent_neg_reward"
 
-def get_postprocessing_welfare_function(
+ADD_WELFARE_CONFIG_KEYS = (ADD_UTILITARIAN_WELFARE,
+                           ADD_INEQUITY_AVERSION_WELFARE)
+
+def welfares_postprocessing_fn(
         add_utilitarian_welfare: bool = None,
         add_egalitarian_welfare: bool = None,
         add_nash_welfare: bool = None,
@@ -96,21 +108,21 @@ def get_postprocessing_welfare_function(
 
     def _read_parameters_from_config_default_to_args(policy):
         add_utilitarian_w = read_from_dict_default_to_args(
-            policy.config, "add_utilitarian_welfare", add_utilitarian_welfare)
+            policy.config, ADD_UTILITARIAN_WELFARE, add_utilitarian_welfare)
         add_ia_w, ia_alpha, ia_beta, ia_gamma, ia_lambda = \
             read_from_dict_default_to_args(
-                policy.config, "add_inequity_aversion_welfare",
+                policy.config, ADD_INEQUITY_AVERSION_WELFARE,
                 add_inequity_aversion_welfare, inequity_aversion_alpha,
                 inequity_aversion_beta, inequity_aversion_gamma,
                 inequity_aversion_lambda)
         add_nash_w = read_from_dict_default_to_args(
-            policy.config, "add_nash_welfare", add_nash_welfare)
+            policy.config, ADD_NASH_WELFARE, add_nash_welfare)
         add_egalitarian_w = read_from_dict_default_to_args(
-            policy.config, "add_egalitarian_welfare", add_egalitarian_welfare)
+            policy.config, ADD_EGALITARIAN_WELFARE, add_egalitarian_welfare)
         add_opponent_a = read_from_dict_default_to_args(
-            policy.config, "add_opponent_action", add_opponent_action)
+            policy.config, ADD_OPPONENT_ACTION, add_opponent_action)
         add_opponent_neg_r = read_from_dict_default_to_args(
-            policy.config, "add_opponent_neg_reward", add_opponent_neg_reward)
+            policy.config, ADD_OPPONENT_NEG_REWARD, add_opponent_neg_reward)
 
         return add_utilitarian_w, \
             add_ia_w, ia_alpha, ia_beta, ia_gamma, ia_lambda, \
@@ -127,10 +139,14 @@ def get_postprocessing_welfare_function(
 
         assert len(set(sample_batch[sample_batch.EPS_ID])) == 1
         if add_utilitarian_w:
+            logger.debug(f"add utilitarian welfare to batch of policy"
+                         f" {policy}")
             opp_batches = [v[1] for v in other_agent_batches.values()]
             sample_batch = _add_utilitarian_welfare_to_batch(
                 sample_batch, opp_batches, policy)
         if add_ia_w:
+            logger.debug(f"add inequity aversion welfare to batch of policy"
+                        f" {policy}")
             _assert_two_players_env(other_agent_batches)
             opp_batch = _get_opp_batch(other_agent_batches)
             sample_batch = _add_inequity_aversion_welfare_to_batch(
@@ -331,6 +347,8 @@ class OverwriteRewardWtWelfareCallback(DefaultCallbacks):
             if welfare_key in postprocessed_batch.data.keys():
                 postprocessed_batch[postprocessed_batch.REWARDS] = \
                     postprocessed_batch.data[welfare_key]
+                logger.debug(f"overwrite reward of agent_id {agent_id} with"
+                            f"welfare_key {welfare_key}")
                 break
 
         return postprocessed_batch
