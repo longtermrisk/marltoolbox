@@ -1,6 +1,7 @@
 # `marltoolbox`: Facilitate and speed up the research on bargaining in MARL. 
-![CI](https://github.com/longtermrisk/marltoolbox/actions/workflows/testing.yml/badge.svg)
-![CI](https://github.com/longtermrisk/marltoolbox/actions/workflows/weekly_tests.yml/badge.svg)
+![CI](https://github.com/longtermrisk/marltoolbox/actions/workflows/ci.yml/badge.svg)
+![CI Notebooks](https://github.com/longtermrisk/marltoolbox/actions/workflows/ci_notebooks.yml/badge.svg)
+![CI Weekly Tests](https://github.com/longtermrisk/marltoolbox/actions/workflows/weekly_tests.yml/badge.svg)
 
 ## Table of contents
 
