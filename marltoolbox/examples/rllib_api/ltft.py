@@ -6,6 +6,7 @@ from ray import tune
 from ray.rllib.agents import dqn
 from ray.rllib.agents.dqn.dqn_torch_policy import postprocess_nstep_and_prio
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.schedules import PiecewiseSchedule
 
 torch, nn = try_import_torch()
 
@@ -34,8 +35,9 @@ def main(debug, env=None, train_n_replicates=None):
     tune_analysis_self_play = train_in_self_play(
         rllib_config, stop, exp_name)
 
-    tune_analysis_naive_opponent = train_against_opponent(
-        hparameters, rllib_config, stop, exp_name, env_config)
+    tune_analysis_naive_opponent = None
+    # tune_analysis_naive_opponent = train_against_opponent(
+    #     hparameters, rllib_config, stop, exp_name, env_config)
 
     ray.shutdown()
     return tune_analysis_self_play, tune_analysis_naive_opponent
@@ -45,7 +47,7 @@ def get_hyparameters(debug, env=None, train_n_replicates=None):
     if debug:
         train_n_replicates = 1
     elif train_n_replicates is None:
-        train_n_replicates = 20
+        train_n_replicates = 1
 
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("LTFT")
@@ -58,21 +60,37 @@ def get_hyparameters(debug, env=None, train_n_replicates=None):
         "spl_lr_mul": 10.0,
         "seeds": seeds,
         "debug": debug,
+        "hiddens": [64],
+        "buf_frac": 0.15,
 
         "env": "IteratedPrisonersDilemma",
         # "env": "CoinGame",
+        "reward_uncertainty_std": 0.0,  # 0.1,
 
         # "against_evader_exploiter": None,
         "against_evader_exploiter": {
             "start_exploit": 0.50,
             "copy_weights_delay": 0.10,
         },
+
     }
 
     if env is not None:
         hparameters["env"] = env
 
     hparameters = modify_hyperparams_for_the_selected_env(hparameters)
+
+    hparameters["gamma"] = 0.5
+    hparameters["last_exploration_temp_value"] = 0.2
+    hparameters["temperature_schedule"] = PiecewiseSchedule(
+        endpoints=[
+            (0, 2.0),
+            (int(hparameters["n_steps_per_epi"] * hparameters["n_epi"] *
+                 0.50), 0.2),
+            (int(hparameters["n_steps_per_epi"] * hparameters["n_epi"] * 0.75),
+             hparameters["last_exploration_temp_value"])],
+        outside_value=hparameters["last_exploration_temp_value"],
+        framework="torch")
 
     return hparameters, exp_name
 
@@ -92,7 +110,7 @@ def get_rllib_config(hp: dict, debug):
 
     my_uncertain_env_class = add_RewardUncertaintyEnvClassWrapper(
         hp["env"],
-        reward_uncertainty_std=0.1)
+        reward_uncertainty_std=hp["reward_uncertainty_std"])
 
     rllib_config = copy.deepcopy(ltft_config)
     rllib_config.update({
@@ -123,30 +141,37 @@ def get_rllib_config(hp: dict, debug):
         # === Replay buffer ===
         # Size of the replay buffer. Note that if async_updates is set, then
         # each worker will have a replay buffer of this size.
-        "buffer_size": int(hp["n_steps_per_epi"] * hp["n_epi"]),
+        "buffer_size": int(hp["n_steps_per_epi"] * hp["n_epi"] *
+                           hp["buf_frac"]),
         # Whether to use dueling dqn
         "dueling": False,
         # Dense-layer setup for each the advantage branch and the value branch
         # in a dueling architecture.
-        "hiddens": [4],
+        "hiddens": hp["hiddens"],
         # Whether to use double dqn
         "double_q": True,
         # If True prioritized replay buffer will be used.
         "prioritized_replay": False,
         "model": {
             # Number of hidden layers for fully connected net
-            "fcnet_hiddens": [4, 2],
+            "fcnet_hiddens": hp["hiddens"],
             # Nonlinearity for fully connected net (tanh, relu)
             "fcnet_activation": "relu",
         },
 
-        "gamma": 0.5,
+        "gamma": hp["gamma"],
         "min_iter_time_s":
             0.0 if debug else
             10.0 if hp["env"] in (CoinGame, AsymCoinGame) else 1.0,
         "seed": tune.grid_search(hp["seeds"]),
 
         # === Optimization ===
+        # Learning rate for adam optimizer
+        "lr": hp["base_lr"],
+        # Learning rate schedule
+        "lr_schedule": [
+            (0, hp["base_lr"]),
+            (int(hp["n_steps_per_epi"] * hp["n_epi"]), hp["base_lr"] / 1e9)],
         # If not None, clip gradients during optimization at this value
         "grad_clip": 1,
         # How many steps of the model to sample before learning starts.
@@ -224,9 +249,11 @@ def modify_config_for_coin_game(hp, rllib_config, env_config, stop):
                 # You can also provide the python class directly or
                 # the full location of your class (e.g.
                 # "ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy").
-                "type": exploration.SoftQSchedule,
+                # "type": exploration.SoftQSchedule,
+                "type": exploration.SoftQScheduleWtClustering,
                 # Add constructor kwargs here (if any).
                 "temperature_schedule": hp["temperature_schedule"],
+                "clustering_distance": 0.5,
             },
             "model": {
                 "dim": env_config["grid_size"],
@@ -234,6 +261,11 @@ def modify_config_for_coin_game(hp, rllib_config, env_config, stop):
                 "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],
             }
         })
+
+        nested_policies_config = rllib_config["nested_policies"]
+        nested_spl_policy_config= nested_policies_config[3]["config_update"]
+        nested_spl_policy_config["sgd_momentum"] = 0.9
+        rllib_config["nested_policies"] = nested_policies_config
 
     return hp, rllib_config, env_config, stop
 

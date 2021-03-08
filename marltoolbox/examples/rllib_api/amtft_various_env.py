@@ -94,6 +94,7 @@ def get_hyperparameters(debug, train_n_replicates=None,
         "temperature_schedule": False,
         "jitter": 0.05,
         "hiddens": [64],
+        "base_lr": 0.01,
 
         # If not in self play then amTFT will be evaluated against a naive selfish policy
         "self_play": True,
@@ -142,7 +143,6 @@ def modify_hyperparams_for_the_selected_env(hp):
 
     if "IteratedPrisonersDilemma" in hp["env"]:
         hp["n_epi"] = 10 if hp["debug"] else 400
-        hp["base_lr"] = 0.01
         hp["x_limits"] = (-3.5, 0.5)
         hp["y_limits"] = (-3.5, 0.5)
         hp["utilitarian_filtering_threshold"] = -2.5
@@ -153,16 +153,11 @@ def modify_hyperparams_for_the_selected_env(hp):
         hp["x_limits"] = (-11.0, 4.5)
         hp["y_limits"] = (-11.0, 4.5)
         hp["use_adam"] = True
-        if hp["use_adam"]:
-            hp["base_lr"] = 0.04
-        else:
-            hp["base_lr"] = 0.01 / 5
         hp["utilitarian_filtering_threshold"] = None
         hp["env"] = IteratedAsymChicken
         raise NotImplementedError("utilitarian_filtering_threshold must have a value")
     elif "IteratedAsymBoS" in hp["env"]:
         hp["n_epi"] = 10 if hp["debug"] else 800
-        hp["base_lr"] = 0.01
         hp["x_limits"] = (-0.1, 4.1)
         hp["y_limits"] = (-0.1, 4.1)
         hp["utilitarian_filtering_threshold"] = 3.2
@@ -170,7 +165,7 @@ def modify_hyperparams_for_the_selected_env(hp):
     elif "CoinGame" in hp["env"]:
         hp["n_epi"] = 10 if hp["debug"] else 4000
         hp["n_steps_per_epi"] = 20 if hp["debug"] else 100
-        hp["base_lr"] = 0.1
+        hp["base_lr"] *= 10
         if "AsymCoinGame" in hp["env"]:
             hp["x_limits"] = (-0.5, 3.0)
             hp["y_limits"] = (-1.1, 0.6)

@@ -61,6 +61,7 @@ def get_hyperparameters(debug, env):
         "debit_threshold": 4.0,
         "jitter": 0.05,
         "hiddens": [64],
+        "base_lr": 0.01,
 
         "env": "IteratedPrisonersDilemma",
         # "env": "IteratedAsymBoS",

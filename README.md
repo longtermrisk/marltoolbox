@@ -122,7 +122,7 @@ gcloud compute ssh {replace-by-instance-name}
 <details>
 
 <summary>
-(Optional) Do some basic upgrade and install some basic requirements (e.g. needed on a new VM)
+(Usually optional) Do some basic upgrade and install some basic requirements (e.g. needed on a new VM)
 </summary>
 
 ```bash
@@ -154,7 +154,7 @@ https://docs.conda.io/projects/conda/en/latest/user-guide/install/linux.html
 	conda list
 
 # Create a virtual environment:
-conda create -n marltoolbox python=3.8.5
+conda create -y -n marltoolbox python=3.8.5
 conda activate marltoolbox
 pip install --upgrade pip
 ```
