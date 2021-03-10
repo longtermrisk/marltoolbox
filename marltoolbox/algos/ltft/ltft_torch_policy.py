@@ -66,20 +66,29 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
     def __init__(self, observation_space, action_space, config, **kwargs):
 
         super().__init__(observation_space, action_space, config,
-                         after_init_nested=(lambda policy: [torch.nn.init.normal_(p, mean=0.0, std=0.1)
-                                                            for p in policy.model.parameters()]),
+                         after_init_nested=_init_weights_fn,
                          **kwargs)
 
-        self.percentile_for_likelihood_test = config['percentile_for_likelihood_test']
-        self.punishment_time = config['punishment_time']
-        self.min_coop_epi_after_punishing = config['min_coop_epi_after_punishing']
-        self.defection_threshold = config['defection_threshold']
-        self.average_defection_value = config['average_defection_value'],
-        self.average_defection_value_len = config['average_defection_value_len']
-        self.use_last_step_for_search = config['use_last_step_for_search']
-        self.length_of_history = config['length_of_history']
-        self.n_steps_in_bootstrap_replicates = config['n_steps_in_bootstrap_replicates']
-        self.n_bootstrap_replicates = config['n_bootstrap_replicates']
+        self.percentile_for_likelihood_test = \
+            config['percentile_for_likelihood_test']
+        self.punishment_time = \
+            config['punishment_time']
+        self.min_coop_epi_after_punishing = \
+            config['min_coop_epi_after_punishing']
+        self.defection_threshold = \
+            config['defection_threshold']
+        self.average_defection_value = \
+            config['average_defection_value'],
+        self.average_defection_value_len = \
+            config['average_defection_value_len']
+        self.use_last_step_for_search = \
+            config['use_last_step_for_search']
+        self.length_of_history = \
+            config['length_of_history']
+        self.n_steps_in_bootstrap_replicates = \
+            config['n_steps_in_bootstrap_replicates']
+        self.n_bootstrap_replicates = \
+            config['n_bootstrap_replicates']
 
         assert len(self.algorithms) == 4, str(len(self.algorithms))
         self.opp_policy_from_supervised_learning = True
@@ -137,19 +146,25 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         assert len(obs_batch) == 1, "LE only works with sampling one step at a time"
 
-        actions, state_out, extra_fetches = super().compute_actions(obs_batch, state_batches, prev_action_batch,
-                                                                    prev_reward_batch, info_batch, episodes, explore,
-                                                                    timestep, **kwargs)
+        actions, state_out, extra_fetches = super().compute_actions(
+            obs_batch, state_batches, prev_action_batch,
+            prev_reward_batch, info_batch, episodes, explore,
+            timestep, **kwargs)
 
-        extra_fetches['punishing'] = [self.active_algo_idx == self.PUNITIVE_POLICY_IDX for _ in obs_batch]
+        extra_fetches['punishing'] = [self._is_punishing() for _ in obs_batch]
 
         return actions, [], extra_fetches
 
+    def _is_punishing(self):
+        return self.active_algo_idx == self.PUNITIVE_POLICY_IDX
+
     @override(hierarchical.HierarchicalTorchPolicy)
     def learn_on_batch(self, samples: SampleBatch):
+
         learner_stats = {"learner_stats": {}}
 
-        nested_policies, policy_to_train = self._get_policies_idx_to_train_with_current_batch()
+        nested_policies, policy_to_train = \
+            self._get_policies_idx_to_train_with_current_batch()
         if len(nested_policies) == 0:
             return learner_stats
         logging.debug(f"nested_policies {nested_policies}")
@@ -163,12 +178,10 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
             samples_copy = self._modify_batch_for_policy(policy_n, samples_copy)
 
             if len(samples_copy[samples_copy.ACTIONS]) > 0:
-                learner_stats["learner_stats"][f"learner_stats_algo{policy_n}"] = algo.learn_on_batch(samples_copy)
-                # self._to_log[f'algo{policy_n}_cur_lr'] = algo.cur_lr
-            # For debugging purpose log the true lr (to be compared to algo.cur_lr)
-            # for j, opt in enumerate(algo._optimizers):
-            #     self._to_log[f"algo_{policy_n}_{j}_lr"] = [p["lr"] for p in
-            #     opt.param_groups][0]
+                learner_stats["learner_stats"][f"learner_stats_algo{policy_n}"] = \
+                    algo.learn_on_batch(samples_copy)
+
+        self._log_learning_rates()
 
         return learner_stats
 
@@ -220,8 +233,11 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
 
     def on_episode_end(self):
         if self.n_steps_since_start >= self.length_of_history + self.WARMUP_LENGTH:
-            percentile_value = self._compare_log_likelihood_on_boostrapped_sequences(self.data_queue)
-            self._update_defection_metric(epi_defection_metric=-percentile_value)
+            delta_log_likelihood_coop_at_chosen_percentile = \
+                self._compare_log_likelihood_on_boostrapped_sequences(
+                    self.data_queue)
+            self._update_defection_metric(
+                epi_defection_metric=-delta_log_likelihood_coop_at_chosen_percentile)
 
         if self.remaining_punishing_time <= - (self.min_coop_epi_after_punishing - 1):
             if self.defection_metric > self.defection_threshold:
@@ -298,21 +314,31 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
 
         log_lik_defect = bstrap_replts_data[:, :, 1].sum(axis=1)
 
-        # Defect if in more than 0.95 of the replicates, the actual policy is more likely than the simulated coop policy
-        log_lik_check_coop = log_lik_cooperate - log_lik_defect
-        assert len(log_lik_check_coop) == self.n_bootstrap_replicates
-        percentile_value = np.percentile(log_lik_check_coop, self.percentile_for_likelihood_test,
-                                         interpolation="linear")
-        percentile_0_5_value = np.percentile(log_lik_check_coop, 50, interpolation="linear")
+        # Defect if in more than 0.95 of the replicates,
+        # the actual policy is more likely than the simulated coop policy
+        delta_log_likelihood_coop = log_lik_cooperate - log_lik_defect
+        assert len(delta_log_likelihood_coop) == self.n_bootstrap_replicates
+        delta_log_likelihood_coop_at_chosen_percentile = np.percentile(
+            delta_log_likelihood_coop,
+            self.percentile_for_likelihood_test,
+            interpolation="linear")
+        delta_log_likelihood_coop_at_percentile_50 = np.percentile(
+            delta_log_likelihood_coop,
+            50,
+            interpolation="linear")
 
         if log:
             self._to_log.update({
-                "percentile_value": percentile_value,
-                "percentile_0_5_value": percentile_0_5_value,
-                "log_lik_check_coop_std": log_lik_check_coop.std(),
-                "log_lik_check_coop_mean": log_lik_check_coop.mean()
+                "delta_log_likelihood_coop_at_chosen_percentile":
+                    delta_log_likelihood_coop_at_chosen_percentile,
+                "delta_log_likelihood_coop_at_percentile_50":
+                    delta_log_likelihood_coop_at_percentile_50,
+                "delta_log_likelihood_coop_std":
+                    delta_log_likelihood_coop.std(),
+                "delta_log_likelihood_coop_mean":
+                    delta_log_likelihood_coop.mean()
             })
-        return percentile_value
+        return delta_log_likelihood_coop_at_chosen_percentile
 
     def _update_defection_metric(self, epi_defection_metric):
         self.defection_carac_queue.append(epi_defection_metric)
@@ -433,3 +459,8 @@ class LTFTCallbacks(DefaultCallbacks):
         else:
             postprocessed_batch.data['being_punished'] = \
                 [False] * len(postprocessed_batch[postprocessed_batch.OBS])
+
+
+def _init_weights_fn(policy):
+    return [torch.nn.init.normal_(p, mean=0.0, std=0.1)
+            for p in policy.model.parameters()]

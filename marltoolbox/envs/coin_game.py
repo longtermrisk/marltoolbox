@@ -65,7 +65,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         self.both_players_can_pick_the_same_coin = \
             config.get("both_players_can_pick_the_same_coin", True)
         self.same_obs_for_each_player = \
-            config.get("same_obs_for_each_player", False)
+            config.get("same_obs_for_each_player", True)
 
     @override(gym.Env)
     def seed(self, seed=None):

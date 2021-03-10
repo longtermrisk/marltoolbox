@@ -13,8 +13,7 @@ torch, nn = try_import_torch()
 from marltoolbox.envs.matrix_sequential_social_dilemma import \
     IteratedPrisonersDilemma
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
-from marltoolbox.algos import ltft
-from marltoolbox.algos.ltft.utils import MyDQNTorchPolicy
+from marltoolbox.algos import ltft, augmented_dqn
 from marltoolbox.utils import log, miscellaneous, exploration, postprocessing
 from marltoolbox.envs.utils.wrappers import \
     add_RewardUncertaintyEnvClassWrapper
@@ -23,13 +22,15 @@ from marltoolbox.examples.rllib_api.amtft_various_env import \
 from marltoolbox.algos.exploiters.influence_evader import \
     InfluenceEvaderTorchPolicy
 from marltoolbox.utils.postprocessing import ADD_UTILITARIAN_WELFARE
+from marltoolbox.scripts.aggregate_and_plot_tensorboard_data import \
+    add_summary_plots
 
 
 def main(debug, env=None, train_n_replicates=None):
     hparameters, exp_name = get_hyparameters(debug, env, train_n_replicates)
 
     rllib_config, env_config, stop = get_rllib_config(hparameters, debug)
-
+    print("rllib_config['gamma']", rllib_config['gamma'])
     ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
 
     tune_analysis_self_play = train_in_self_play(
@@ -45,9 +46,9 @@ def main(debug, env=None, train_n_replicates=None):
 
 def get_hyparameters(debug, env=None, train_n_replicates=None):
     if debug:
-        train_n_replicates = 1
+        train_n_replicates = 2
     elif train_n_replicates is None:
-        train_n_replicates = 1
+        train_n_replicates = 4
 
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("LTFT")
@@ -56,7 +57,7 @@ def get_hyparameters(debug, env=None, train_n_replicates=None):
         "n_epi": 10 if debug else 200,
         "n_steps_per_epi": 20,
         "bs_epi_mul": 4,
-        "base_lr": 0.04,
+        "base_lr": 0.01,
         "spl_lr_mul": 10.0,
         "seeds": seeds,
         "debug": debug,
@@ -67,11 +68,11 @@ def get_hyparameters(debug, env=None, train_n_replicates=None):
         # "env": "CoinGame",
         "reward_uncertainty_std": 0.0,  # 0.1,
 
-        # "against_evader_exploiter": None,
-        "against_evader_exploiter": {
-            "start_exploit": 0.50,
-            "copy_weights_delay": 0.10,
-        },
+        "against_evader_exploiter": None,
+        # "against_evader_exploiter": {
+        #     "start_exploit": 0.50,
+        #     "copy_weights_delay": 0.10,
+        # },
 
     }
 
@@ -80,17 +81,22 @@ def get_hyparameters(debug, env=None, train_n_replicates=None):
 
     hparameters = modify_hyperparams_for_the_selected_env(hparameters)
 
-    hparameters["gamma"] = 0.5
-    hparameters["last_exploration_temp_value"] = 0.2
-    hparameters["temperature_schedule"] = PiecewiseSchedule(
-        endpoints=[
-            (0, 2.0),
-            (int(hparameters["n_steps_per_epi"] * hparameters["n_epi"] *
-                 0.50), 0.2),
-            (int(hparameters["n_steps_per_epi"] * hparameters["n_epi"] * 0.75),
-             hparameters["last_exploration_temp_value"])],
-        outside_value=hparameters["last_exploration_temp_value"],
-        framework="torch")
+    if hparameters["env"] in (CoinGame, AsymCoinGame):
+        hparameters["n_steps_per_epi"] = 20
+        hparameters["gamma"] = 0.5
+        hparameters["last_exploration_temp_value"] = 0.2
+        hparameters["temperature_schedule"] = PiecewiseSchedule(
+            endpoints=[
+                (0, 2.0),
+                (int(hparameters["n_steps_per_epi"] * hparameters["n_epi"] *
+                     0.15), 1.0),
+                (int(hparameters["n_steps_per_epi"] * hparameters["n_epi"] *
+                     0.50), 0.5),
+                (int(hparameters["n_steps_per_epi"] * hparameters["n_epi"] *
+                     0.75),
+                 hparameters["last_exploration_temp_value"])],
+            outside_value=hparameters["last_exploration_temp_value"],
+            framework="torch")
 
     return hparameters, exp_name
 
@@ -137,7 +143,7 @@ def get_rllib_config(hp: dict, debug):
         # not affect learning, only the length of iterations.
         "timesteps_per_iteration": hp["n_steps_per_epi"],
         # Update the target network every `target_network_update_freq` steps.
-        "target_network_update_freq": hp["n_steps_per_epi"],
+        "target_network_update_freq": 10 * hp["n_steps_per_epi"],
         # === Replay buffer ===
         # Size of the replay buffer. Note that if async_updates is set, then
         # each worker will have a replay buffer of this size.
@@ -161,8 +167,8 @@ def get_rllib_config(hp: dict, debug):
 
         "gamma": hp["gamma"],
         "min_iter_time_s":
-            0.0 if debug else
-            10.0 if hp["env"] in (CoinGame, AsymCoinGame) else 1.0,
+            0.0 if debug else 0.0,
+        # 10.0 if hp["env"] in (CoinGame, AsymCoinGame) else 1.0,
         "seed": tune.grid_search(hp["seeds"]),
 
         # === Optimization ===
@@ -263,7 +269,7 @@ def modify_config_for_coin_game(hp, rllib_config, env_config, stop):
         })
 
         nested_policies_config = rllib_config["nested_policies"]
-        nested_spl_policy_config= nested_policies_config[3]["config_update"]
+        nested_spl_policy_config = nested_policies_config[3]["config_update"]
         nested_spl_policy_config["sgd_momentum"] = 0.9
         rllib_config["nested_policies"] = nested_policies_config
 
@@ -275,6 +281,12 @@ def train_in_self_play(rllib_config, stop, exp_name):
         ltft.LTFTTrainer, config=rllib_config,
         verbose=1, checkpoint_freq=0, stop=stop,
         checkpoint_at_end=True, name=exp_name)
+
+    add_summary_plots(main_path=os.path.join("~/ray_results/", exp_name),
+                      plot_keys=ltft.PLOT_KEYS,
+                      plot_assemble_tags_in_one_plot=ltft.PLOT_ASSEMBLRE_TAGS,
+                      )
+
     return tune_analysis_self_play
 
 
@@ -305,7 +317,7 @@ def set_config_to_use_evader_exploiter(rllib_config, env_config, hp):
     exploiter_hp = hp["against_evader_exploiter"]
     n_steps_during_training = hp["n_epi"] * hp["n_steps_per_epi"]
 
-    MyCoopDQNTorchPolicy = MyDQNTorchPolicy.with_updates(
+    MyCoopDQNTorchPolicy = augmented_dqn.MyDQNTorchPolicy.with_updates(
         postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
             postprocessing.welfares_postprocessing_fn(),
             postprocess_nstep_and_prio
@@ -321,7 +333,7 @@ def set_config_to_use_evader_exploiter(rllib_config, env_config, hp):
             # You need to provide the policy class for every nested Policies
             {"Policy_class": MyCoopDQNTorchPolicy,
              "config_update": {ADD_UTILITARIAN_WELFARE: True}},
-            {"Policy_class": MyDQNTorchPolicy,
+            {"Policy_class": augmented_dqn.MyDQNTorchPolicy,
              "config_update": {}}
         ],
     }

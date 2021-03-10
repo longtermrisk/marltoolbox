@@ -17,9 +17,10 @@ def test_reset():
         assert_logger_buffer_size_two_players(env, n_steps=0)
 
 
-def init_env(max_steps, env_class, seed=None):
+def init_env(max_steps, env_class, seed=None, same_obs_for_each_player=True):
     config = {
         "max_steps": max_steps,
+        "same_obs_for_each_player": same_obs_for_each_player,
     }
     env = env_class(config)
     env.seed(seed)
@@ -230,7 +231,8 @@ def test_observations_are_invariant_to_the_player_trained():
     p_row_act = [0, 1, 1, 0]
     p_col_act = [0, 1, 0, 1]
     max_steps = 4
-    env_all = [init_env(max_steps, env_class) for env_class in ENVS]
+    env_all = [init_env(max_steps, env_class, same_obs_for_each_player=False)
+               for env_class in ENVS]
     n_steps = 4
 
     for env in env_all:

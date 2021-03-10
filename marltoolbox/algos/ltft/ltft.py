@@ -1,35 +1,32 @@
 import copy
-
 import logging
 from typing import List
 
-from torch.nn import CrossEntropyLoss
-
-
-from ray.rllib.utils.typing import PolicyID, SampleBatchType
-from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
-from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
-from ray.rllib.execution.train_ops import UpdateTargetNetwork
-from ray.util.iter import LocalIterator
-from ray.rllib.utils import merge_dicts
-from ray.rllib.agents.dqn import DQNTorchPolicy, DQNTrainer
-from ray.rllib.agents.dqn.dqn import calculate_rr_weights
+from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.dqn.dqn import DEFAULT_CONFIG as DQN_DEFAULT_CONFIG
+from ray.rllib.agents.dqn.dqn import calculate_rr_weights
 from ray.rllib.agents.dqn.dqn import validate_config as validate_config_dqn
-from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.train_ops import TrainOneStep
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.concurrency_ops import Concurrently
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.train_ops import UpdateTargetNetwork
+from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.schedules import PiecewiseSchedule
+from ray.rllib.utils.typing import PolicyID, SampleBatchType
+from ray.rllib.utils.typing import TrainerConfigDict
+from ray.util.iter import LocalIterator
+from torch.nn import CrossEntropyLoss
 
 from marltoolbox.algos import hierarchical
-from marltoolbox.algos.supervised_learning import SPLTorchPolicy
 from marltoolbox.algos.ltft.ltft_torch_policy import \
     LTFTCallbacks, LTFTTorchPolicy
-from marltoolbox.algos.ltft.utils import MyDQNTorchPolicy, sgd_optimizer_spl
-from ray.rllib.utils.schedules import PiecewiseSchedule
+from marltoolbox.algos.augmented_dqn import MyDQNTorchPolicy
+from marltoolbox.algos.supervised_learning import MySPLTorchPolicy
 from marltoolbox.utils import log, miscellaneous, exploration
 
 logger = logging.getLogger(__name__)
@@ -37,97 +34,129 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG = merge_dicts(hierarchical.DEFAULT_CONFIG,
                              DQN_DEFAULT_CONFIG)
 DEFAULT_CONFIG.update({
-        # Percentile to use when performing the likelihood test on the
-        # hypothesis that the opponent is cooperating.
-        # If the observes behavior is below this percentile, then consider that
-        # the opponent is cooperative.
-        "percentile_for_likelihood_test": 95,
-        # Number of episode during which to punish after detecting that the
-        # opponent was not cooperating during the last episode
-        "punishment_time": 1,
-        # Min number of epi during which to cooperate after stopping punishment
-        "min_coop_epi_after_punishing": 0,
-        # Option to add some bias to the likelihood check.
-        "defection_threshold": 0.0,
-        # Average the defection value over several episodes
-        "average_defection_value": True,
-        "average_defection_value_len": 20,
-        "use_last_step_for_search": True,
-        # Length of the history (n of steps) to sample from to simulate the
-        # opponent
-        "length_of_history": 200,
-        # Number of steps sampled to assemble an episode simulating the opponent
-        # behavior
-        "n_steps_in_bootstrap_replicates": 20,
-        # Number of replicates of the simulation of the opponent behavior
-        "n_bootstrap_replicates": 50,
+    # Percentile to use when performing the likelihood test on the
+    # hypothesis that the opponent is cooperating.
+    # If the observes behavior is below this percentile, then consider that
+    # the opponent is cooperative.
+    "percentile_for_likelihood_test": 95,
+    # Number of episode during which to punish after detecting that the
+    # opponent was not cooperating during the last episode
+    "punishment_time": 1,
+    # Min number of epi during which to cooperate after stopping punishment
+    "min_coop_epi_after_punishing": 0,
+    # Option to add some bias to the likelihood check.
+    "defection_threshold": 0.0,
+    # Average the defection value over several episodes
+    "average_defection_value": True,
+    "average_defection_value_len": 20,
+    "use_last_step_for_search": True,
+    # Length of the history (n of steps) to sample from to simulate the
+    # opponent
+    "length_of_history": 200,
+    # Number of steps sampled to assemble an episode simulating the opponent
+    # behavior
+    "n_steps_in_bootstrap_replicates": 20,
+    # Number of replicates of the simulation of the opponent behavior
+    "n_bootstrap_replicates": 50,
 
-        "callbacks": miscellaneous.merge_callbacks(
-            LTFTCallbacks,
-            log.get_logging_callbacks_class()),
+    "callbacks": miscellaneous.merge_callbacks(
+        LTFTCallbacks,
+        log.get_logging_callbacks_class()),
 
-        "sgd_momentum": 0.9,
-        'nested_policies': [
-            # Here the trainer need to be a DQNTrainer to provide the config
-            # for the 3 DQNTorchPolicy
-            {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
-            {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
-            {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
-            {"Policy_class": SPLTorchPolicy.with_updates(
-                optimizer_fn=sgd_optimizer_spl),
-             "config_update": {
-                "learn_action": True,
-                "learn_reward": False,
-                "sgd_momentum": 0.75,
-                "explore": False,
-                "timesteps_per_iteration": None,  # To fill
-                # === Optimization ===
-                # Learning rate for adam optimizer
-                "lr": None,  # To fill
-                # Learning rate schedule
-                "lr_schedule": [(0, None),
-                                (None, 1e-12)],  # To fill
-                "loss_fn": CrossEntropyLoss(
-                    weight=None,
-                    size_average=None,
-                    ignore_index=-100,
-                    reduce=None,
-                    reduction='mean')
-            }},
-        ],
+    "sgd_momentum": 0.9,
+    'nested_policies': [
+        # Here the trainer need to be a DQNTrainer to provide the config
+        # for the 3 DQNTorchPolicy
+        {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
+        {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
+        {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
+        {"Policy_class": MySPLTorchPolicy,
+         "config_update": {
+             "learn_action": True,
+             "learn_reward": False,
+             "sgd_momentum": 0.75,
+             "explore": False,
+             "timesteps_per_iteration": None,  # To fill
+             # === Optimization ===
+             # Learning rate for adam optimizer
+             "lr": None,  # To fill
+             # Learning rate schedule
+             "lr_schedule": [(0, None),
+                             (None, 1e-12)],  # To fill
+             "loss_fn": CrossEntropyLoss(),
+         }},
+    ],
 
-        # === Exploration Settings ===
-        # Default exploration behavior, iff `explore`=None is passed into
-        # compute_action(s).
-        # Set to False for no exploration behavior (e.g., for evaluation).
-        "explore": True,
-        # Provide a dict specifying the Exploration object's config.
-        "exploration_config": {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-            # EpsilonGreedy").
-            "type": exploration.SoftQSchedule,
-            # Add constructor kwargs here (if any).
-            "temperature_schedule": PiecewiseSchedule(
-                endpoints=[
-                    (0, 1.0), (0, 0.1)],
-                outside_value=0.1,
-                framework="torch")
-        },
+    # === Exploration Settings ===
+    # Default exploration behavior, iff `explore`=None is passed into
+    # compute_action(s).
+    # Set to False for no exploration behavior (e.g., for evaluation).
+    "explore": True,
+    # Provide a dict specifying the Exploration object's config.
+    "exploration_config": {
+        # The Exploration class to use. In the simplest case, this is the name
+        # (str) of any class present in the `rllib.utils.exploration` package.
+        # You can also provide the python class directly or the full location
+        # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+        # EpsilonGreedy").
+        "type": exploration.SoftQScheduleWtClustering,
+        # Add constructor kwargs here (if any).
+        "clustering_distance": 0.5,
+        "temperature_schedule": PiecewiseSchedule(
+            endpoints=[
+                (0, 1.0), (0, 0.1)],
+            outside_value=0.1,
+            framework="torch")
+    },
 
-        "log_level": "DEBUG",
-    }
+    "log_level": "DEBUG",
+}
 )
 
+PLOT_KEYS = ("policy_reward_mean",
+             "loss",
+             "entropy",
+             "entropy_avg",
+             "td_error",
+             "punish",
+             "likelihood_opponent",
+             "likelihood_approximated_opponent",
+             "_lr",
+             "delta_log_likelihood_coop_mean",
+             "delta_log_likelihood_coop_std",
+             "percentile",
+             "defection",
+             "act_dist_inputs_avg",
+             "q_values_avg")
+
+PLOT_ASSEMBLRE_TAGS = (
+    ("policy_reward_mean",),
+    ("loss", "td_error"),
+    ("entropy_during_eval",),
+    ("entropy_avg",),
+    ("punish",),
+    ("_lr",),
+    ("delta_log_likelihood_coop_mean",),
+    ("delta_log_likelihood_coop_std",),
+    ("delta_log_likelihood_coop_std", "delta_log_likelihood_coop_mean"),
+    ("chosen_percentile",),
+    ("percentile_50",),
+    ("percentile",),
+    ("defection",),
+    ("defection", "chosen_percentile"),
+    ("likelihood_opponent","likelihood_approximated_opponent"),
+    ("act_dist_inputs_avg",),
+    ("q_values_avg",),
+)
+
+# TODO is that really needed this this is specific to the env used
 def prepare_default_config(lr, lr_spl, n_steps_per_epi, n_epi):
     default_config = copy.deepcopy(DEFAULT_CONFIG)
     default_config["exploration_config"]["temperature_schedule"] = \
         PiecewiseSchedule(
-                endpoints=[(0, 1.0), (int(n_steps_per_epi*n_epi*0.75), 0.1)],
-                outside_value=0.1,
-                framework="torch")
+            endpoints=[(0, 1.0), (int(n_steps_per_epi * n_epi * 0.75), 0.1)],
+            outside_value=0.1,
+            framework="torch")
     default_config.update({
         "lr": lr,
         "lr_schedule": [(0, lr),
@@ -234,12 +263,14 @@ def execution_plan(workers: WorkerSet,
 
     return StandardMetricsReporting(train_op, workers, config)
 
+
 def _get_ltft_policies_ids(workers):
     ltft_policies_only = []
     for policy_id, policy in workers.local_worker().policy_map.items():
         if isinstance(policy, LTFTTorchPolicy):
             ltft_policies_only.append(policy)
     return ltft_policies_only
+
 
 class LocalTrainablePolicyModifier:
 
@@ -256,11 +287,13 @@ class LocalTrainablePolicyModifier:
         w.foreach_trainable_policy(self.fn_to_apply)
         return batch
 
+
 def train_pg_only(policy, pid, **kwargs):
     if isinstance(policy, LTFTTorchPolicy):
         policy.train_pg = True
         policy.train_dqn = False
     return policy
+
 
 def train_dqn_only(policy, pid, **kwargs):
     if isinstance(policy, LTFTTorchPolicy):

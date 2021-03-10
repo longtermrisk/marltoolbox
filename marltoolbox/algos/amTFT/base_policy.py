@@ -3,16 +3,16 @@ from collections import Iterable
 import logging
 
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.agents.dqn import DQNTorchPolicy
-from ray.rllib.agents.dqn.dqn_torch_policy import build_q_stats, postprocess_nstep_and_prio
+from ray.rllib.agents.dqn.dqn_torch_policy import postprocess_nstep_and_prio
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils import override
 from typing import List, Union, Optional, Dict, Tuple
 
-from marltoolbox.algos import hierarchical
-from marltoolbox.utils import postprocessing, log, miscellaneous, restore
+from marltoolbox.algos import hierarchical, augmented_dqn
+from marltoolbox.utils import postprocessing, miscellaneous, restore
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ OWN_SELFISH_POLICY_IDX = 1
 OPP_COOP_POLICY_IDX = 2
 OPP_SELFISH_POLICY_IDX = 3
 
-DEFAULT_NESTED_POLICY_SELFISH = DQNTorchPolicy.with_updates(stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats))
+DEFAULT_NESTED_POLICY_SELFISH = augmented_dqn.MyDQNTorchPolicy
 DEFAULT_NESTED_POLICY_COOP = DEFAULT_NESTED_POLICY_SELFISH.with_updates(
         postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
             postprocessing.welfares_postprocessing_fn(add_utilitarian_welfare=True, ),
@@ -66,7 +66,35 @@ DEFAULT_CONFIG = merge_dicts(
             {"Policy_class":DEFAULT_NESTED_POLICY_SELFISH,
              "config_update": {}},
         ],
+        "sgd_momentum": 0.0,
     }
+)
+
+
+PLOT_KEYS = ("policy_reward_mean",
+             "loss",
+             "entropy_during_eval",
+             "entropy_avg",
+             "td_error",
+             "punish",
+             "_lr",
+             "debig",
+             "debit_threshold",
+             "summed_debit",
+             "summed_n_steps_to_punish"
+             )
+
+PLOT_ASSEMBLRE_TAGS = (
+    ("policy_reward_mean",),
+    ("loss", "td_error"),
+    ("entropy_during_eval",),
+    ("entropy_avg",),
+    ("punish",),
+    ("_lr",),
+    ("debig",),
+    ("debit_threshold",),
+    ("summed_debit",),
+    ("summed_n_steps_to_punish",)
 )
 
 
@@ -95,6 +123,7 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
         for algo in self.algorithms:
             algo.model.eval()
 
+    @override(hierarchical.HierarchicalTorchPolicy)
     def compute_actions(self, obs_batch: Union[List[TensorType], TensorType],
             state_batches: Optional[List[TensorType]] = None,
             prev_action_batch: Union[List[TensorType], TensorType] = None,
@@ -140,6 +169,7 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
         else:
             raise ValueError("self.n_steps_to_punish can't be below zero")
 
+    @override(hierarchical.HierarchicalTorchPolicy)
     def learn_on_batch(self, samples: SampleBatch):
 
         working_state_idx = WORKING_STATES.index(self.working_state)
@@ -155,13 +185,15 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
         learner_stats["learner_stats"][f"learner_stats_algo{working_state_idx}"] = algo_to_train.learn_on_batch(
             samples)
 
-        if self.verbose > 0:
-            for j, opt in enumerate(algo_to_train._optimizers):
-                self._to_log[f"algo_{working_state_idx}_{j}_lr"] = [p["lr"]
-                                                                    for p in opt.param_groups][0]
-        self._to_log[f'algo{working_state_idx}_cur_lr'] = algo_to_train.cur_lr
+        # if self.verbose > 0:
+        #     for j, opt in enumerate(algo_to_train._optimizers):
+        #         self._to_log[f"algo_{working_state_idx}_{j}_lr"] = [p["lr"]
+        #                                                             for p in opt.param_groups][0]
+        # self._to_log[f'algo{working_state_idx}_cur_lr'] = algo_to_train.cur_lr
         if self.verbose > 1:
             print(f"learn_on_batch WORKING_STATES {WORKING_STATES[working_state_idx]}, ")
+
+        self._log_learning_rates()
 
         return learner_stats
 

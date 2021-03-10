@@ -1,3 +1,5 @@
+import torch
+
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -5,11 +7,11 @@ from ray.rllib.policy import Policy
 from ray.rllib.policy import build_torch_policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 from typing import Dict, List, Type, Union
 
-torch, _ = try_import_torch()
+from marltoolbox.utils import log, optimizers
+
 
 SPL_DEFAULT_CONFIG = with_common_config({
     "learn_action": True,
@@ -73,7 +75,7 @@ def spl_stats(policy: Policy,
 
     return {
         "cur_lr": policy.cur_lr,
-        "entropy": policy.entropy,
+        "entropy_avg": policy.entropy,
         "err_policy_spl_loss": policy.spl_loss.item(),
     }
 
@@ -99,3 +101,7 @@ SPLTorchPolicy = build_torch_policy(
     mixins=[
         LearningRateSchedule,
     ])
+
+MySPLTorchPolicy = SPLTorchPolicy.with_updates(
+    optimizer_fn=optimizers.sgd_optimizer_spl,
+    stats_fn=log.augment_stats_fn_wt_additionnal_logs(spl_stats))

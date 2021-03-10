@@ -1,68 +1,69 @@
 import copy
-import random
-
 import os
 
 import ray
 from ray import tune
 from ray.rllib.agents import dqn
 from ray.rllib.agents.dqn.dqn_torch_policy import \
-    build_q_stats, postprocess_nstep_and_prio
+    postprocess_nstep_and_prio
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.schedules import PiecewiseSchedule
 
-import torch
-
+from marltoolbox.algos import amTFT
 from marltoolbox.envs import IteratedPrisonersDilemma, IteratedAsymBoS, \
     IteratedAsymChicken, CoinGame, AsymCoinGame
-from marltoolbox.algos import amTFT
 from marltoolbox.utils import exploration, log, \
-    postprocessing, miscellaneous
-from marltoolbox.utils.self_and_cross_perf import SelfAndCrossPlayEvaluator, \
-    SelfAndCrossPlayPlotter
-from marltoolbox.utils.plot import PlotConfig
-from marltoolbox.utils.miscellaneous import load_one_tune_analysis
+    postprocessing, miscellaneous, plot, self_and_cross_perf
 
 
 def main(debug, train_n_replicates=None, filter_utilitarian=None, env=None):
-
     hparams = get_hyperparameters(debug, train_n_replicates,
                                   filter_utilitarian, env)
 
     if hparams["load_plot_data"] is None:
-        ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=hparams["debug"])
+        ray.init(num_cpus=os.cpu_count(),
+                 num_gpus=0,
+                 local_mode=hparams["debug"])
 
         # Train
         if hparams["load_policy_data"] is None:
-            tune_analysis_per_welfare = train_for_each_welfare_function(hparams)
+            tune_analysis_per_welfare = \
+                train_for_each_welfare_function(hparams)
         else:
-            tune_analysis_per_welfare = load_tune_analysis(hparams["load_policy_data"])
+            tune_analysis_per_welfare = \
+                load_tune_analysis(hparams["load_policy_data"])
         # Eval & Plot
-        analysis_metrics_per_mode = evaluate_self_and_cross_perf(tune_analysis_per_welfare, hparams)
+        analysis_metrics_per_mode = \
+            evaluate_self_and_cross_perf(tune_analysis_per_welfare, hparams)
 
         ray.shutdown()
     else:
         tune_analysis_per_welfare = None
         # Plot
-        analysis_metrics_per_mode = evaluate_self_and_cross_perf(tune_analysis_per_welfare, hparams)
+        analysis_metrics_per_mode = \
+            evaluate_self_and_cross_perf(tune_analysis_per_welfare, hparams)
 
     return tune_analysis_per_welfare, analysis_metrics_per_mode
 
+
 def get_hyperparameters(debug, train_n_replicates=None,
                         filter_utilitarian=None, env=None):
-
     if debug:
-        train_n_replicates = 1
+        train_n_replicates = 2
     elif train_n_replicates is None:
         train_n_replicates = 40
 
     n_times_more_utilitarians_seeds = 4
-    n_seeds_to_prepare = train_n_replicates * (1 + n_times_more_utilitarians_seeds)
+    n_seeds_to_prepare = \
+        train_n_replicates * (1 + n_times_more_utilitarians_seeds)
     pool_of_seeds = miscellaneous.get_random_seeds(n_seeds_to_prepare)
     exp_name, _ = log.log_in_current_day_dir("amTFT")
     hparams = {
         "debug": debug,
-        "filter_utilitarian": filter_utilitarian if filter_utilitarian is not None else not debug,
+        "filter_utilitarian":
+            filter_utilitarian
+            if filter_utilitarian is not None
+            else not debug,
         "seeds": pool_of_seeds,
         "train_n_replicates": train_n_replicates,
         "n_times_more_utilitarians_seeds": n_times_more_utilitarians_seeds,
@@ -70,33 +71,33 @@ def get_hyperparameters(debug, train_n_replicates=None,
 
         "load_plot_data": None,
         # Example: "load_plot_data": ".../SelfAndCrossPlay_save.p",
-        # "load_plot_data": ".../amTFT/2021_02_25/16_45_48/2021_02_25/16_56_53/"
-        #                   "SelfAndCrossPlay_save.p",
 
         "load_policy_data": None,
         # "load_policy_data": {
         #     "Util": [
         #         ".../IBP/amTFT/trials/"
-        #         "DQN_AsymCoinGame_5f7a5_00000_0_seed=1614160509_2021-02-24_10-02-16",
+        #         "DQN_AsymCoinGame_...",
         #         ".../IBP/amTFT/trials/"
-        #         "DQN_AsymCoinGame_5f7a5_00001_1_seed=1614160510_2021-02-24_10-02-18"],
+        #         "DQN_AsymCoinGame_..."],
         #     'IA':[
         #         ".../temp/IBP/amTFT/trials/"
-        #         "DQN_AsymCoinGame_5e26b_00000_0_seed=1614160549_2021-02-24_10-16-32",
+        #         "DQN_AsymCoinGame_...",
         #         ".../IBP/amTFT/trials/"
-        #         "DQN_AsymCoinGame_5e26b_00001_1_seed=1614160550_2021-02-24_10-16-34"],
+        #         "DQN_AsymCoinGame_..."],
         # },
 
         "amTFTPolicy": amTFT.amTFTRolloutsTorchPolicy,
-        "welfare_functions": [(postprocessing.WELFARE_INEQUITY_AVERSION, "inequity_aversion"),
-                              (postprocessing.WELFARE_UTILITARIAN, "utilitarian")],
+        "welfare_functions": [
+            (postprocessing.WELFARE_INEQUITY_AVERSION, "inequity_aversion"),
+            (postprocessing.WELFARE_UTILITARIAN, "utilitarian")],
         "bs_epi_mul": 4,
         "temperature_schedule": False,
         "jitter": 0.05,
         "hiddens": [64],
         "base_lr": 0.01,
 
-        # If not in self play then amTFT will be evaluated against a naive selfish policy
+        # If not in self play then amTFT
+        # will be evaluated against a naive selfish policy or an exploiter
         "self_play": True,
         # "self_play": False, # Not tested
 
@@ -107,7 +108,6 @@ def get_hyperparameters(debug, train_n_replicates=None,
         # "env": "AsymCoinGame",
 
         "overwrite_reward": True,
-        "use_adam": False,
         "explore_during_evaluation": True,
 
         # For training speed
@@ -121,16 +121,17 @@ def get_hyperparameters(debug, train_n_replicates=None,
 
     return hparams
 
-def load_tune_analysis(grouped_checkpoints_paths:dict):
+
+def load_tune_analysis(grouped_checkpoints_paths: dict):
     tune_analysis = {}
     for group_name, checkpoints_paths in grouped_checkpoints_paths.items():
-        one_tune_analysis = load_one_tune_analysis(checkpoints_paths)
+        one_tune_analysis = miscellaneous.load_one_tune_analysis(
+            checkpoints_paths)
         tune_analysis[group_name] = one_tune_analysis
     return tune_analysis
 
 
 def modify_hyperparams_for_the_selected_env(hp):
-
     # default values
     hp["last_exploration_temp_value"] = 0.1
     hp["gamma"] = 0.5
@@ -152,10 +153,10 @@ def modify_hyperparams_for_the_selected_env(hp):
         hp["debit_threshold"] = 2.0
         hp["x_limits"] = (-11.0, 4.5)
         hp["y_limits"] = (-11.0, 4.5)
-        hp["use_adam"] = True
         hp["utilitarian_filtering_threshold"] = None
         hp["env"] = IteratedAsymChicken
-        raise NotImplementedError("utilitarian_filtering_threshold must have a value")
+        raise NotImplementedError(
+            "utilitarian_filtering_threshold must have a value")
     elif "IteratedAsymBoS" in hp["env"]:
         hp["n_epi"] = 10 if hp["debug"] else 800
         hp["x_limits"] = (-0.1, 4.1)
@@ -182,8 +183,10 @@ def modify_hyperparams_for_the_selected_env(hp):
         hp["temperature_schedule"] = PiecewiseSchedule(
             endpoints=[
                 (0, 2.0),
-                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.50), 0.1),
-                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.75), hp["last_exploration_temp_value"])],
+                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.50),
+                 0.5),
+                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.75),
+                 hp["last_exploration_temp_value"])],
             outside_value=hp["last_exploration_temp_value"],
             framework="torch")
         hp["debit_threshold"] = 4.0
@@ -194,8 +197,9 @@ def modify_hyperparams_for_the_selected_env(hp):
     else:
         raise NotImplementedError(f'hp["env"]: {hp["env"]}')
 
-    hp["plot_axis_scale_multipliers"] = ((1 / hp["n_steps_per_epi"]),  # for x axis
-                               (1 / hp["n_steps_per_epi"]))  # for y axis
+    hp["plot_axis_scale_multipliers"] = (
+        (1 / hp["n_steps_per_epi"]),  # for x axis
+        (1 / hp["n_steps_per_epi"]))  # for y axis
 
     return hp
 
@@ -204,35 +208,45 @@ def train_for_each_welfare_function(hp):
     tune_analysis_per_welfare = {}
     for welfare_fn, welfare_group_name in hp['welfare_functions']:
         print("==============================================")
-        print("Going to start two_steps_training with welfare function", welfare_fn)
+        print("Going to start two_steps_training with welfare function",
+              welfare_fn)
         if welfare_fn == postprocessing.WELFARE_UTILITARIAN:
             hp = preprocess_utilitarian_config(hp)
-        stop, env_config, trainer_config_update = get_rllib_config(hp, welfare_fn)
+        stop, env_config, trainer_config_update = \
+            get_rllib_config(hp, welfare_fn)
         print("trainer_config_update", trainer_config_update)
+        exp_name = os.path.join(hp["exp_name"], welfare_fn)
         results = amTFT.train_amTFT(stop=stop,
                                     config=trainer_config_update,
-                                    name=hp["exp_name"],
+                                    name=exp_name,
                                     TrainerClass=dqn.DQNTrainer)
         if welfare_fn == postprocessing.WELFARE_UTILITARIAN:
-            results, hp = postprocess_utilitarian_results(results, env_config, hp)
+            results, hp = postprocess_utilitarian_results(results, env_config,
+                                                          hp)
         tune_analysis_per_welfare[welfare_group_name] = results
     return tune_analysis_per_welfare
+
 
 def preprocess_utilitarian_config(hp):
     hp_copy = copy.deepcopy(hp)
     if hp_copy["filter_utilitarian"]:
-        hp_copy['train_n_replicates'] = hp_copy['train_n_replicates'] * hp_copy["n_times_more_utilitarians_seeds"]
+        hp_copy['train_n_replicates'] = \
+            hp_copy['train_n_replicates'] * \
+            hp_copy["n_times_more_utilitarians_seeds"]
     if "CoinGame" in hp["env"].NAME:
         hp_copy['n_steps_per_epi'] = hp_copy['n_steps_per_epi'] // 5
         hp_copy["temperature_schedule"] = PiecewiseSchedule(
             endpoints=[
                 (0, 2.0),
-                (int(hp_copy["n_steps_per_epi"] * hp_copy["n_epi"] * 0.50), 0.1),
-                (int(hp_copy["n_steps_per_epi"] * hp_copy["n_epi"] * 0.75), hp_copy["last_exploration_temp_value"])],
+                (int(hp_copy["n_steps_per_epi"] * hp_copy["n_epi"] * 0.50),
+                 0.1),
+                (int(hp_copy["n_steps_per_epi"] * hp_copy["n_epi"] * 0.75),
+                 hp_copy["last_exploration_temp_value"])],
             outside_value=hp_copy["last_exploration_temp_value"],
             framework="torch")
-        hp_copy["plot_axis_scale_multipliers"] = ((1 / hp_copy["n_steps_per_epi"]),  # for x axis
-                                             (1 / hp_copy["n_steps_per_epi"]))  # for y axis
+        hp_copy["plot_axis_scale_multipliers"] = (
+            (1 / hp_copy["n_steps_per_epi"]),  # for x axis
+            (1 / hp_copy["n_steps_per_epi"]))  # for y axis
     return hp_copy
 
 
@@ -263,8 +277,10 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         # Learning rate for adam optimizer
         "lr": hp["base_lr"],
         # Learning rate schedule
-        "lr_schedule": [(0, hp["base_lr"]),
-                        (int(hp["n_steps_per_epi"] * hp["n_epi"]), hp["base_lr"] / 1e9)],
+        "lr_schedule": [(0,
+                         hp["base_lr"]),
+                        (int(hp["n_steps_per_epi"] * hp["n_epi"]),
+                         hp["base_lr"] / 1e9)],
         # Adam epsilon hyper parameter
         # "adam_epsilon": 1e-8,
         # If not None, clip gradients during optimization at this value
@@ -283,22 +299,23 @@ def get_rllib_config(hp, welfare_fn, eval=False):
 
         # General config
         "framework": "torch",
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        # LE supports only 1 worker only otherwise it would be mixing several opponents trajectories
+        # LE supports only 1 worker only otherwise
+        # it would be mixing several opponents trajectories
         "num_workers": 0,
-        # LE supports only 1 env per worker only otherwise several episodes would be played at the same time
+        # LE supports only 1 env per worker only otherwise
+        # several episodes would be played at the same time
         "num_envs_per_worker": 1,
 
         # Callbacks that will be run during various phases of training. See the
-        # `DefaultCallbacks` class and `examples/custom_metrics_and_callbacks.py`
-        # for more usage information.
+        # `DefaultCallbacks` class and
+        # `examples/custom_metrics_and_callbacks.py` for more usage
+        # information.
         "callbacks": amTFT.get_amTFTCallBacks(
-            additionnal_callbacks=[log.get_logging_callbacks_class(),
-                                   # This only overwrite the reward that is used for training not the one in the metrics
-                                   postprocessing.OverwriteRewardWtWelfareCallback]),
-        # "log_level": "INFO",
-
+            additionnal_callbacks=[
+                log.get_logging_callbacks_class(),
+                # This only overwrite the reward that is used for training
+                # not the one in the metrics
+                postprocessing.OverwriteRewardWtWelfareCallback]),
     }
 
     trainer_config_update.update({
@@ -335,20 +352,27 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         "explore": True,
         # Provide a dict specifying the Exploration object's config.
         "exploration_config": {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # The Exploration class to use. In the simplest case,
+            # this is the name (str) of any class present in the
+            # `rllib.utils.exploration` package.
+            # You can also provide the python class directly or
+            # the full location of your class (e.g.
+            # "ray.rllib.utils.exploration.epsilon_greedy.
             # EpsilonGreedy").
             "type": exploration.SoftQSchedule,
             # Add constructor kwargs here (if any).
-            "temperature_schedule": hp["temperature_schedule"] or PiecewiseSchedule(
-                endpoints=[
-                    (0, 10.0),
-                    (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.33), 1.0),
-                    (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.66), hp["last_exploration_temp_value"])],
-                outside_value=hp["last_exploration_temp_value"],
-                framework="torch"),
+            "temperature_schedule":
+                hp["temperature_schedule"] or
+                PiecewiseSchedule(
+                    endpoints=[
+                        (0, 10.0),
+                        (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.33),
+                         1.0),
+                        (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.66),
+                         hp["last_exploration_temp_value"])],
+                    outside_value=hp["last_exploration_temp_value"],
+                    framework="torch"
+                ),
         },
     })
 
@@ -364,7 +388,7 @@ def get_rllib_config(hp, welfare_fn, eval=False):
 
 def get_env_config(hp):
     if hp["env"] in (IteratedPrisonersDilemma, IteratedAsymChicken,
-    IteratedAsymBoS):
+                     IteratedAsymBoS):
         env_config = {
             "players_ids": ["player_row", "player_col"],
             "max_steps": hp["n_steps_per_epi"],
@@ -440,23 +464,7 @@ def get_policies(hp, env_config, welfare_fn, eval=False):
 
 
 def get_nested_policy_class(hp, welfare_fn):
-    NestedPolicyClass = dqn.DQNTorchPolicy
-
-    get_vars = lambda policy: policy.q_func_vars
-
-    if not hp["use_adam"]:
-        def sgd_optimizer_dqn(policy, config) -> "torch.optim.Optimizer":
-            return torch.optim.SGD(get_vars(policy),
-                                   lr=policy.cur_lr,
-                                   momentum=config["sgd_momentum"])
-
-        NestedPolicyClass = NestedPolicyClass.with_updates(
-            optimizer_fn=sgd_optimizer_dqn)
-
-    if hp["debug"]:
-        NestedPolicyClass = NestedPolicyClass.with_updates(
-            stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats))
-
+    NestedPolicyClass = amTFT.DEFAULT_NESTED_POLICY_SELFISH
     CoopNestedPolicyClass = NestedPolicyClass.with_updates(
         # TODO problem: this prevent to use HP searches on gamma etc.
         postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
@@ -505,38 +513,52 @@ def postprocess_utilitarian_results(results, env_config, hp):
             outside_value=hp_cp["last_exploration_temp_value"],
             framework="torch")
         hp_cp["plot_axis_scale_multipliers"] = ((1 / hp_cp["n_steps_per_epi"]),
-                                             (1 / hp_cp["n_steps_per_epi"]))
+                                                (1 / hp_cp["n_steps_per_epi"]))
     return results, hp_cp
 
 
 def evaluate_self_and_cross_perf(tune_analysis_per_welfare, hp):
     config_eval, env_config, stop, hp_eval = generate_eval_config(hp)
 
-    evaluator = SelfAndCrossPlayEvaluator(exp_name=hp_eval["exp_name"])
+    exp_name = os.path.join(hp_eval["exp_name"], "eval")
+    evaluator = self_and_cross_perf.SelfAndCrossPlayEvaluator(
+        exp_name=exp_name)
     analysis_metrics_per_mode = evaluator.perform_evaluation_or_load_data(
         evaluation_config=config_eval,
         stop_config=stop,
-        policies_to_load_from_checkpoint=copy.deepcopy(env_config["players_ids"]),
+        policies_to_load_from_checkpoint=copy.deepcopy(
+            env_config["players_ids"]),
         tune_analysis_per_exp=tune_analysis_per_welfare,
         TrainerClass=dqn.DQNTrainer,
-        n_cross_play_per_checkpoint=min(5, (hp_eval["train_n_replicates"] * len(hp_eval["welfare_functions"])) - 1),
+        n_cross_play_per_checkpoint=
+        min(5,
+            (hp_eval["train_n_replicates"] *
+             len(hp_eval["welfare_functions"])) - 1),
         to_load_path=hp_eval["load_plot_data"])
 
     if hp["env"] in [CoinGame, AsymCoinGame]:
         background_area_coord = None
     else:
         background_area_coord = hp['env'].PAYOUT_MATRIX
-    plot_config = PlotConfig(xlim=hp_eval["x_limits"], ylim=hp_eval["y_limits"],
-                             markersize=5, alpha=1.0, jitter=hp_eval["jitter"],
-                             xlabel="player 1 payoffs", ylabel="player 2 payoffs",
-                             plot_max_n_points=hp_eval["train_n_replicates"],
-                             # title="cross and same-play performances: " + hp_eval['env'].NAME,
-                             x_scale_multiplier=hp_eval["plot_axis_scale_multipliers"][0],
-                             y_scale_multiplier=hp_eval["plot_axis_scale_multipliers"][1],
-                             background_area_coord=background_area_coord)
-    evaluator.plot_results(analysis_metrics_per_mode, plot_config=plot_config,
-                           x_axis_metric=f"policy_reward_mean/{env_config['players_ids'][0]}",
-                           y_axis_metric=f"policy_reward_mean/{env_config['players_ids'][1]}")
+    plot_config = plot.PlotConfig(
+        xlim=hp_eval["x_limits"],
+        ylim=hp_eval["y_limits"],
+        markersize=5,
+        alpha=1.0,
+        jitter=hp_eval["jitter"],
+        xlabel="player 1 payoffs",
+        ylabel="player 2 payoffs",
+        plot_max_n_points=hp_eval["train_n_replicates"],
+        # title="cross and same-play performances: " + hp_eval['env'].NAME,
+        x_scale_multiplier=hp_eval["plot_axis_scale_multipliers"][0],
+        y_scale_multiplier=hp_eval["plot_axis_scale_multipliers"][1],
+        background_area_coord=background_area_coord
+    )
+    evaluator.plot_results(
+        analysis_metrics_per_mode,
+        plot_config=plot_config,
+        x_axis_metric=f"policy_reward_mean/{env_config['players_ids'][0]}",
+        y_axis_metric=f"policy_reward_mean/{env_config['players_ids'][1]}")
 
     print_inequity_aversion_welfare(env_config, analysis_metrics_per_mode)
 
@@ -573,39 +595,32 @@ def modify_hp_for_evaluation(hp):
 def modify_config_for_evaluation(config_eval, hp, env_config):
     config_eval["explore"] = False
     config_eval["seed"] = None
-    for policy_id in config_eval["multiagent"]["policies"].keys():
-        config_eval["multiagent"]["policies"][policy_id][3]["working_state"] = \
-            "eval_amtft"
+    policies = config_eval["multiagent"]["policies"]
+    for policy_id in policies.keys():
+        policy_config = policies[policy_id][3]
+        policy_config["working_state"] = "eval_amtft"
     if not hp["self_play"]:
         naive_player_id = env_config["players_ids"][-1]
-        config_eval["multiagent"]["policies"][naive_player_id][3]["working_state"] = "eval_naive_selfish"
-
+        naive_player_policy_config = policies[naive_player_id][3]
+        naive_player_policy_config["working_state"] = "eval_naive_selfish"
 
     if hp["explore_during_evaluation"]:
         config_eval["explore"] = (miscellaneous.OVERWRITE_KEY, True)
         config_eval["exploration_config"] = {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-            # EpsilonGreedy").
             "type": "SoftQ",
-            # Add constructor kwargs here (if any).
             "temperature": hp["last_exploration_temp_value"],
         }
 
     if hp["debug"]:
-        for policy_id in config_eval["multiagent"]["policies"].keys():
-            config_eval["multiagent"]["policies"][policy_id][3]["debit_threshold"] = \
-                0.5
-            config_eval["multiagent"]["policies"][policy_id][3]["last_k"] = \
-                hp["n_steps_per_epi"] - 1
-
+        for policy_id in policies.keys():
+            policies[policy_id][3]["debit_threshold"] = 0.5
+            policies[policy_id][3]["last_k"] = hp["n_steps_per_epi"] - 1
 
     return config_eval
 
+
 def print_inequity_aversion_welfare(env_config, analysis_metrics_per_mode):
-    plotter = SelfAndCrossPlayPlotter()
+    plotter = self_and_cross_perf.SelfAndCrossPlayPlotter()
     plotter._reset(
         x_axis_metric=f"nested_policy/{env_config['players_ids'][0]}/worker_0/"
                       f"policy_0/sum_over_epi_inequity_aversion_welfare",
@@ -618,6 +633,7 @@ def print_inequity_aversion_welfare(env_config, analysis_metrics_per_mode):
         x, y = plotter._extract_x_y_points(mode_metric[1])
         print("x", x)
         print("y", y)
+
 
 if __name__ == "__main__":
     debug_mode = True

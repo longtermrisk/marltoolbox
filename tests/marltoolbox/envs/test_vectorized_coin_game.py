@@ -23,7 +23,7 @@ def test_reset():
 
 
 def init_several_env(max_steps, batch_size, grid_size,
-                     same_obs_for_each_player=False):
+                     same_obs_for_each_player=True):
     coin_game = init_env(max_steps, batch_size, VectorizedCoinGame, grid_size,
                          same_obs_for_each_player=same_obs_for_each_player)
     asymm_coin_game = \
@@ -551,7 +551,8 @@ def test_observations_are_invariant_to_the_player_trained_wt_step():
                   None, None, [0, 0], [2, 1], None]
     max_steps, batch_size, grid_size = 10, 52, 3
     n_steps = max_steps
-    envs = init_several_env(max_steps, batch_size, grid_size)
+    envs = init_several_env(max_steps, batch_size, grid_size,
+                            same_obs_for_each_player = False)
 
     batch_deltas = [i % max_steps if i % 2 == 0 else i % max_steps - 1
                     for i in range(batch_size)]
@@ -600,7 +601,8 @@ def test_observations_are_invariant_to_the_player_trained_wt_reset():
                   None, None, [0, 0], [2, 1], None]
     max_steps, batch_size, grid_size = 10, 52, 3
     n_steps = max_steps
-    envs = init_several_env(max_steps, batch_size, grid_size)
+    envs = init_several_env(max_steps, batch_size, grid_size,
+                            same_obs_for_each_player = False)
 
     batch_deltas = [i % max_steps if i % 2 == 0 else i % max_steps - 1
                     for i in range(batch_size)]

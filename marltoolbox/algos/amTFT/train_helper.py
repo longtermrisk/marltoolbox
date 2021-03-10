@@ -1,17 +1,32 @@
+import os
 import ray
 from ray import tune
 from ray.rllib.agents.dqn import DQNTrainer
 
+from marltoolbox.algos import amTFT
 from marltoolbox.utils import miscellaneous, restore
-
+from marltoolbox.scripts.aggregate_and_plot_tensorboard_data import \
+    add_summary_plots
 
 def train_amTFT(stop, config, name, do_not_load=[], TrainerClass=DQNTrainer, **kwargs):
+    selfish_name = os.path.join(name, "selfish")
     tune_analysis_selfish_policies = _train_selfish_policies_inside_amTFT(
-        stop, config, name, TrainerClass, **kwargs)
+        stop, config, selfish_name, TrainerClass, **kwargs)
+    add_summary_plots(main_path=os.path.join("~/ray_results/", selfish_name),
+                      plot_keys=amTFT.PLOT_KEYS,
+                      plot_assemble_tags_in_one_plot=amTFT.PLOT_ASSEMBLRE_TAGS,
+                      )
+
     seed_to_selfish_checkpoints = _extract_selfish_policies_checkpoints(tune_analysis_selfish_policies)
     config = _modify_config_to_load_selfish_policies_in_amTFT(config, do_not_load, seed_to_selfish_checkpoints)
+
+    coop_name = os.path.join(name, "coop")
     tune_analysis_amTFT_policies = _train_cooperative_policies_inside_amTFT(
-        stop, config, name, TrainerClass, **kwargs)
+        stop, config, coop_name, TrainerClass, **kwargs)
+    add_summary_plots(main_path=os.path.join("~/ray_results/", coop_name),
+                      plot_keys=amTFT.PLOT_KEYS,
+                      plot_assemble_tags_in_one_plot=amTFT.PLOT_ASSEMBLRE_TAGS,
+                      )
     return tune_analysis_amTFT_policies
 
 

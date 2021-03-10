@@ -1,5 +1,6 @@
 import copy
 import datetime
+import math
 import numbers
 import os
 import pickle
@@ -7,6 +8,10 @@ import pprint
 import re
 from collections import Iterable
 from typing import Dict, Callable, TYPE_CHECKING
+import logging
+
+import numpy as np
+from scipy.special import softmax
 
 import gym
 from ray.rllib.agents.callbacks import DefaultCallbacks
@@ -19,29 +24,24 @@ from ray.rllib.utils.typing import PolicyID, TensorType
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
 
+logger = logging.getLogger(__name__)
+
 def get_logging_callbacks_class(log_env_step=True,
                                 log_from_policy=True,
-                                log_full_epi=False, log_full_epi_delay=100,
-                                log_weights=False, log_weigths_interval=100):
+                                log_full_epi=False,
+                                log_full_epi_delay=100,
+                                log_weights=False,
+                                log_weigths_interval=100,
+                                add_worker_idx_to_key=False):
     class LoggingCallbacks(DefaultCallbacks):
 
-        def on_episode_step(self, *, worker: "RolloutWorker", base_env: BaseEnv,
-                            episode: MultiAgentEpisode, env_index: int,
+        def on_episode_step(self,
+                            *,
+                            worker: "RolloutWorker",
+                            base_env: BaseEnv,
+                            episode: MultiAgentEpisode,
+                            env_index: int,
                             **kwargs):
-            """Runs on each episode step.
-
-            Args:
-                worker (RolloutWorker): Reference to the current rollout worker.
-                base_env (BaseEnv): BaseEnv running the episode. The underlying
-                    env object can be gotten by calling base_env.get_unwrapped().
-                episode (MultiAgentEpisode): Episode object which contains episode
-                    state. You can use the `episode.user_data` dict to store
-                    temporary data, and `episode.custom_metrics` to store custom
-                    metrics for the episode.
-                env_index (int): The index of the (vectorized) env, which the
-                    episode belongs to.
-                kwargs: Forward compatibility placeholder.
-            """
             if log_env_step:
                 self._add_env_info_to_custom_metrics(worker, episode)
             if log_full_epi and self.log_full_epi_steps:
@@ -70,22 +70,6 @@ def get_logging_callbacks_class(log_env_step=True,
                              policies: Dict[PolicyID, Policy],
                              episode: MultiAgentEpisode, env_index: int,
                              **kwargs):
-            """Callback run on the rollout worker before each episode starts.
-
-            Args:
-                worker (RolloutWorker): Reference to the current rollout worker.
-                base_env (BaseEnv): BaseEnv running the episode. The underlying
-                    env object can be gotten by calling base_env.get_unwrapped().
-                policies (dict): Mapping of policy id to policy objects. In single
-                    agent mode there will only be a single "default" policy.
-                episode (MultiAgentEpisode): Episode object which contains episode
-                    state. You can use the `episode.user_data` dict to store
-                    temporary data, and `episode.custom_metrics` to store custom
-                    metrics for the episode.
-                env_index (int): The index of the (vectorized) env, which the
-                    episode belongs to.
-                kwargs: Forward compatibility placeholder.
-            """
             if log_full_epi:
                 if not hasattr(self, "log_full_epi_step"):
                     self.log_full_epi_steps = True
@@ -101,22 +85,6 @@ def get_logging_callbacks_class(log_env_step=True,
                            policies: Dict[PolicyID, Policy],
                            episode: MultiAgentEpisode, env_index: int,
                            **kwargs):
-            """Runs when an episode is done.
-
-            Args:
-                worker (RolloutWorker): Reference to the current rollout worker.
-                base_env (BaseEnv): BaseEnv running the episode. The underlying
-                    env object can be gotten by calling base_env.get_unwrapped().
-                policies (dict): Mapping of policy id to policy objects. In single
-                    agent mode there will only be a single "default" policy.
-                episode (MultiAgentEpisode): Episode object which contains episode
-                    state. You can use the `episode.user_data` dict to store
-                    temporary data, and `episode.custom_metrics` to store custom
-                    metrics for the episode.
-                env_index (int): The index of the (vectorized) env, which the
-                    episode belongs to.
-                kwargs: Forward compatibility placeholder.
-            """
             if log_full_epi:
                 self.log_full_epi_steps = False
 
@@ -201,7 +169,12 @@ def get_logging_callbacks_class(log_env_step=True,
             for worker_idx, to_log_list in enumerate(to_log_list_list):
                 for to_log in to_log_list:
                     for k, v in to_log.items():
-                        key = f"{k}/worker_{worker_idx}"
+
+                        if add_worker_idx_to_key:
+                            key = f"{k}/worker_{worker_idx}"
+                        else:
+                            key = k
+
                         if key not in result.keys():
                             result[key] = v
                         else:
@@ -215,7 +188,7 @@ def get_logging_callbacks_class(log_env_step=True,
 def get_log_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
     """
     Gets the to_log var from a policy and rename its keys,
-    adding the policy_id as a prefix.
+    adding the policy_id as a suffix.
     """
     to_log = {}
     if hasattr(policy, "to_log"):
@@ -223,6 +196,32 @@ def get_log_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
             to_log[f"{k}/{policy_id}"] = v
         policy.to_log = {}
     return to_log
+
+
+def augment_stats_fn_wt_additionnal_logs(
+        stats_function: Callable[[Policy, SampleBatch], Dict[str, TensorType]]):
+    """
+    Return a function executing the given function and adding additional logs about the TRAINING BATCH
+    (not the actual actions)
+
+    :param stats_function: the base stats function to use (args: [Policy, SampleBatch])
+    :return: a function executing the stats_function and then adding additional logs
+    """
+
+    def wt_additional_info(policy: Policy, train_batch: SampleBatch) -> Dict[
+        str, TensorType]:
+        stats_to_log = stats_function(policy, train_batch)
+
+        # Additional logs
+        # Log action probabilities
+        if policy.config["framework"] == "torch":
+            stats_to_log.update(_log_action_prob_pytorch(policy, train_batch))
+        else:
+            logger.warning("wt_additional_info workin only for PyTorch")
+
+        return stats_to_log
+
+    return wt_additional_info
 
 
 def _log_action_prob_pytorch(policy: Policy, train_batch: SampleBatch) -> Dict[
@@ -237,62 +236,107 @@ def _log_action_prob_pytorch(policy: Policy, train_batch: SampleBatch) -> Dict[
     # TODO add entropy
     to_log = {}
     if isinstance(policy.action_space, gym.spaces.Discrete):
-        # print("train_batch", train_batch)
-        # DO not support nested discrete spaces
-        assert train_batch["action_dist_inputs"].dim() == 2
 
-        action_dist_inputs_avg = train_batch["action_dist_inputs"].mean(axis=0)
-        action_dist_inputs_single = train_batch["action_dist_inputs"][-1, :]
+        assert train_batch["action_dist_inputs"].dim() == 2, \
+            "Do not support nested discrete spaces"
 
-        for action_i in range(policy.action_space.n):
-            to_log[f"act_dist_inputs_avg_{action_i}"] = action_dist_inputs_avg[
-                action_i]
-            to_log[f"act_dist_inputs_single_{action_i}"] = \
-                action_dist_inputs_single[action_i]
-
-        assert train_batch["action_prob"].dim() == 1
-        to_log[f"action_prob_avg"] = train_batch["action_prob"].mean(axis=0)
-        to_log[f"action_prob_single"] = train_batch["action_prob"][-1]
-
-        if "q_values" in train_batch.keys():
-            assert train_batch["q_values"].dim() == 2
-            q_values_avg = train_batch["q_values"].mean(axis=0)
-            q_values_single = train_batch["q_values"][-1, :]
-
-            for action_i in range(policy.action_space.n):
-                to_log[f"q_values_avg_{action_i}"] = q_values_avg[action_i]
-                to_log[f"q_values_single_{action_i}"] = q_values_single[
-                    action_i]
-
-
+        to_log = _add_action_distrib_to_log(policy, train_batch, to_log)
+        to_log = _add_entropy_to_log(train_batch, to_log)
+        to_log = _add_proba_of_action_played(train_batch, to_log)
+        to_log = _add_q_values(policy, train_batch, to_log)
     else:
         raise NotImplementedError()
     return to_log
 
+def _add_action_distrib_to_log(policy, train_batch, to_log):
+    action_dist_inputs_avg = train_batch["action_dist_inputs"].mean(axis=0)
+    action_dist_inputs_single = train_batch["action_dist_inputs"][-1, :]
+    for action_i in range(policy.action_space.n):
+        to_log[f"act_dist_inputs_avg_{action_i}"] = action_dist_inputs_avg[
+            action_i]
+        to_log[f"act_dist_inputs_single_{action_i}"] = \
+            action_dist_inputs_single[action_i]
+    return to_log
 
-def stats_fn_wt_additionnal_logs(
-        stats_function: Callable[[Policy, SampleBatch], Dict[str, TensorType]]):
-    """
-    Return a function executing the given function and adding additional logs about the TRAINING BATCH
-    (not the actual actions)
+def _add_entropy_to_log(train_batch, to_log):
+    actions_proba_batch = train_batch["action_dist_inputs"]
 
-    :param stats_function: the base stats function to use (args: [Policy, SampleBatch])
-    :return: a function executing the stats_function and then adding additional logs
-    """
+    if _is_cuda_tensor(actions_proba_batch):
+        actions_proba_batch = actions_proba_batch.cpu()
 
-    def wt_additional_info(policy: Policy, train_batch: SampleBatch) -> Dict[
-        str, TensorType]:
-        to_log = stats_function(policy, train_batch)
+    if "q_values" in train_batch.keys():
+        # Entropy of q_values used while playing in the environment
+        # Theses q values has been transformed by the exploration
+        actions_proba_batch = _convert_q_values_batch_to_proba_batch(
+            actions_proba_batch)
 
-        # Additional logs
-        # Log action probabilities
-        if policy.config["framework"] == "torch":
-            to_log.update(_log_action_prob_pytorch(policy, train_batch))
+    entropy_avg = _entropy_batch_proba_distrib(
+        actions_proba_batch)
+    entropy_single = _entropy_proba_distrib(
+        actions_proba_batch[-1, :])
+    to_log[f"entropy_during_eval_avg"] = entropy_avg
+    to_log[f"entropy_during_eval_single"] = entropy_single
 
-        return to_log
+    return to_log
 
-    return wt_additional_info
+def _is_cuda_tensor(tensor):
+    return hasattr(tensor, "is_cuda") and tensor.is_cuda
 
+def _entropy_batch_proba_distrib(proba_distrib_batch):
+    assert len(proba_distrib_batch) > 0
+    entropy_batch = [
+        _entropy_proba_distrib(proba_distrib_batch[batch_idx, ...])
+        for batch_idx in range(len(proba_distrib_batch))
+    ]
+    mean_entropy = sum(entropy_batch) / len(entropy_batch)
+    return mean_entropy
+
+
+def _entropy_proba_distrib(proba_distrib):
+    return sum([_entropy_proba(proba) for proba in proba_distrib])
+
+
+def _entropy_proba(proba):
+    assert proba >= 0.0, f"proba currently is {proba}"
+    if proba == 0.0:
+        return 0.0
+    else:
+        return -proba * math.log(proba, 2)
+
+
+def _add_proba_of_action_played(train_batch, to_log):
+    assert train_batch["action_prob"].dim() == 1
+    to_log[f"action_prob_avg"] = train_batch["action_prob"].mean(axis=0)
+    to_log[f"action_prob_single"] = train_batch["action_prob"][-1]
+    return to_log
+
+def _convert_q_values_batch_to_proba_batch(q_values_batch):
+    return softmax(q_values_batch, axis=1)
+
+
+def _add_q_values(policy, train_batch, to_log):
+    if "q_values" in train_batch.keys():
+        assert train_batch["q_values"].dim() == 2
+        q_values_avg = train_batch["q_values"].mean(axis=0)
+        q_values_single = train_batch["q_values"][-1, :]
+        for action_i in range(policy.action_space.n):
+            to_log[f"q_values_avg_act{action_i}"] = q_values_avg[action_i]
+            to_log[f"q_values_single_act{action_i}"] = q_values_single[
+                action_i]
+    return to_log
+
+def _compute_entropy_from_raw_q_values(policy, q_values):
+    actions_proba_batch = _apply_exploration(
+        policy, dist_inputs=q_values)
+    if _is_cuda_tensor(actions_proba_batch):
+        actions_proba_batch = actions_proba_batch.cpu()
+    actions_proba_batch = _convert_q_values_batch_to_proba_batch(
+        actions_proba_batch)
+    entropy_avg = _entropy_batch_proba_distrib(
+        actions_proba_batch)
+    entropy_single = _entropy_proba_distrib(
+        actions_proba_batch[-1, :])
+    return entropy_avg, entropy_single
 
 def log_in_current_day_dir(exp_name):
     now = datetime.datetime.now()
@@ -356,3 +400,22 @@ def pprint_saved_metrics(file_path, keywords_to_print=None):
         if keywords_to_print is not None:
             metrics = filter_nested(metrics, keywords_to_print)
         pp.pprint(metrics)
+
+def _log_learning_rate(policy):
+    to_log = {"cur_lr": policy.cur_lr}
+    for j, opt in enumerate(policy._optimizers):
+        to_log[f"opt{j}_lr"] = \
+            [p["lr"] for p in opt.param_groups][0]
+    return to_log
+
+def _apply_exploration(policy, dist_inputs, explore=True):
+    policy.exploration.before_compute_actions(
+        explore=explore, timestep=policy.global_timestep)
+
+    _, _ = \
+        policy.exploration.get_exploration_action(
+            action_distribution=policy.dist_class(dist_inputs, policy.model),
+            timestep=policy.global_timestep,
+            explore=explore)
+
+    return dist_inputs

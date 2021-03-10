@@ -24,7 +24,7 @@
 This toolbox contains algorithms, environments, evaluation tools, and a lot of 
 helper functions to conduct research on bargaining in MARL.
 
-**Additionnal features of using the `Ray/Tune/RLLib` research framework:**  
+**Additional features of using the `Ray/Tune/RLLib` research framework:**  
 This toolbox relies on the [`Ray/Tune/RLLib` framework](https://docs.ray.io/en/master/rllib.html) 
 to provide the basic RL components and research functionalities.   
 - using components from `RLLib` with extensive configuration available
@@ -54,19 +54,20 @@ This toolbox `marltoolbox`, is built to work with `RLLib`
 but also to allow to fallback to `Tune` only if needed, 
 at the cost of some functionalities.  
 
-To speed up research, we advise to take advantages of the functionnalities of `Tune` and `RLLib`. 
+To speed up research, we advise to take advantages of the functionalities of `Tune` and `RLLib`. 
 
 
-###### **a) Read this quick introduction to `Tune`**  
-[`Tune`'s key concepts](https://docs.ray.io/en/master/tune/key-concepts.html) (< 5 min)  
 
-###### **b) Read this quick introduction to `RLLib`**  
-[`RLlib` in 60 seconds](https://docs.ray.io/en/master/rllib.html#rllib-in-60-seconds) (< 5 min)  
-
-###### **c) Read the README of the `Ray` project (which includes `Tune` and `RLLib`):**  
+###### **a) Read the README of the `Ray` project (which includes `Tune` and `RLLib`):**  
 [`Ray` README](https://github.com/ray-project/ray) (<5 min)  
 
-###### **c) Introduction to this toolbox:**  
+###### **b) Read this quick introduction to `Tune`**  
+[`Tune`'s key concepts](https://docs.ray.io/en/master/tune/key-concepts.html) (< 5 min)  
+
+###### **c) Read this quick introduction to `RLLib`**  
+[`RLlib` in 60 seconds](https://docs.ray.io/en/master/rllib.html#rllib-in-60-seconds) (< 5 min)  
+
+###### **d) Introduction to this toolbox:**  
 Without any local installation, you can work through 2 tutorials to introduce `marltoolbox` together with `Tune` 
 and `RLLib`.  
 Please use [Google Colab](https://colab.research.google.com/notebooks/intro.ipynb#recent=true)
@@ -469,6 +470,7 @@ Utils
 
   - exploration
       - SoftQ with temperature schedule
+      - SoftQ with clustering of the Q values
   - log
       - callbacks to log values from environments and policies
   - lvl1_best_response 

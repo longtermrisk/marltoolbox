@@ -49,7 +49,10 @@ class MatrixSequentialSocialDilemma(
                                       ["player_row", "player_col"])
         self.player_row_id, self.player_col_id = self.players_ids
         self.max_steps = config.get("max_steps", 20)
-        self.output_additional_info = config.get("output_additional_info", True)
+        self.output_additional_info = \
+            config.get("output_additional_info", True)
+        self.same_obs_for_each_player = \
+            config.get("same_obs_for_each_player", True)
 
         self.step_count_in_current_episode = None
 
@@ -95,6 +98,21 @@ class MatrixSequentialSocialDilemma(
         info = self._get_info_for_current_epi(epi_is_done)
 
         return self._to_RLLib_API(observations, rewards, epi_is_done, info)
+
+    def _produce_observations(self, action_player_row, action_player_col):
+        if self.same_obs_for_each_player:
+            return self._produce_same_observations_for_each_player(
+                action_player_row, action_player_col
+            )
+        else:
+            return self._produce_observations_invariant_to_the_player_trained(
+                action_player_row, action_player_col
+            )
+
+    def _produce_same_observations_for_each_player(
+            self, action_player_0: int, action_player_1: int):
+        return [action_player_0 * self.NUM_ACTIONS + action_player_1,
+                action_player_0 * self.NUM_ACTIONS + action_player_1]
 
     def _produce_observations_invariant_to_the_player_trained(
             self, action_player_0: int, action_player_1: int):

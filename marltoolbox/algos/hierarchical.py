@@ -1,7 +1,9 @@
 import copy
 from typing import List, Union, Optional, Dict, Tuple
 
+import torch
 import numpy as np
+
 from ray import rllib
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
@@ -9,7 +11,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 
-torch, nn = try_import_torch()
+from marltoolbox.utils import log
 
 DEFAULT_CONFIG = {
     'nested_policies': [
@@ -28,6 +30,7 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         self.algorithms = []
         self.config = config
         print("config", self.config)
+        # TODO clean this
         for nested_config in self.config["nested_policies"]:
             updated_config = copy.deepcopy(config)
             updated_config.update(nested_config["config_update"])
@@ -189,3 +192,11 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
                                episode=None):
         return self.algorithms[self.active_algo_idx].postprocess_trajectory(
             sample_batch, other_agent_batches, episode)
+
+    def _log_learning_rates(self):
+        """
+        Use to log LR to check that they are really updated as configured.
+        """
+        for algo_idx, algo in enumerate(self.algorithms):
+            self.to_log[f"algo{algo_idx}"] = log._log_learning_rate(self)
+

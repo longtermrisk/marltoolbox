@@ -316,7 +316,7 @@ def get_rllib_config(hp: dict, lvl1_idx: list, lvl1_training: bool):
                                momentum=config["sgd_momentum"])
 
     MyDQNTorchPolicy = DQNTorchPolicy.with_updates(
-        stats_fn=log.stats_fn_wt_additionnal_logs(build_q_stats),
+        stats_fn=log.augment_stats_fn_wt_additionnal_logs(build_q_stats),
         optimizer_fn=sgd_optimizer_dqn,
         after_init=after_init_fn)
 
