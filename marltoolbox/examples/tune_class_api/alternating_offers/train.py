@@ -76,6 +76,8 @@ def get_config():
     parser.add_argument('--episodes_per_step', type=int, default=64)  # how many episodes are in a Tune step()
     
     args = parser.parse_args()
+    if args['enable_cuda']:
+        raise NotImplementedError
     return args.__dict__
     
 if __name__ == '__main__':

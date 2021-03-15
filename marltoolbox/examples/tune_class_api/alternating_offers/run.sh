@@ -1,6 +1,6 @@
 # Current training configs
 
-# ipython -- train.py --name=test_selfish --enable_cheap_comm --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --response_entropy_reg 0.05
+ipython -- train.py --name=test_selfish --enable_cheap_comm --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --response_entropy_reg 0.05
 # ipython -- train.py --name=test_prosociality_level_0.5_wo_med --enable_cheap_comm --utterance_entropy_reg=0.05 --proposal_entropy_reg=0.05 --response_entropy_reg=0.05 --scale_before_redist --prosociality_level=0.5
 # ipython -- train.py --name=test_prosociality_level_0.3_wo_med --enable_cheap_comm --utterance_entropy_reg=0.05 --proposal_entropy_reg=0.05 --response_entropy_reg=0.05 --scale_before_redist --prosociality_level=0.3
 
@@ -9,7 +9,7 @@
 # ipython -- train.py --name=test_prosociality_level_0.3_w_med --enable_cheap_comm --utterance_entropy_reg=0.05 --proposal_entropy_reg=0.05 --response_entropy_reg=0.05 --scale_before_redist --prosociality_level=0.3 --enable_arbitrator --arbitrator_main_loss_coeff 6.1e-8 --arbitrator_entropy_reg 3.05e-7response_
 
 
-ipython -- train.py --name=debug --enable_cheap_comm --utterance_entropy_reg=0.05 --proposal_entropy_reg=0.05 --response_entropy_reg=0.05 --scale_before_redist --prosociality_level=0.5 --enable_arbitrator --arbitrator_main_loss_coeff 6.1e-8 --arbitrator_entropy_reg 3.05e-7 --enable_binding_comm --share_utilities --enable_overflow --agents_sgd --arbitrator_sgd --enable_cuda
+# ipython -- train.py --name=debug --enable_cheap_comm --utterance_entropy_reg=0.05 --proposal_entropy_reg=0.05 --response_entropy_reg=0.05 --scale_before_redist --prosociality_level=0.5 --enable_arbitrator --arbitrator_main_loss_coeff 6.1e-8 --arbitrator_entropy_reg 3.05e-7 --enable_binding_comm --share_utilities --enable_overflow --agents_sgd --arbitrator_sgd --enable_cuda
 
 
 
