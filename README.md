@@ -435,6 +435,7 @@ Environments
 
   - various matrix social dilemmas
   - various coin games
+  - bargaining with alternating offers ([Emergent Communication through Negotiation](https://arxiv.org/abs/1804.03980))
 
 </details>
 
@@ -458,7 +459,7 @@ Algorithms
       - This policy plays an episode by sampling a policy 
         from a population of similar policies
   - hierarchical
-      - It is a base policy class which allows the use of nested algorithms 
+      - It is a base policy class which allows the use of nested algorithms
 
 </details>
 
