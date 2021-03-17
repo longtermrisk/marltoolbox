@@ -37,7 +37,7 @@ def make_sgd_optimizer(lr):
 
 class LOLADICE(tune.Trainable):
 
-    def _init_lola(self, *, env, make_policy,
+    def _init_lola(self, *, env_name, make_policy,
           make_optimizer,
           epochs,
            batch_size, trace_length, grid_size,
@@ -63,20 +63,20 @@ class LOLADICE(tune.Trainable):
 
         # Instantiate the environment
         # TODO use the env from the toolbox (with RLLib API)
-        if env == "IPD":
+        if env_name == "IPD":
             self.env = lola_dice_envs.IPD(max_steps=trace_length, batch_size=batch_size)
-        elif env == "AsymBoS":
+        elif env_name == "AsymBoS":
             self.env = lola_dice_envs.AsymBoS(max_steps=trace_length, batch_size=batch_size)
-        elif env == "IMP":
+        elif env_name == "IMP":
             self.env = lola_dice_envs.IMP(trace_length)
-        elif env == "CoinGame":
+        elif env_name == "CoinGame":
             self.env = lola_dice_envs.CG(trace_length, batch_size, grid_size)
             self.env.seed(int(seed))
-        elif env == "AsymCoinGame":
+        elif env_name == "AsymCoinGame":
             self.env = lola_dice_envs.AsymCG(trace_length, batch_size, grid_size)
             self.env.seed(int(seed))
         else:
-            raise ValueError(f"env: {env}")
+            raise ValueError(f"env: {env_name}")
 
         self.gamma = gamma
         self.lr_inner = lr_inner

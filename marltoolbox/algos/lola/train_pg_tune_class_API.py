@@ -22,7 +22,8 @@ def update(mainQN, lr, final_delta_1_v, final_delta_2_v):
 
 class LOLAPGMatrice(tune.Trainable):
 
-    def _init_lola(self, env, seed, num_episodes, trace_length, batch_size,
+    def _init_lola(self, env_class, seed, num_episodes, trace_length,
+                   batch_size,
                    lola_update, gamma, hidden, lr,
                    mem_efficient=True,
                    summary_len=20,
@@ -39,26 +40,13 @@ class LOLAPGMatrice(tune.Trainable):
         corrections = lola_update
 
         # Instantiate the environment
-        if env == IteratedPrisonersDilemma:
-            if use_toolbox_env:
-                self.env = IteratedPrisonersDilemma(config={
-                    "max_steps": trace_length,
-                    "get_additional_info": True,
-                })
-            else:
-                raise NotImplementedError()
-            self.env.seed(seed)
-        elif env == IteratedBoS:
-            if use_toolbox_env:
-                self.env = IteratedBoS(config={
-                    "max_steps": trace_length,
-                    "get_additional_info": True,
-                })
-            else:
-                raise NotImplementedError()
-            self.env.seed(seed)
-        else:
-            raise ValueError(f"env: {env}")
+        self.env = env_class(
+            config={
+                "max_steps": trace_length,
+                "get_additional_info": True,
+            }
+        )
+        self.env.seed(seed)
 
         # observation_space = self.env.NUM_STATES
         self.y = gamma
@@ -73,6 +61,7 @@ class LOLAPGMatrice(tune.Trainable):
         self.simple_net = simple_net
         self.trace_length = trace_length
         self.lr = lr
+        self.num_episodes = num_episodes
 
         # tf.reset_default_graph()
         graph = tf.Graph()
@@ -386,6 +375,9 @@ class LOLAPGMatrice(tune.Trainable):
         last_info.pop("available_actions", None)
         log_items.update(last_info)
         log_items["episodes_total"] = self.timestep
+        log_items["finished"] = False \
+            if self.timestep < self.num_episodes \
+            else True
         return log_items
 
     def save_checkpoint(self, checkpoint_dir):

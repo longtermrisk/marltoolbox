@@ -106,14 +106,6 @@ class LOLAPGCG(tune.Trainable):
         corrections = lola_update
 
         # Instantiate the environment
-        # if env == VectorizedCoinGame:
-        #     self.env = VectorizedCoinGame(env_config)
-        #     self.env.seed(seed)
-        # elif env == AsymVectorizedCoinGame:
-        #     self.env = AsymVectorizedCoinGame(env_config)
-        #     self.env.seed(seed)
-        # else:
-        #     raise ValueError(f"exp_name: {env}")
         self.env = env_class(env_config)
         self.env.seed(seed)
 

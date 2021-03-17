@@ -91,42 +91,38 @@ def test_lola_pg_tune_fn_api():
     main(debug=True)
 
 
-def test_lola_pg_tune_class_api():
+def test_lola_pg_tune_class_api_ipd():
     from marltoolbox.examples.tune_class_api.lola_pg_official import main
     ray.shutdown()
     main(debug=True, env="IteratedPrisonersDilemma")
 
 
-def test_lola_pg_tune_class_api():
-    from marltoolbox.examples.tune_class_api.lola_pg_official import main
-    ray.shutdown()
-    main(debug=True, env="IteratedPrisonersDilemma")
-
-
-def test_lola_pg_tune_class_api():
+def test_lola_pg_tune_class_api_ibos():
     from marltoolbox.examples.tune_class_api.lola_pg_official import main
     ray.shutdown()
     main(debug=True, env="IteratedAsymBoS")
 
 
-def test_lola_pg_tune_class_api():
+def test_lola_pg_tune_class_api_coin_game():
     from marltoolbox.examples.tune_class_api.lola_pg_official import \
         main
     ray.shutdown()
     main(debug=True, env="VectorizedCoinGame")
 
 
-def test_lola_pg_tune_class_api():
+def test_lola_pg_tune_class_api_asym_coin_game():
     from marltoolbox.examples.tune_class_api.lola_pg_official import \
         main
     ray.shutdown()
     main(debug=True, env="AsymVectorizedCoinGame")
 
-def test_lola_pg_tune_class_api():
+
+def test_lola_pg_tune_class_api_mixed_motive_coin_game():
     from marltoolbox.examples.tune_class_api.lola_pg_official import \
         main
     ray.shutdown()
     main(debug=True, env="VectorizedMixedMotiveCoinGame")
+
 
 def test_lola_exact_tune_class_api():
     from marltoolbox.examples.tune_class_api.lola_exact_official import main

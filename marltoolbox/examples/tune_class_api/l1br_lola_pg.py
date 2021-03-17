@@ -57,11 +57,11 @@ def main(debug):
         "gamma": 0.5,
         "batch_size": 5 if debug else 512,
 
-        # "env": IteratedPrisonersDilemma,
-        # "env": IteratedBoS,
-        # "env": IteratedAsymBoS,
-        "env": VectorizedCoinGame,
-        # "env": AsymVectorizedCoinGame,
+        # "env_name": "IteratedPrisonersDilemma",
+        # "env_name": "IteratedBoS",
+        # "env_name": "IteratedAsymBoS",
+        "env_name": "VectorizedCoinGame",
+        # "env_name": "AsymVectorizedCoinGame",
 
         "pseudo": False,
         "grid_size": 3,
@@ -152,8 +152,13 @@ def get_tune_config(hp: dict):
     tune_config = copy.deepcopy(hp)
     assert not tune_config['exact']
 
+
     # Resolve default parameters
-    if tune_config['env'] in (VectorizedCoinGame, AsymVectorizedCoinGame):
+    if "CoinGame" in tune_config['env_name']:
+        if hp["env_name"] == "VectorizedCoinGame":
+            tune_config["env_class"] = VectorizedCoinGame
+        elif hp["env_name"] == "AsymVectorizedCoinGame":
+            tune_config["env_class"] = AsymVectorizedCoinGame
         tune_config['num_episodes'] = \
             100000 if hp['num_episodes'] is None else hp['num_episodes']
         tune_config['trace_length'] = \
@@ -178,6 +183,15 @@ def get_tune_config(hp: dict):
         }
         tune_config['metric'] = "player_blue_pick_speed"
     else:
+        if hp["env_name"] == "IteratedPrisonersDilemma":
+            tune_config["env_class"] = IteratedPrisonersDilemma
+        elif hp["env_name"] == "IteratedAsymChicken":
+            tune_config["env_class"] = IteratedAsymChicken
+        elif hp["env_name"] in ("IteratedBoS", "IteratedAsymBoS"):
+            if hp["env_name"] == "IteratedBoS":
+                tune_config["env_class"] = IteratedBoS
+            elif hp["env_name"] == "IteratedAsymBoS":
+                tune_config["env_class"] = IteratedAsymBoS
         tune_config['num_episodes'] = \
             600000 if hp['num_episodes'] is None else hp['num_episodes']
         tune_config['trace_length'] = \
@@ -198,7 +212,7 @@ def get_tune_config(hp: dict):
             "max_steps": tune_config["trace_length"],
             "get_additional_info": True,
         }
-        tune_config['metric'] = "player_row_CC"
+        tune_config['metric'] = "player_row_CC_freq"
 
     hp["scale_multipliers"] = ((1 / tune_config['trace_length'],
                                 1 / tune_config['trace_length']),)
@@ -228,17 +242,17 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
     lvl0_policy_idx = 1
     lvl1_policy_idx = 0
 
-    if tune_hp["env"] == IteratedPrisonersDilemma:
+    if tune_hp["env_name"] == "IteratedPrisonersDilemma":
         rllib_hp["n_epi"] = 3 if rllib_hp["debug"] else 400
         rllib_hp["base_lr"] = 0.04
         rllib_hp["x_limits"] = ((-3.5, 0.5),)
         rllib_hp["y_limits"] = ((-3.5, 0.5),)
-    elif tune_hp["env"] == IteratedAsymChicken:
+    elif tune_hp["env_name"] == "IteratedAsymChicken":
         rllib_hp["n_epi"] = 3 if rllib_hp["debug"] else 400
         rllib_hp["base_lr"] = 0.04
         rllib_hp["x_limits"] = ((-11.0, 4.0),)
         rllib_hp["y_limits"] = ((-11.0, 4.0),)
-    elif tune_hp["env"] in (IteratedBoS, IteratedAsymBoS):
+    elif tune_hp["env_name"] in ("IteratedBoS", "IteratedAsymBoS"):
         rllib_hp["n_epi"] = 3 if rllib_hp["debug"] else 800
         rllib_hp["base_lr"] = 0.01
         rllib_hp["x_limits"] = ((-0.5, 4.5),)
@@ -252,7 +266,7 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
                  0.1)],
             outside_value=0.1,
             framework="torch")
-    elif tune_hp["env"] in [VectorizedCoinGame, AsymVectorizedCoinGame]:
+    elif "CoinGame" in tune_hp["env_name"]:
         rllib_hp["n_epi"] = 3 if rllib_hp["debug"] else 4000
         rllib_hp["base_lr"] = 0.1
         rllib_hp["x_limits"] = ((-1.0, 3.0),)
@@ -320,13 +334,15 @@ def get_rllib_config(hp: dict, lvl1_idx: list, lvl1_training: bool):
         optimizer_fn=sgd_optimizer_dqn,
         after_init=after_init_fn)
 
-    if hp["env"] in (IteratedPrisonersDilemma, IteratedBoS,
-                     IteratedAsymChicken, IteratedAsymBoS):
+    if tune_config["env_class"] in (
+            IteratedPrisonersDilemma, IteratedBoS,
+            IteratedAsymChicken, IteratedAsymBoS):
         env_config.update({
             "max_steps": hp["n_steps_per_epi"],
         })
 
-    elif hp["env"] in (VectorizedCoinGame, AsymVectorizedCoinGame):
+    elif tune_config["env_class"] in (VectorizedCoinGame,
+                                      AsymVectorizedCoinGame):
         env_config.update({
             "max_steps": hp["n_steps_per_epi"],
             "batch_size": 1,
@@ -343,21 +359,21 @@ def get_rllib_config(hp: dict, lvl1_idx: list, lvl1_training: bool):
         if policy_idx not in lvl1_idx:
             policies[policy_id] = (
                 policy.get_tune_policy_class(DQNTorchPolicy),
-                hp["env"](env_config).OBSERVATION_SPACE,
-                hp["env"].ACTION_SPACE,
+                tune_config["env_class"](env_config).OBSERVATION_SPACE,
+                tune_config["env_class"].ACTION_SPACE,
                 {"sgd_momentum": hp["sgd_momentum"],
                  "tune_config": tune_config}
             )
         else:
             policies[policy_id] = (
                 MyDQNTorchPolicy,
-                hp["env"](env_config).OBSERVATION_SPACE,
-                hp["env"].ACTION_SPACE,
+                tune_config["env_class"](env_config).OBSERVATION_SPACE,
+                tune_config["env_class"].ACTION_SPACE,
                 {"sgd_momentum": hp["sgd_momentum"]}
             )
 
     rllib_config = {
-        "env": hp["env"],
+        "env": tune_config["env_class"],
         "env_config": env_config,
         "multiagent": {
             "policies": policies,
@@ -472,7 +488,7 @@ def get_rllib_config(hp: dict, lvl1_idx: list, lvl1_training: bool):
 
     }
 
-    if hp["env"] in (VectorizedCoinGame, AsymVectorizedCoinGame):
+    if "CoinGame" in hp["env_name"]:
         rllib_config["model"] = {
             "dim": env_config["grid_size"],
             # [Channel, [Kernel, Kernel], Stride]]

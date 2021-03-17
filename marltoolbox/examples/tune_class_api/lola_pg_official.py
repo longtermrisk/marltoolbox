@@ -87,7 +87,7 @@ def main(debug, env=None):
         "summary_len": 1,
         "use_MAE": False,
 
-        # "use_toolbox_env": True,
+        "use_toolbox_env": True,
 
         "clip_loss_norm": False,
         "clip_lola_update_norm": False,
@@ -159,7 +159,7 @@ def main(debug, env=None):
 def train(tune_hp):
     tune_config, stop, env_config = get_tune_config(tune_hp)
 
-    if "Coingame" in tune_config['env_name']:
+    if "CoinGame" in tune_config['env_name']:
         trainable_class = LOLAPGCG
     else:
         trainable_class = LOLAPGMatrice
@@ -220,7 +220,8 @@ def get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
             "max_steps": tune_config["trace_length"],
             "grid_size": tune_config["grid_size"],
             "get_additional_info": True,
-            "both_players_can_pick_the_same_coin": False,
+            "both_players_can_pick_the_same_coin":
+                tune_config['env_name'] == "VectorizedMixedMotiveCoinGame",
             "force_vectorize": False,
             "same_obs_for_each_player": True,
         }
@@ -259,7 +260,7 @@ def get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
             "max_steps": tune_config["trace_length"],
             "get_additional_info": True,
         }
-        tune_config['metric'] = "player_row_CC"
+        tune_config['metric'] = "player_row_CC_freq"
 
     tune_hp["scale_multipliers"] = (
         1 / tune_config['trace_length'], 1 / tune_config['trace_length'])
@@ -289,6 +290,8 @@ def generate_eval_config(tune_hp, debug):
     rllib_hp["num_episodes"] = 1 if debug else 100
     tune_config, stop, env_config = get_tune_config(rllib_hp,
                                                     stop_on_epi_number=True)
+    rllib_hp["env_class"] = tune_config["env_class"]
+
     if "CoinGame" in tune_config['env_name']:
         env_config["batch_size"] = 1
         tune_config['TuneTrainerClass'] = LOLAPGCG
@@ -317,19 +320,26 @@ def generate_eval_config(tune_hp, debug):
             "policies_to_train": ["None"],
         },
         "seed": rllib_hp["seed"],
-        "model": {
-            "dim": env_config["grid_size"],
-            # [Channel, [Kernel, Kernel], Stride]]
-            "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],
-        },
         "min_iter_time_s": 3.0,
     }
 
     policies_to_load = copy.deepcopy(env_config["players_ids"])
 
-    trainable_class = LOLAPGCG \
-        if "CoinGame" in rllib_hp['env_name'] \
-        else LOLAPGMatrice
+    if "CoinGame" in rllib_hp['env_name']:
+        trainable_class = LOLAPGCG
+        rllib_config_eval["model"] = {
+            "dim": env_config["grid_size"],
+            # [Channel, [Kernel, Kernel], Stride]]
+            "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],
+        }
+    else:
+        trainable_class = LOLAPGMatrice
+        # rllib_config_eval["model"] = {
+        #     # Number of hidden layers for fully connected net
+        #     "fcnet_hiddens": tune_hp["hidden"],
+        #     # Nonlinearity for fully connected net (tanh, relu)
+        #     "fcnet_activation": "relu",
+        # }
 
     return rllib_hp, rllib_config_eval, policies_to_load, \
            trainable_class, stop, env_config
