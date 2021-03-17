@@ -1,5 +1,5 @@
 from marltoolbox.algos.amTFT.base_policy import \
-    get_amTFTCallBacks, DEFAULT_CONFIG, PLOT_KEYS, PLOT_ASSEMBLRE_TAGS, \
+    get_amTFTCallBacks, DEFAULT_CONFIG, PLOT_KEYS, PLOT_ASSEMBLAGE_TAGS, \
     DEFAULT_NESTED_POLICY_SELFISH, DEFAULT_NESTED_POLICY_COOP
 from marltoolbox.algos.amTFT.policy_using_rollouts import \
     amTFTRolloutsTorchPolicy

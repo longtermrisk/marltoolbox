@@ -14,7 +14,7 @@ def train_amTFT(stop, config, name, do_not_load=[], TrainerClass=DQNTrainer, **k
         stop, config, selfish_name, TrainerClass, **kwargs)
     add_summary_plots(main_path=os.path.join("~/ray_results/", selfish_name),
                       plot_keys=amTFT.PLOT_KEYS,
-                      plot_assemble_tags_in_one_plot=amTFT.PLOT_ASSEMBLRE_TAGS,
+                      plot_assemble_tags_in_one_plot=amTFT.PLOT_ASSEMBLAGE_TAGS,
                       )
 
     seed_to_selfish_checkpoints = _extract_selfish_policies_checkpoints(tune_analysis_selfish_policies)
@@ -25,7 +25,7 @@ def train_amTFT(stop, config, name, do_not_load=[], TrainerClass=DQNTrainer, **k
         stop, config, coop_name, TrainerClass, **kwargs)
     add_summary_plots(main_path=os.path.join("~/ray_results/", coop_name),
                       plot_keys=amTFT.PLOT_KEYS,
-                      plot_assemble_tags_in_one_plot=amTFT.PLOT_ASSEMBLRE_TAGS,
+                      plot_assemble_tags_in_one_plot=amTFT.PLOT_ASSEMBLAGE_TAGS,
                       )
     return tune_analysis_amTFT_policies
 

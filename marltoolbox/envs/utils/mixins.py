@@ -23,10 +23,10 @@ class TwoPlayersTwoActionsInfoMixin(InfoAccumulationInterface, ABC):
 
     def _get_episode_info(self):
         return {
-            "CC": sum(self.cc_count) / len(self.cc_count),
-            "DD": sum(self.dd_count) / len(self.dd_count),
-            "CD": sum(self.cd_count) / len(self.cd_count),
-            "DC": sum(self.dc_count) / len(self.dc_count),
+            "CC_freq": sum(self.cc_count) / len(self.cc_count),
+            "DD_freq": sum(self.dd_count) / len(self.dd_count),
+            "CD_freq": sum(self.cd_count) / len(self.cd_count),
+            "DC_freq": sum(self.dc_count) / len(self.dc_count),
         }
 
     def _accumulate_info(self, ac0, ac1):

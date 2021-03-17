@@ -1,5 +1,5 @@
 import copy
-from typing import List, Union, Optional, Dict, Tuple
+from typing import List, Union, Optional, Dict, Tuple, Iterable
 
 import torch
 import numpy as np
@@ -29,7 +29,6 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
                  after_init_nested=None, **kwargs):
         self.algorithms = []
         self.config = config
-        print("config", self.config)
         # TODO clean this
         for nested_config in self.config["nested_policies"]:
             updated_config = copy.deepcopy(config)
@@ -40,7 +39,6 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
                     f'in config["nested_config"]["Policy_class"] '
                     f'current value is {nested_config["Policy_class"]}')
             Policy = nested_config["Policy_class"]
-            print("Create nested algo with config:", updated_config)
             policy = Policy(observation_space, action_space, updated_config,
                             **kwargs)
             if after_init_nested is not None:
@@ -77,8 +75,8 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
     def to_log(self):
         to_log = {"meta_policy": self._to_log,
                   "nested_policy": {
-                      # f"policy_{algo_idx}": algo.to_log
-                      f"policy_0": algo.to_log
+                      f"policy_{algo_idx}": algo.to_log
+                      # f"policy_0": algo.to_log
                       for algo_idx, algo in enumerate(self.algorithms)
                       if hasattr(algo, "to_log")
                   }
@@ -163,6 +161,14 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
     def learn_on_batch(self, samples: SampleBatch):
         raise NotImplementedError()
 
+    def _init_log_learn_on_batch(self, algo_idx:Iterable = None):
+        if algo_idx is not None:
+            for policy_n in algo_idx:
+                self._to_log[f"learn_on_batch_algo{policy_n}"] = 0.0
+        else:
+            for policy_n, _ in enumerate(self.algorithms):
+                self._to_log[f"learn_on_batch_algo{policy_n}"] = 0.0
+
     def optimizer(self
                   ) -> Union[
         List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
@@ -174,6 +180,7 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         """
 
         # TODO find a clean solution to update the LR when using a LearningRateSchedule
+        # TODO this will probably no more be needed when moving to RLLib>1.0.0
         for algo in self.algorithms:
             if hasattr(algo, "cur_lr"):
                 for opt in algo._optimizers:

@@ -63,11 +63,11 @@ def get_hyperparameters(debug, env):
         "hiddens": [64],
         "base_lr": 0.01,
 
-        "env": "IteratedPrisonersDilemma",
-        # "env": "IteratedAsymBoS",
-        # "env": "IteratedAsymChicken",
-        # "env": "CoinGame",
-        # "env": "AsymCoinGame",
+        "env_name": "IteratedPrisonersDilemma",
+        # "env_name": "IteratedAsymBoS",
+        # "env_name": "IteratedAsymChicken",
+        # "env_name": "CoinGame",
+        # "env_name": "AsymCoinGame",
 
         # For training speed
         "min_iter_time_s": 0.0 if debug else 3.0,
@@ -77,7 +77,7 @@ def get_hyperparameters(debug, env):
     }
 
     if env is not None:
-        hparams["env"] = env
+        hparams["env_name"] = env
 
     hparams = amtft_various_env.modify_hyperparams_for_the_selected_env(hparams)
 
@@ -116,8 +116,8 @@ def modify_conf_for_lvl1_training(hp_lvl1, env_config, rllib_config_lvl1, lvl0_c
     # Use a simple DQN as lvl1 agent (instead of amTFT with nested DQN)
     rllib_config_lvl1["multiagent"]["policies"][lvl1_policy_id] = (
         DQNTorchPolicy,
-        hp_lvl1["env"](env_config).OBSERVATION_SPACE,
-        hp_lvl1["env"].ACTION_SPACE,
+        hp_lvl1["env_class"](env_config).OBSERVATION_SPACE,
+        hp_lvl1["env_class"].ACTION_SPACE,
         {}
     )
 

@@ -252,10 +252,12 @@ def _add_action_distrib_to_log(policy, train_batch, to_log):
     action_dist_inputs_avg = train_batch["action_dist_inputs"].mean(axis=0)
     action_dist_inputs_single = train_batch["action_dist_inputs"][-1, :]
     for action_i in range(policy.action_space.n):
-        to_log[f"act_dist_inputs_avg_{action_i}"] = action_dist_inputs_avg[
+        to_log[f"act_dist_inputs_avg_act{action_i}"] = action_dist_inputs_avg[
             action_i]
-        to_log[f"act_dist_inputs_single_{action_i}"] = \
+        to_log[f"act_dist_inputs_single_act{action_i}"] = \
             action_dist_inputs_single[action_i]
+        to_log[f"act_dist_inputs_single_max"] = \
+            max(action_dist_inputs_single)
     return to_log
 
 def _add_entropy_to_log(train_batch, to_log):
@@ -301,7 +303,7 @@ def _entropy_proba(proba):
     if proba == 0.0:
         return 0.0
     else:
-        return -proba * math.log(proba, 2)
+        return -proba * math.log(proba)
 
 
 def _add_proba_of_action_played(train_batch, to_log):
@@ -323,6 +325,7 @@ def _add_q_values(policy, train_batch, to_log):
             to_log[f"q_values_avg_act{action_i}"] = q_values_avg[action_i]
             to_log[f"q_values_single_act{action_i}"] = q_values_single[
                 action_i]
+            to_log[f"q_values_single_max"] = max(q_values_single)
     return to_log
 
 def _compute_entropy_from_raw_q_values(policy, q_values):

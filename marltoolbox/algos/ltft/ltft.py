@@ -22,11 +22,9 @@ from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 from torch.nn import CrossEntropyLoss
 
-from marltoolbox.algos import hierarchical
 from marltoolbox.algos.ltft.ltft_torch_policy import \
     LTFTCallbacks, LTFTTorchPolicy
-from marltoolbox.algos.augmented_dqn import MyDQNTorchPolicy
-from marltoolbox.algos.supervised_learning import MySPLTorchPolicy
+from marltoolbox.algos import augmented_dqn, supervised_learning, hierarchical
 from marltoolbox.utils import log, miscellaneous, exploration
 
 logger = logging.getLogger(__name__)
@@ -66,17 +64,15 @@ DEFAULT_CONFIG.update({
     "sgd_momentum": 0.9,
     'nested_policies': [
         # Here the trainer need to be a DQNTrainer to provide the config
-        # for the 3 DQNTorchPolicy
-        {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
-        {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
-        {"Policy_class": MyDQNTorchPolicy, "config_update": {}},
-        {"Policy_class": MySPLTorchPolicy,
+        # for the 3 MyDQNTorchPolicy
+        {"Policy_class": augmented_dqn.MyDQNTorchPolicy, "config_update": {}},
+        {"Policy_class": augmented_dqn.MyDQNTorchPolicy, "config_update": {}},
+        {"Policy_class": augmented_dqn.MyDQNTorchPolicy, "config_update": {}},
+        {"Policy_class": supervised_learning.MySPLTorchPolicy,
          "config_update": {
              "learn_action": True,
              "learn_reward": False,
-             "sgd_momentum": 0.75,
-             "explore": False,
-             "timesteps_per_iteration": None,  # To fill
+             # "timesteps_per_iteration": None,  # To fill
              # === Optimization ===
              # Learning rate for adam optimizer
              "lr": None,  # To fill
@@ -104,7 +100,8 @@ DEFAULT_CONFIG.update({
         "clustering_distance": 0.5,
         "temperature_schedule": PiecewiseSchedule(
             endpoints=[
-                (0, 1.0), (0, 0.1)],
+                (0, 1.0),
+                (0, 0.1)],
             outside_value=0.1,
             framework="torch")
     },
@@ -113,53 +110,85 @@ DEFAULT_CONFIG.update({
 }
 )
 
-PLOT_KEYS = ("policy_reward_mean",
+PLOT_KEYS = ["policy_reward_mean",
              "loss",
              "entropy",
              "entropy_avg",
+
              "td_error",
              "punish",
              "likelihood_opponent",
              "likelihood_approximated_opponent",
-             "_lr",
              "delta_log_likelihood_coop_mean",
              "delta_log_likelihood_coop_std",
              "percentile",
              "defection",
-             "act_dist_inputs_avg",
-             "q_values_avg")
+             "mean_log_lik_",
 
-PLOT_ASSEMBLRE_TAGS = (
+             "act_dist_inputs_avg",
+             "act_dist_inputs_single",
+             "q_values_avg",
+             "learn_on_batch",
+             "action_prob",
+             "q_values_single",
+             "_lr",
+             "max_q_values",
+             "min_q_values",
+             ]
+
+PLOT_ASSEMBLAGE_TAGS = [
     ("policy_reward_mean",),
-    ("loss", "td_error"),
+    ("defection",),
+    ("defection", "chosen_percentile"),
     ("entropy_during_eval",),
     ("entropy_avg",),
+    ("loss", "td_error"),
+
     ("punish",),
-    ("_lr",),
-    ("delta_log_likelihood_coop_mean",),
-    ("delta_log_likelihood_coop_std",),
     ("delta_log_likelihood_coop_std", "delta_log_likelihood_coop_mean"),
+    ("likelihood_opponent","likelihood_approximated_opponent"),
+    ("mean_log_lik_cooperate","mean_log_lik_defect"),
     ("chosen_percentile",),
     ("percentile_50",),
     ("percentile",),
-    ("defection",),
-    ("defection", "chosen_percentile"),
-    ("likelihood_opponent","likelihood_approximated_opponent"),
-    ("act_dist_inputs_avg",),
-    ("q_values_avg",),
-)
+    ("delta_log_likelihood_coop_mean",),
+    ("delta_log_likelihood_coop_std",),
+    ("mean_log_lik_cooperate",),
+    ("mean_log_lik_defect", ),
+
+    ("learn_on_batch",),
+    ("last_training_max_q_values",),
+    ("last_training_min_q_values",),
+    ("act_dist_inputs_avg_act0",),
+    ("act_dist_inputs_avg_act1",),
+    ("act_dist_inputs_avg_act2",),
+    ("act_dist_inputs_avg_act3",),
+    ("q_values_avg_act0",),
+    ("q_values_avg_act1",),
+    ("q_values_avg_act2",),
+    ("q_values_avg_act3",),
+    ("q_values_single_max",),
+    ("act_dist_inputs_single_max",),
+    ("action_prob_single",),
+    ("action_prob_avg",),
+    ("_lr",),
+    ("last_training_max_q_values", "last_training_target_max_q_values"),
+    ("last_training_min_q_values", "last_training_target_min_q_values"),
+]
 
 # TODO is that really needed this this is specific to the env used
 def prepare_default_config(lr, lr_spl, n_steps_per_epi, n_epi):
     default_config = copy.deepcopy(DEFAULT_CONFIG)
     default_config["exploration_config"]["temperature_schedule"] = \
         PiecewiseSchedule(
-            endpoints=[(0, 1.0), (int(n_steps_per_epi * n_epi * 0.75), 0.1)],
+            endpoints=[(0, 1.0),
+                       (int(n_steps_per_epi * n_epi * 0.75), 0.1)],
             outside_value=0.1,
             framework="torch")
     default_config.update({
         "lr": lr,
-        "lr_schedule": [(0, lr),
+        "lr_schedule": [(0, 0.0),
+                        (int(n_steps_per_epi * n_epi*0.1), lr),
                         (int(n_steps_per_epi * n_epi), lr / 1e9)],
     })
     default_config["nested_policies"][3]["config_update"].update({
@@ -167,10 +196,11 @@ def prepare_default_config(lr, lr_spl, n_steps_per_epi, n_epi):
         # Learning rate for adam optimizer
         "lr": lr_spl,
         # Learning rate schedule
-        "lr_schedule": [(0, lr_spl),
+        "lr_schedule": [(0, 0.0),
+                        (int(n_steps_per_epi * n_epi * 0.1), lr_spl),
                         (int(n_steps_per_epi * n_epi), lr_spl / 1e9)],
 
-        "timesteps_per_iteration": n_steps_per_epi,
+        # "timesteps_per_iteration": n_steps_per_epi,
     })
 
     return default_config
@@ -250,15 +280,21 @@ def execution_plan(workers: WorkerSet,
         .combine(ConcatBatches(min_batch_size=config["train_batch_size"])) \
         .for_each(LocalTrainablePolicyModifier(workers, train_pg_only)) \
         .for_each(TrainOneStep(workers, policies=ltft_policies_ids))
+
+    # opt = train_op_pg.union(replay_op_dqn, deterministic=True).batch(2)
     round_robin_weights = calculate_rr_weights(config)
     round_robin_weights.append(round_robin_weights[-1])
+
+
 
     # Alternate deterministically between (1) and (2). Only return the output
     # of (2) since training metrics are not available until (2) runs.
     train_op = Concurrently(
         [store_op, replay_op_dqn, train_op_pg],
+        # [store_op, opt],
         mode="round_robin",
         output_indexes=[1, 2],
+        # output_indexes=[1],
         round_robin_weights=round_robin_weights)
 
     return StandardMetricsReporting(train_op, workers, config)

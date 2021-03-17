@@ -34,6 +34,16 @@ AGGREGATION_OPS = {"mean": np.mean,
                    "var": np.var}
 COLORS = list(mcolors.TABLEAU_COLORS)
 
+PLOT_KEYS = ["grad_gnorm",
+             "reward",
+             ]
+
+PLOT_ASSEMBLAGE_TAGS = [
+    ("grad_gnorm",),
+    ("reward",),
+]
+
+
 
 class TensorBoardDataExtractor():
 
@@ -337,7 +347,8 @@ class SummaryPlotter():
             if any([select_key in csv_file
                     for select_key in list_of_tags_in_assemblage]):
                 assemblage_list.append(csv_file)
-        print("csv files selected for assemblage", assemblage_list)
+        # print("csv files selected for assemblage", assemblage_list)
+        assemblage_list = sorted(assemblage_list)
         return assemblage_list
 
     def extract_tag_from_file_name(self, csv_file):

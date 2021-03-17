@@ -30,7 +30,7 @@ def build_q_losses_wt_additional_logs(policy: Policy, model, _,
         is_training=True)
 
     # Addition 1 out of 2
-    policy.last_q_t = q_t
+    policy.last_q_t = q_t.clone()
 
     # Target Q-network evaluation.
     q_tp1, q_logits_tp1, q_probs_tp1 = compute_q_values(
@@ -41,7 +41,7 @@ def build_q_losses_wt_additional_logs(policy: Policy, model, _,
         is_training=True)
 
     # Addition 2 out of 2
-    policy.last_target_q_t = q_tp1
+    policy.last_target_q_t = q_tp1.clone()
 
     # Q scores for actions which we know were selected in the given state.
     one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS],
@@ -93,13 +93,19 @@ def build_q_losses_wt_additional_logs(policy: Policy, model, _,
 def build_q_stats_wt_addtional_log(policy: Policy, batch) -> Dict[str,
                                                                TensorType]:
     entropy_avg, entropy_single = \
-        log._compute_entropy_from_raw_q_values(policy, policy.last_q_t)
+        log._compute_entropy_from_raw_q_values(
+            policy, policy.last_q_t.clone())
     entropy_target_avg, entropy_target_single = \
-        log._compute_entropy_from_raw_q_values(policy, policy.last_target_q_t)
+        log._compute_entropy_from_raw_q_values(
+            policy, policy.last_target_q_t.clone())
 
     return dict({
         "last_training_q_values": policy.last_q_t,
         "last_training_target_q_values": policy.last_target_q_t,
+        "last_training_max_q_values": policy.last_q_t.max(),
+        "last_training_target_max_q_values": policy.last_target_q_t.max(),
+        "last_training_min_q_values": policy.last_q_t.min(),
+        "last_training_target_min_q_values": policy.last_target_q_t.min(),
         "entropy_avg": entropy_avg,
         "entropy_single": entropy_single,
         "entropy_target_avg": entropy_target_avg,

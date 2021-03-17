@@ -1,5 +1,6 @@
-import torch
+from typing import Dict, List, Type, Union
 
+import torch
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -8,20 +9,13 @@ from ray.rllib.policy import build_torch_policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
-from typing import Dict, List, Type, Union
 
 from marltoolbox.utils import log, optimizers
-
 
 SPL_DEFAULT_CONFIG = with_common_config({
     "learn_action": True,
     "learn_reward": False,
-    "loss_fn": torch.nn.CrossEntropyLoss(
-        weight=None,
-        size_average=None,
-        ignore_index=-100,
-        reduce=None,
-        reduction='mean')
+    "loss_fn": torch.nn.CrossEntropyLoss()
 })
 
 
@@ -44,19 +38,29 @@ def spl_torch_loss(
     # Pass the training data through our model to get distribution parameters.
     dist_inputs, _ = model.from_batch(train_batch)
     # Create an action distribution object.
-    predictions = dist_class(dist_inputs, model)
+    action_dist = dist_class(dist_inputs, model)
+    if policy.config["explore"]:
+        # Adding that because of a bug in TorchCategorical
+        #  which modify dist_inputs through action_dist:
+        _, _ = policy.exploration.get_exploration_action(
+            action_distribution=action_dist,
+            timestep=policy.global_timestep,
+            explore=policy.config["explore"])
+        action_dist = dist_class(dist_inputs, policy.model)
 
     targets = []
     if policy.config["learn_action"]:
         targets.append(train_batch[SampleBatch.ACTIONS])
     if policy.config["learn_reward"]:
         targets.append(train_batch[SampleBatch.REWARDS])
-    assert len(targets) > 0
+    assert len(targets) > 0, f"In config, use learn_action=True and/or " \
+                             f"learn_reward=True to specify which target to " \
+                             f"use in supervised learning"
     targets = torch.cat(targets, dim=0)
 
     # Save the loss in the policy object for the spl_stats below.
-    policy.spl_loss = policy.config["loss_fn"](predictions.dist.probs, targets)
-    policy.entropy = predictions.dist.entropy().mean()
+    policy.spl_loss = policy.config["loss_fn"](action_dist.dist.probs, targets)
+    policy.entropy = action_dist.dist.entropy().mean()
 
     return policy.spl_loss
 
@@ -80,12 +84,6 @@ def spl_stats(policy: Policy,
     }
 
 
-def adam_optimizer(policy: Policy,
-                   config: TrainerConfigDict) -> "torch.optim.Optimizer":
-    return torch.optim.SGD(
-        policy.model.parameters(), lr=policy.cur_lr, eps=config["adam_epsilon"])
-
-
 def setup_early_mixins(policy: Policy, obs_space, action_space,
                        config: TrainerConfigDict) -> None:
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
@@ -96,7 +94,7 @@ SPLTorchPolicy = build_torch_policy(
     get_default_config=lambda: SPL_DEFAULT_CONFIG,
     loss_fn=spl_torch_loss,
     stats_fn=spl_stats,
-    optimizer_fn=adam_optimizer,
+    optimizer_fn=optimizers.adam_optimizer_spl,
     before_init=setup_early_mixins,
     mixins=[
         LearningRateSchedule,

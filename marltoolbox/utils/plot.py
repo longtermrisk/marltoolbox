@@ -82,6 +82,7 @@ class PlotHelper:
         return fig
 
     def _plot_lines_for_one_group(self, group_color, group_id, group_df):
+        label_plotted = []
         for col in group_df.columns:
             if col.endswith(LOWER_ENVELOPE_SUFFIX):
                 pass
@@ -92,6 +93,8 @@ class PlotHelper:
                 plt.plot(group_df.index * self.plot_cfg.x_scale_multiplier,
                          group_df[col] * self.plot_cfg.y_scale_multiplier,
                          label=label, color=group_color)
+                label_plotted.append(label)
+        print("label_plotted", label_plotted)
 
     def _plot_one_envelope(self, group_color, group_df, col):
         upper_envelope_col = col
@@ -110,7 +113,6 @@ class PlotHelper:
             label = f"{group_id}: {col}"
         else:
             label = group_id
-        print("label", label)
         return label
 
     def _finalize_plot(self, fig):
@@ -154,7 +156,7 @@ class PlotHelper:
         self._finalize_plot(fig)
 
     def _plot_dotes_for_one_group(self, group_color, group_id, group_df):
-
+        label_plotted = []
         for col in group_df.columns:
             x, y = self._select_n_points_to_plot(group_df, col)
             x, y = self._add_jitter_to_points(x, y)
@@ -169,6 +171,8 @@ class PlotHelper:
                      alpha=self.plot_cfg.alpha,
                      markersize=self.plot_cfg.markersize)
             self.counter_labels += 1
+            label_plotted.append(label)
+        print("label_plotted", label_plotted)
 
     def _select_n_points_to_plot(self, group_df, col):
         if self.plot_cfg.plot_max_n_points is not None:
