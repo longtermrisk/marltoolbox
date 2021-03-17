@@ -211,7 +211,8 @@ def calc_rewards(env_agents_state, response, enable_overflow, scale_before_redis
     # sum_share_of_max is utilitarian welfare after normalizing (before redistribution)
     # player0_after_arb means redistributed rewards
     # player0_arb_induced_part means the difference between the redistributed rewards and the original rewards
-    reward_names = ['player0_raw', 'player1_raw', 'sum_raw', 'player0_share_of_max', 'player1_share_of_max', 'sum_share_of_max']
+    reward_names = ['player0_raw', 'player1_raw', 'sum_raw', 'player0_share_of_max', 'player1_share_of_max', 'sum_share_of_max',
+                    'difference_in_share_of_max']
     if enable_decision is not None:
         reward_names += ['player0_after_arb', 'player1_after_arb', 'player0_arb_induced_part', 'player1_arb_induced_part']
     for name in reward_names:
@@ -279,6 +280,8 @@ def calc_rewards(env_agents_state, response, enable_overflow, scale_before_redis
         rewards_final['player1_raw'][b] = raw_rewards[1]
         rewards_final['player0_share_of_max'][b] = scaled_rewards[0]
         rewards_final['player1_share_of_max'][b] = scaled_rewards[1]
+            
+        rewards_final['difference_in_share_of_max'][b] = (rewards_final['player0_share_of_max'][b] - rewards_final['player1_share_of_max'][b]).abs()
                 
         rewards_final['sum_raw'][b] = raw_rewards.sum()
         max_prosocial = max_utility[b].cpu().dot(s.pool[b].cpu())

@@ -165,6 +165,7 @@ class AltOffersTraining(tune.Trainable):
                     agent = t % 2
                     for action in action_logprobs[t]:  # iterate over 7 action_logprobs: 1xresponse, 3xproposal, 3xproposal_repr
                         reward_name = 'player0_arb_induced_part' if agent == 0 else 'player1_arb_induced_part'
+                        # OK to use baselines for the induced part? Yeah I think this should be an unbiased gradient estimate
                         induced_agent_reward = baselined_rewards[reward_name][global_idxes].float().contiguous().view(sieve_playback.batch_size, 1)
                         cur_arb_logprobs = self.arb_logprobs_accum.sum(1)[global_idxes].view(sieve_playback.batch_size, 1)
                         induced_reward_by_agent[agent] += (action * cur_arb_logprobs * Variable(induced_agent_reward)).sum()
@@ -202,8 +203,12 @@ class AltOffersTraining(tune.Trainable):
                     # only correct if scale_before_redist==True, otherwise the welfare changes
                     # because of redistribution and needs to be recomputed in a different way
                     assert self.args['scale_before_redist'] or self.args['prosociality_level']==0
+                    # to use fairness_coeff with arbitrator, need to compute how fairness penalties affect
+                    # the before-redistribution welfare in mediator optimization code, this is not implemented
+                    assert not self.args['enable_arbitrator'] or self.args['fairness_coeff'] == 0
                     total_agent_reward = (1-self.args['prosociality_level'])*baselined_rewards[reward_name][global_idxes] + \
-                                          self.args['prosociality_level']*baselined_rewards['sum_share_of_max'][global_idxes]
+                                          self.args['prosociality_level']*baselined_rewards['sum_share_of_max'][global_idxes] - \
+                                          self.args['fairness_coeff']*baselined_rewards['difference_in_share_of_max'][global_idxes]
 
                     total_agent_reward = total_agent_reward.float().contiguous().view(sieve_playback.batch_size, 1)
                     main_loss_by_agent[agent] += -(action * Variable(total_agent_reward)).sum()
