@@ -11,24 +11,25 @@
 ##########
 
 import copy
-
 import os
-import ray
 import time
+
+import ray
 from ray import tune
 from ray.rllib.agents.dqn import DQNTorchPolicy
 
 from marltoolbox.algos.lola.train_cg_tune_class_API import LOLAPGCG
 from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
-from marltoolbox.envs.matrix_sequential_social_dilemma import \
-    MatrixSequentialSocialDilemma
-from marltoolbox.envs.vectorized_coin_game import \
-    VectorizedCoinGame, AsymVectorizedCoinGame
+# from marltoolbox.envs.matrix_sequential_social_dilemma import \
+#     MatrixSequentialSocialDilemma, IteratedPrisonersDilemma, IteratedAsymBoS
+from marltoolbox.envs import \
+    vectorized_coin_game, vectorized_mixed_motive_coin_game, \
+    matrix_sequential_social_dilemma
 from marltoolbox.utils import policy, log, self_and_cross_perf
 from marltoolbox.utils.plot import PlotConfig
 
 
-def main(debug):
+def main(debug, env=None):
     train_n_replicates = 2 if debug else 40
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
@@ -57,11 +58,11 @@ def main(debug):
         "gamma": 0.5,
         "batch_size": 8 if debug else 512,
 
-        # "env": IteratedPrisonersDilemma,
-        # "env": IteratedBoS,
-        # "env": IteratedAsymBoS,
-        "env": VectorizedCoinGame,
-        # "env": AsymVectorizedCoinGame,
+        # "env_name": "IteratedPrisonersDilemma" if env is None else env,
+        # "env_name": "IteratedAsymBoS" if env is None else env,
+        "env_name": "VectorizedCoinGame" if env is None else env,
+        # "env_name": "AsymVectorizedCoinGame" if env is None else env,
+        # "env_name": "VectorizedMixedMotiveCoinGame" if env is None else env,
 
         "pseudo": False,
         "grid_size": 3,
@@ -158,7 +159,7 @@ def main(debug):
 def train(tune_hp):
     tune_config, stop, env_config = get_tune_config(tune_hp)
 
-    if tune_config['env'] in (VectorizedCoinGame, AsymVectorizedCoinGame):
+    if "Coingame" in tune_config['env_name']:
         trainable_class = LOLAPGCG
     else:
         trainable_class = LOLAPGMatrice
@@ -179,7 +180,19 @@ def get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
     assert not tune_config['exact']
 
     # Resolve default parameters
-    if tune_config['env'] in (VectorizedCoinGame, AsymVectorizedCoinGame):
+    if "CoinGame" in tune_config['env_name']:
+        if tune_config['env_name'] == "VectorizedCoinGame":
+            tune_config['env_class'] = \
+                vectorized_coin_game.VectorizedCoinGame
+        elif tune_config['env_name'] == "AsymVectorizedCoinGame":
+            tune_config['env_class'] = \
+                vectorized_coin_game.AsymVectorizedCoinGame
+        elif tune_config['env_name'] == "VectorizedMixedMotiveCoinGame":
+            tune_config['env_class'] = \
+                vectorized_mixed_motive_coin_game.VectorizedMixedMotiveCoinGame
+        else:
+            raise ValueError()
+
         tune_config['num_episodes'] = 100000 \
             if tune_config['num_episodes'] is None \
             else tune_config['num_episodes']
@@ -197,7 +210,8 @@ def get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
             else tune_config['gamma']
         tune_hp["x_limits"] = (-1.0, 1.0)
         tune_hp["y_limits"] = (-1.0, 1.0)
-        if tune_config['env'] == AsymVectorizedCoinGame:
+        if tune_config['env_class'] == \
+                vectorized_coin_game.AsymVectorizedCoinGame:
             tune_hp["x_limits"] = (-1.0, 3.0)
         tune_hp["jitter"] = 0.02
         env_config = {
@@ -212,6 +226,15 @@ def get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
         }
         tune_config['metric'] = "player_blue_pick_speed"
     else:
+        if tune_config['env_name'] == "IteratedPrisonersDilemma":
+            tune_config['env_class'] = \
+                matrix_sequential_social_dilemma.IteratedPrisonersDilemma
+        elif tune_config['env_name'] == "IteratedAsymBoS":
+            tune_config['env_class'] = \
+                matrix_sequential_social_dilemma.IteratedAsymBoS
+        else:
+            raise ValueError()
+
         tune_config['num_episodes'] = 600000 \
             if tune_config['num_episodes'] is None \
             else tune_config['num_episodes']
@@ -250,7 +273,6 @@ def get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
     return tune_config, stop, env_config
 
 
-
 def evaluate(tune_hp, debug, tune_analysis_per_exp):
     (rllib_hp, rllib_config_eval, policies_to_load, trainable_class, stop,
      env_config) = \
@@ -267,14 +289,14 @@ def generate_eval_config(tune_hp, debug):
     rllib_hp["num_episodes"] = 1 if debug else 100
     tune_config, stop, env_config = get_tune_config(rllib_hp,
                                                     stop_on_epi_number=True)
-    if tune_config['env'] in (VectorizedCoinGame, AsymVectorizedCoinGame):
+    if "CoinGame" in tune_config['env_name']:
         env_config["batch_size"] = 1
         tune_config['TuneTrainerClass'] = LOLAPGCG
     else:
         tune_config['TuneTrainerClass'] = LOLAPGMatrice
 
     rllib_config_eval = {
-        "env": rllib_hp["env"],
+        "env": rllib_hp["env_class"],
         "env_config": env_config,
         "multiagent": {
             "policies": {
@@ -282,13 +304,13 @@ def generate_eval_config(tune_hp, debug):
                     # The default policy is DQN defined in DQNTrainer
                     # but we overwrite it to use the LE policy
                     policy.get_tune_policy_class(DQNTorchPolicy),
-                    rllib_hp["env"](env_config).OBSERVATION_SPACE,
-                    rllib_hp["env"].ACTION_SPACE,
+                    rllib_hp["env_class"](env_config).OBSERVATION_SPACE,
+                    rllib_hp["env_class"].ACTION_SPACE,
                     {"tune_config": tune_config}),
                 env_config["players_ids"][1]: (
                     policy.get_tune_policy_class(DQNTorchPolicy),
-                    rllib_hp["env"](env_config).OBSERVATION_SPACE,
-                    rllib_hp["env"].ACTION_SPACE,
+                    rllib_hp["env_class"](env_config).OBSERVATION_SPACE,
+                    rllib_hp["env_class"].ACTION_SPACE,
                     {"tune_config": tune_config}),
             },
             "policy_mapping_fn": lambda agent_id: agent_id,
@@ -306,7 +328,7 @@ def generate_eval_config(tune_hp, debug):
     policies_to_load = copy.deepcopy(env_config["players_ids"])
 
     trainable_class = LOLAPGCG \
-        if rllib_hp['env'] in (VectorizedCoinGame, AsymVectorizedCoinGame) \
+        if "CoinGame" in rllib_hp['env_name'] \
         else LOLAPGMatrice
 
     return rllib_hp, rllib_config_eval, policies_to_load, \
@@ -326,8 +348,10 @@ def evaluate_self_and_cross_perf(
         n_cross_play_per_checkpoint=min(5, rllib_hp["train_n_replicates"] - 1),
         to_load_path=rllib_hp["load_plot_data"])
 
-    if issubclass(rllib_hp['env'], MatrixSequentialSocialDilemma):
-        background_area_coord = rllib_hp['env'].PAYOUT_MATRIX
+    if issubclass(
+            rllib_hp['env_class'],
+            matrix_sequential_social_dilemma.MatrixSequentialSocialDilemma):
+        background_area_coord = rllib_hp['env_class'].PAYOUT_MATRIX
     else:
         background_area_coord = None
 
@@ -351,5 +375,4 @@ def evaluate_self_and_cross_perf(
 
 if __name__ == "__main__":
     debug_mode = True
-    # debug_mode = False
     main(debug_mode)

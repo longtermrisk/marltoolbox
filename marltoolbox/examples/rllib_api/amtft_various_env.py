@@ -11,7 +11,8 @@ from ray.rllib.utils.schedules import PiecewiseSchedule
 
 from marltoolbox.algos import amTFT
 from marltoolbox.envs import \
-    matrix_sequential_social_dilemma, vectorized_coin_game
+    matrix_sequential_social_dilemma, vectorized_coin_game, \
+    mixed_motive_coin_game
 from marltoolbox.utils import exploration, log, \
     postprocessing, miscellaneous, plot, self_and_cross_perf
 from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
@@ -102,21 +103,16 @@ def get_hyperparameters(debug, train_n_replicates=None,
         "self_play": True,
         # "self_play": False, # Not tested
 
-        "env_name": "IteratedPrisonersDilemma",
-        # "env_name": "IteratedAsymBoS",
-        # "env_name": "IteratedAsymChicken",
-        # "env_name": "CoinGame",
-        # "env_name": "AsymCoinGame",
+        "env_name": "IteratedPrisonersDilemma" if env is None else env,
+        # "env_name": "IteratedAsymBoS" if env is None else env,
+        # "env_name": "IteratedAsymChicken" if env is None else env,
+        # "env_name": "CoinGame" if env is None else env,
+        # "env_name": "AsymCoinGame" if env is None else env,
+        # "env_name": "MixedMotiveCoinGame" if env is None else env,
 
         "overwrite_reward": True,
         "explore_during_evaluation": True,
-
-        # For training speed
-        # "min_iter_time_s": 0.0 if debug else 1.0,
     }
-
-    if env is not None:
-        hparams["env"] = env
 
     hparams = modify_hyperparams_for_the_selected_env(hparams)
     hparams["plot_keys"] = \
@@ -193,10 +189,16 @@ def modify_hyperparams_for_the_selected_env(hp):
             aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS
         hp["n_epi"] = 10 if hp["debug"] else 4000
         hp["base_lr"] *= 10
+        hp["both_players_can_pick_the_same_coin"] = False
         if "AsymCoinGame" in hp["env_name"]:
             hp["x_limits"] = (-0.5, 3.0)
             hp["y_limits"] = (-1.1, 0.6)
             hp["env_class"] = vectorized_coin_game.AsymVectorizedCoinGame
+        elif "MixedMotiveCoinGame" in hp["env_name"]:
+            hp["x_limits"] = (-0.5, 1.0)
+            hp["y_limits"] = (-0.5, 1.0)
+            hp["env_class"] = mixed_motive_coin_game.MixedMotiveCoinGame
+            hp["both_players_can_pick_the_same_coin"] = True
         else:
             hp["x_limits"] = (-0.5, 0.6)
             hp["y_limits"] = (-0.5, 0.6)
@@ -235,7 +237,6 @@ def modify_hyperparams_for_the_selected_env(hp):
         hp["jitter"] = 0.02
         hp["punishment_multiplier"] = 4.0
         hp["filter_utilitarian"] = False
-        hp["both_players_can_pick_the_same_coin"] = False
     else:
         raise NotImplementedError(f'hp["env_name"]: {hp["env_name"]}')
 
@@ -258,10 +259,16 @@ def train_for_each_welfare_function(hp):
             get_rllib_config(hp, welfare_fn)
 
         exp_name = os.path.join(hp["exp_name"], welfare_fn)
-        results = amTFT.train_amTFT(stop=stop,
-                                    config=trainer_config_update,
-                                    name=exp_name,
-                                    TrainerClass=dqn.DQNTrainer)
+        results = amTFT.train_amTFT(
+            stop=stop,
+            config=trainer_config_update,
+            name=exp_name,
+            TrainerClass=dqn.DQNTrainer,
+            plot_keys=hp["plot_keys"],
+            plot_assemblage_tags=
+            hp["plot_assemblage_tags"],
+            debug=hp["debug"]
+        )
         if welfare_fn == postprocessing.WELFARE_UTILITARIAN:
             results, hp = postprocess_utilitarian_results(results, env_config,
                                                           hp)

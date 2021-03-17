@@ -296,11 +296,13 @@ def train_in_self_play(rllib_config, stop, exp_name, hp):
         verbose=1, checkpoint_freq=0, stop=stop,
         checkpoint_at_end=True, name=exp_name)
 
-    add_summary_plots(main_path=os.path.join("~/ray_results/", exp_name),
-                      plot_keys=hp["plot_keys"],
-                      plot_assemble_tags_in_one_plot=
-                      hp["plot_assemblage_tags"],
-                      )
+    if not hp["debug"]:
+        add_summary_plots(
+            main_path=os.path.join("~/ray_results/", exp_name),
+            plot_keys=hp["plot_keys"],
+            plot_assemble_tags_in_one_plot=
+            hp["plot_assemblage_tags"],
+        )
 
     return tune_analysis_self_play
 
@@ -315,12 +317,14 @@ def train_against_opponent(hp, rllib_config, stop, exp_name, env_config):
         verbose=1, checkpoint_freq=0, stop=stop,
         checkpoint_at_end=True, name=exp_name)
 
-    add_summary_plots(main_path=os.path.join("~/ray_results/", exp_name),
-                      plot_keys=
-                      ltft.PLOT_KEYS + hp["plot_keys"],
-                      plot_assemble_tags_in_one_plot=
-                      ltft.PLOT_ASSEMBLAGE_TAGS + hp["plot_assemblage_tags"],
-                      )
+    if not hp["debug"]:
+        add_summary_plots(
+            main_path=os.path.join("~/ray_results/", exp_name),
+            plot_keys=
+            ltft.PLOT_KEYS + hp["plot_keys"],
+            plot_assemble_tags_in_one_plot=
+            ltft.PLOT_ASSEMBLAGE_TAGS + hp["plot_assemblage_tags"],
+        )
 
     return tune_analysis_naive_opponent
 
@@ -382,5 +386,5 @@ def set_config_to_use_naive_opponent(rllib_config, env_config, hp):
 
 
 if __name__ == "__main__":
-    debug_mode = False
+    debug_mode = True
     main(debug=debug_mode)

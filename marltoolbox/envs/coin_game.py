@@ -108,7 +108,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
             self.np_random.randint(low=0, high=self.grid_size, size=(2,))
         self.blue_pos = \
             self.np_random.randint(low=0, high=self.grid_size, size=(2,))
-        self.coin_pos = np.zeros(shape=(2,), dtype=np.int8)
+        # self.coin_pos = np.zeros(shape=(2,), dtype=np.int8)
 
         self._players_do_not_overlap_at_start()
 

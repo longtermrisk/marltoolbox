@@ -139,6 +139,7 @@ class PlotHelper:
             file_path = os.path.join(self.plot_cfg.save_dir_path, file_name)
             print("save fig to", file_path)
             fig.savefig(file_path, dpi=fig.dpi)
+        plt.close(fig)
 
     def plot_dots(self, data_groups: dict):
         """

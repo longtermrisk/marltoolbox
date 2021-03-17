@@ -2,7 +2,7 @@ import copy
 from collections import Iterable
 
 import logging
-from typing import List, Union, Optional, Dict, Tuple
+from typing import List, Union, Optional, Dict, Tuple, TYPE_CHECKING
 
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.dqn.dqn_torch_policy import postprocess_nstep_and_prio
@@ -13,6 +13,8 @@ from ray.rllib.utils.typing import TensorType
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import PolicyID
 from ray.rllib.env import BaseEnv
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import RolloutWorker
 
 from marltoolbox.algos import hierarchical, augmented_dqn
 from marltoolbox.utils import postprocessing, miscellaneous, restore
@@ -21,8 +23,13 @@ logger = logging.getLogger(__name__)
 
 APPROXIMATION_METHOD_Q_VALUE = "amTFT_use_Q_net"
 APPROXIMATION_METHOD_ROLLOUTS = "amTFT_use_rollout"
-APPROXIMATION_METHODS = (APPROXIMATION_METHOD_Q_VALUE, APPROXIMATION_METHOD_ROLLOUTS)
-WORKING_STATES = ("train_coop", "train_selfish", "eval_amtft", "eval_naive_selfish", "eval_naive_coop")
+APPROXIMATION_METHODS = (APPROXIMATION_METHOD_Q_VALUE,
+                         APPROXIMATION_METHOD_ROLLOUTS)
+WORKING_STATES = ("train_coop",
+                  "train_selfish",
+                  "eval_amtft",
+                  "eval_naive_selfish",
+                  "eval_naive_coop")
 WORKING_STATES_IN_EVALUATION = WORKING_STATES[2:]
 
 OWN_COOP_POLICY_IDX = 0
@@ -33,7 +40,8 @@ OPP_SELFISH_POLICY_IDX = 3
 DEFAULT_NESTED_POLICY_SELFISH = augmented_dqn.MyDQNTorchPolicy
 DEFAULT_NESTED_POLICY_COOP = DEFAULT_NESTED_POLICY_SELFISH.with_updates(
         postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
-            postprocessing.welfares_postprocessing_fn(add_utilitarian_welfare=True, ),
+            postprocessing.welfares_postprocessing_fn(
+                add_utilitarian_welfare=True,),
             postprocess_nstep_and_prio
         )
     )
@@ -59,7 +67,8 @@ DEFAULT_CONFIG = merge_dicts(
         "welfare": postprocessing.WELFARE_UTILITARIAN,
 
         'nested_policies': [
-            # Here the trainer need to be a DQNTrainer to provide the config for the 3 DQNTorchPolicy
+            # Here the trainer need to be a DQNTrainer
+            # to provide the config for the 3 DQNTorchPolicy
             {"Policy_class":DEFAULT_NESTED_POLICY_COOP,
              "config_update": {}},
             {"Policy_class":DEFAULT_NESTED_POLICY_SELFISH,
@@ -140,8 +149,9 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
         self.working_state = config["working_state"]
         self.verbose = config["verbose"]
 
-        assert self.welfare in postprocessing.WELFARES, f"self.welfare: {self.welfare} must be in " \
-                                                        f"postprocessing.WELFARES: {postprocessing.WELFARES}"
+        assert self.welfare in postprocessing.WELFARES, \
+            f"self.welfare: {self.welfare} must be in " \
+            f"postprocessing.WELFARES: {postprocessing.WELFARES}"
 
         if self.working_state in WORKING_STATES_IN_EVALUATION:
             self._set_models_for_evaluation()
@@ -165,29 +175,33 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
         self._select_witch_algo_to_use()
-        actions, state_out, extra_fetches = self.algorithms[self.active_algo_idx].compute_actions(
-            obs_batch,
-            state_batches,
-            prev_action_batch,
-            prev_reward_batch,
-            info_batch,
-            episodes,
-            explore,
-            timestep,
-            **kwargs)
+        actions, state_out, extra_fetches = \
+            self.algorithms[self.active_algo_idx].compute_actions(
+                obs_batch,
+                state_batches,
+                prev_action_batch,
+                prev_reward_batch,
+                info_batch,
+                episodes,
+                explore,
+                timestep,
+                **kwargs)
         if self.verbose > 2:
             print(f"self.active_algo_idx {self.active_algo_idx}")
         return actions, state_out, extra_fetches
 
     def _select_witch_algo_to_use(self):
-        if self.working_state == WORKING_STATES[0] or self.working_state == WORKING_STATES[4]:
+        if self.working_state == WORKING_STATES[0] or \
+                self.working_state == WORKING_STATES[4]:
             self.active_algo_idx = OWN_COOP_POLICY_IDX
-        elif self.working_state == WORKING_STATES[1] or self.working_state == WORKING_STATES[3]:
+        elif self.working_state == WORKING_STATES[1] or \
+                self.working_state == WORKING_STATES[3]:
             self.active_algo_idx = OWN_SELFISH_POLICY_IDX
         elif self.working_state == WORKING_STATES[2]:
             self._select_algo_to_use_in_eval()
         else:
-            raise ValueError(f'config["working_state"] must be one of {WORKING_STATES}')
+            raise ValueError(f'config["working_state"] '
+                             f'must be one of {WORKING_STATES}')
 
     def _select_algo_to_use_in_eval(self):
         if self.n_steps_to_punish == 0:
@@ -202,25 +216,23 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
     def learn_on_batch(self, samples: SampleBatch):
 
         working_state_idx = WORKING_STATES.index(self.working_state)
-        assert working_state_idx == OWN_COOP_POLICY_IDX or working_state_idx == OWN_SELFISH_POLICY_IDX, \
-                    f"current working_state is {self.working_state} but you be one of " \
-                    f"{[WORKING_STATES[OWN_COOP_POLICY_IDX], WORKING_STATES[OWN_SELFISH_POLICY_IDX]]}"
+        assert working_state_idx == OWN_COOP_POLICY_IDX \
+               or working_state_idx == OWN_SELFISH_POLICY_IDX, \
+               f"current working_state is {self.working_state} " \
+               f"but you be one of " \
+               f"[{WORKING_STATES[OWN_COOP_POLICY_IDX]}, "  \
+               f"{WORKING_STATES[OWN_SELFISH_POLICY_IDX]}]"
 
         self._update_lr_in_all_optimizers()
 
-        # samples_copy = samples.copy()
         algo_to_train = self.algorithms[working_state_idx]
         learner_stats = {"learner_stats": {}}
-        learner_stats["learner_stats"][f"learner_stats_algo{working_state_idx}"] = algo_to_train.learn_on_batch(
-            samples)
+        learner_stats["learner_stats"][f"algo{working_state_idx}"] = \
+            algo_to_train.learn_on_batch(samples)
 
-        # if self.verbose > 0:
-        #     for j, opt in enumerate(algo_to_train._optimizers):
-        #         self._to_log[f"algo_{working_state_idx}_{j}_lr"] = [p["lr"]
-        #                                                             for p in opt.param_groups][0]
-        # self._to_log[f'algo{working_state_idx}_cur_lr'] = algo_to_train.cur_lr
         if self.verbose > 1:
-            print(f"learn_on_batch WORKING_STATES {WORKING_STATES[working_state_idx]}, ")
+            print(f"learn_on_batch WORKING_STATES "
+                  f"{WORKING_STATES[working_state_idx]}, ")
 
         self._log_learning_rates()
 
@@ -417,39 +429,77 @@ def get_amTFTCallBacks(additionnal_callbacks=[], **kwargs):
                         callable(policy.on_episode_end):
                     policy.on_episode_end()
 
-        # def on_train_result(self, *, trainer, result: dict, **kwargs):
-        #     self._share_weights_during_training(trainer)
-        #
-        # def _share_weights_during_training(self, trainer):
-        #     local_policy_map = trainer.workers.local_worker().policy_map
-        #     policy_ids = list(local_policy_map.keys())
-        #     assert len(policy_ids) == 2
-        #     policies_weights = None
-        #     for i, policy_id in enumerate(policy_ids):
-        #         opp_policy_id = policy_ids[(i + 1) % 2]
-        #         if isinstance(local_policy_map[policy_id], amTFTPolicyBase):
-        #             if local_policy_map[policy_id].working_state not in WORKING_STATES_IN_EVALUATION:
-        #                 policy = local_policy_map[policy_id]
-        #                 # Only get and set weights during training
-        #                 if policies_weights is None:
-        #                     policies_weights = trainer.get_weights()
-        #                 assert isinstance(local_policy_map[opp_policy_id],
-        #                                   amTFTPolicyBase), "if amTFT is training then " \
-        #                                                      "the opponent must be " \
-        #                                                      "using amTFT too"
-        #                 # share weights during training of amTFT
-        #                 policies_weights[policy_id][policy._nested_key(OPP_COOP_POLICY_IDX)] = \
-        #                     policies_weights[opp_policy_id][policy._nested_key(OWN_COOP_POLICY_IDX)]
-        #                 policies_weights[policy_id][policy._nested_key(OPP_SELFISH_POLICY_IDX)] = \
-        #                     policies_weights[opp_policy_id][policy._nested_key(OWN_SELFISH_POLICY_IDX)]
-        #     # Only get and set weights during training
-        #     if policies_weights is not None:
-        #         trainer.set_weights(policies_weights)
+        def on_train_result(self, *, trainer, result: dict, **kwargs):
+            self._share_weights_during_training(trainer)
+
+        def _share_weights_during_training(self, trainer):
+            local_policy_map = trainer.workers.local_worker().policy_map
+            policy_ids = list(local_policy_map.keys())
+            assert len(policy_ids) == 2, "amTFT only works in two player " \
+                                         "environments"
+
+            in_training = self._are_policies_in_training(local_policy_map)
+            if in_training:
+                self._assert_training_wt_only_amTFT_policies(local_policy_map)
+                policies_weights = trainer.get_weights()
+                policies_weights = self._get_opp_policies_from_opponents(
+                    policy_ids, local_policy_map, policies_weights)
+                trainer.set_weights(policies_weights)
+
+        def _are_policies_in_training(self, local_policy_map):
+            in_training = all([
+                isinstance(policy, amTFTPolicyBase) and
+                policy.working_state not in WORKING_STATES_IN_EVALUATION
+                for policy in local_policy_map.values()
+            ])
+            return in_training
+
+        def _get_opp_policies_from_opponents(
+                self, policy_ids, local_policy_map, policies_weights):
+            """
+            For each player: copy weighs from the opponent into the player.
+            Copy OPP_COOP_POLICY_IDX from opponent into
+            OWN_COOP_POLICY_IDX inside own policy.
+            Copy OPP_SELFISH_POLICY_IDX from opponent into
+            OWN_SELFISH_POLICY_IDX inside own policy.
+            """
+
+            for i, policy_id in enumerate(policy_ids):
+                opp_policy_id = policy_ids[(i + 1) % 2]
+                policy = local_policy_map[policy_id]
+
+                policies_weights = self._load_weights_of_the_opponent(
+                    policy, policies_weights, policy_id, opp_policy_id)
+            return policies_weights
+
+        def _load_weights_of_the_opponent(
+                self, policy, policies_weights, policy_id, opp_policy_id):
+
+            opp_coop_pi_key = policy._nested_key(OPP_COOP_POLICY_IDX)
+            own_coop_pi_key = policy._nested_key(OWN_COOP_POLICY_IDX)
+            opp_selfish_pi_key = policy._nested_key(OPP_SELFISH_POLICY_IDX)
+            own_selfish_pi_key = policy._nested_key(OWN_SELFISH_POLICY_IDX)
+
+            # share weights during training of amTFT
+            policies_weights[policy_id][opp_coop_pi_key] = \
+                policies_weights[opp_policy_id][own_coop_pi_key]
+            policies_weights[policy_id][opp_selfish_pi_key] = \
+                policies_weights[opp_policy_id][own_selfish_pi_key]
+            return policies_weights
+
+        def _assert_training_wt_only_amTFT_policies(self, local_policy_map):
+            for policy in local_policy_map.values():
+                assert isinstance(policy, amTFTPolicyBase), \
+                    "if amTFT is training then " \
+                    "all players must be " \
+                    "using amTFT too"
+
+
 
     if not isinstance(additionnal_callbacks, Iterable):
         additionnal_callbacks = [additionnal_callbacks]
 
-    amTFTCallBacks = miscellaneous.merge_callbacks(  # WelfareAndPostprocessCallbacks,
+    amTFTCallBacks = miscellaneous.merge_callbacks(
         amTFTCallBacksPart,
         *additionnal_callbacks)
 

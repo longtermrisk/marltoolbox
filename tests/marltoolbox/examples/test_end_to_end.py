@@ -13,16 +13,46 @@ def test_ppo_asym_coin_game():
     main(debug=True, stop_iters=3, tf=False)
 
 
-def test_le_ipd():
+def test_ltft_ipd():
     from marltoolbox.examples.rllib_api.ltft import main
     ray.shutdown()
     main(debug=True, env="IteratedPrisonersDilemma", train_n_replicates=1)
 
 
-def test_amtft_various_env():
+def test_ltft_coin_game():
+    from marltoolbox.examples.rllib_api.ltft import main
+    ray.shutdown()
+    main(debug=True, env="CoinGame", train_n_replicates=1)
+
+
+def test_amtft_ipd():
     from marltoolbox.examples.rllib_api.amtft_various_env import main
     ray.shutdown()
     main(debug=True, env="IteratedPrisonersDilemma")
+
+
+def test_amtft_iasymbos():
+    from marltoolbox.examples.rllib_api.amtft_various_env import main
+    ray.shutdown()
+    main(debug=True, env="IteratedAsymBoS")
+
+
+def test_amtft_coin_game():
+    from marltoolbox.examples.rllib_api.amtft_various_env import main
+    ray.shutdown()
+    main(debug=True, env="CoinGame")
+
+
+def test_amtft_asym_coin_game():
+    from marltoolbox.examples.rllib_api.amtft_various_env import main
+    ray.shutdown()
+    main(debug=True, env="AsymCoinGame")
+
+
+def test_amtft_mixed_motive_coin_game():
+    from marltoolbox.examples.rllib_api.amtft_various_env import main
+    ray.shutdown()
+    main(debug=True, env="MixedMotiveCoinGame")
 
 
 def test_inequity_aversion():
@@ -31,10 +61,22 @@ def test_inequity_aversion():
     main(debug=True)
 
 
-def test_l1br_amtft():
+def test_l1br_amtft_ipd():
     from marltoolbox.examples.rllib_api.l1br_amtft import main
     ray.shutdown()
     main(debug=True, env="IteratedPrisonersDilemma")
+
+
+def test_l1br_amtft_iasymbos():
+    from marltoolbox.examples.rllib_api.l1br_amtft import main
+    ray.shutdown()
+    main(debug=True, env="IteratedAsymBoS")
+
+
+def test_l1br_amtft_coin_game():
+    from marltoolbox.examples.rllib_api.l1br_amtft import main
+    ray.shutdown()
+    main(debug=True, env="CoinGame")
 
 
 def test_lola_dice_tune_fn_api():
@@ -52,8 +94,39 @@ def test_lola_pg_tune_fn_api():
 def test_lola_pg_tune_class_api():
     from marltoolbox.examples.tune_class_api.lola_pg_official import main
     ray.shutdown()
-    main(debug=True)
+    main(debug=True, env="IteratedPrisonersDilemma")
 
+
+def test_lola_pg_tune_class_api():
+    from marltoolbox.examples.tune_class_api.lola_pg_official import main
+    ray.shutdown()
+    main(debug=True, env="IteratedPrisonersDilemma")
+
+
+def test_lola_pg_tune_class_api():
+    from marltoolbox.examples.tune_class_api.lola_pg_official import main
+    ray.shutdown()
+    main(debug=True, env="IteratedAsymBoS")
+
+
+def test_lola_pg_tune_class_api():
+    from marltoolbox.examples.tune_class_api.lola_pg_official import \
+        main
+    ray.shutdown()
+    main(debug=True, env="VectorizedCoinGame")
+
+
+def test_lola_pg_tune_class_api():
+    from marltoolbox.examples.tune_class_api.lola_pg_official import \
+        main
+    ray.shutdown()
+    main(debug=True, env="AsymVectorizedCoinGame")
+
+def test_lola_pg_tune_class_api():
+    from marltoolbox.examples.tune_class_api.lola_pg_official import \
+        main
+    ray.shutdown()
+    main(debug=True, env="VectorizedMixedMotiveCoinGame")
 
 def test_lola_exact_tune_class_api():
     from marltoolbox.examples.tune_class_api.lola_exact_official import main
