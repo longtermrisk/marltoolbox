@@ -78,61 +78,25 @@ DEFAULT_CONFIG = merge_dicts(
             {"Policy_class":DEFAULT_NESTED_POLICY_SELFISH,
              "config_update": {}},
         ],
-        "sgd_momentum": 0.0,
+        "optimizer": {"sgd_momentum": 0.0,},
     }
 )
 
 
-PLOT_KEYS = ["policy_reward_mean",
-             "loss",
-             "entropy_during_eval",
-             "entropy_avg",
-             "td_error",
+PLOT_KEYS = [
              "punish",
-             "debig",
+             "debit",
              "debit_threshold",
              "summed_debit",
              "summed_n_steps_to_punish"
-
-             "act_dist_inputs_avg",
-             "act_dist_inputs_single",
-             "q_values_avg",
-             "learn_on_batch",
-             "action_prob",
-             "q_values_single",
-             "_lr",
-             "max_q_values",
-             "min_q_values",
              ]
 
 PLOT_ASSEMBLAGE_TAGS = [
-    ("policy_reward_mean",),
-    ("loss", "td_error"),
-    ("entropy_during_eval",),
-    ("entropy_avg",),
-
     ("punish",),
-    ("debig",),
+    ("debit",),
     ("debit_threshold",),
     ("summed_debit",),
     ("summed_n_steps_to_punish",),
-
-    ("learn_on_batch",),
-    ("max_q_values",),
-    ("min_q_values",),
-    ("act_dist_inputs_avg_act0",),
-    ("act_dist_inputs_avg_act1",),
-    ("act_dist_inputs_avg_act2",),
-    ("act_dist_inputs_avg_act3",),
-    ("q_values_avg_act0",),
-    ("q_values_avg_act1",),
-    ("q_values_avg_act2",),
-    ("q_values_avg_act3",),
-    ("q_values_single_max",),
-    ("act_dist_inputs_single_max",),
-    ("action_prob_single",),
-    ("action_prob_avg",),
-    ("_lr",),
 ]
 
 
@@ -425,8 +389,8 @@ def get_amTFTCallBacks(additionnal_callbacks=[], **kwargs):
                            policies, episode, env_index, **kwargs):
 
             for polidy_ID, policy in policies.items():
-                if hasattr(policy, 'on_episode_end') and \
-                        callable(policy.on_episode_end):
+                if self._is_callback_implemented_in_policy(
+                        policy, 'on_episode_end'):
                     policy.on_episode_end()
 
         def on_train_result(self, *, trainer, result: dict, **kwargs):

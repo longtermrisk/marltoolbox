@@ -7,7 +7,7 @@ from ray.rllib.agents import dqn
 from ray.rllib.agents.dqn.dqn_torch_policy import \
     postprocess_nstep_and_prio
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.schedules import PiecewiseSchedule
+from ray.rllib.utils.schedules import PiecewiseSchedule, ExponentialSchedule
 
 from marltoolbox.algos import amTFT
 from marltoolbox.envs import \
@@ -52,7 +52,7 @@ def get_hyperparameters(debug, train_n_replicates=None,
     if debug:
         train_n_replicates = 2
     elif train_n_replicates is None:
-        train_n_replicates = 10
+        train_n_replicates = 2
 
     n_times_more_utilitarians_seeds = 4
     n_seeds_to_prepare = \
@@ -92,11 +92,10 @@ def get_hyperparameters(debug, train_n_replicates=None,
         "welfare_functions": [
             (postprocessing.WELFARE_INEQUITY_AVERSION, "inequity_aversion"),
             (postprocessing.WELFARE_UTILITARIAN, "utilitarian")],
-        "bs_epi_mul": 4,
-        "temperature_schedule": False,
         "jitter": 0.05,
         "hiddens": [64],
-        "base_lr": 0.01,
+        "gamma": 0.5,
+        # "gamma": 0.96,
 
         # If not in self play then amTFT
         # will be evaluated against a naive selfish policy or an exploiter
@@ -105,7 +104,6 @@ def get_hyperparameters(debug, train_n_replicates=None,
 
         "env_name": "IteratedPrisonersDilemma" if env is None else env,
         # "env_name": "IteratedAsymBoS" if env is None else env,
-        # "env_name": "IteratedAsymChicken" if env is None else env,
         # "env_name": "CoinGame" if env is None else env,
         # "env_name": "AsymCoinGame" if env is None else env,
         # "env_name": "MixedMotiveCoinGame" if env is None else env,
@@ -133,63 +131,45 @@ def load_tune_analysis(grouped_checkpoints_paths: dict):
 
 
 def modify_hyperparams_for_the_selected_env(hp):
-    # default values
-    hp["last_exploration_temp_value"] = 0.1
-    hp["gamma"] = 0.5
-    hp["lambda"] = 0.96
-    hp["alpha"] = 0.0
-    hp["beta"] = 1.0
-    hp["punishment_multiplier"] = 6.0
-    hp["debit_threshold"] = 4.0
-    hp["n_steps_per_epi"] = 20
-    hp["n_epi"] = 10 if hp["debug"] else 400
-    hp["temperature_schedule"] = PiecewiseSchedule(
-        endpoints=[
-            (0, 10.0),
-            (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.33),
-             1.0),
-            (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.66),
-             hp["last_exploration_temp_value"])],
-        outside_value=hp["last_exploration_temp_value"],
-        framework="torch"
-    )
-    hp["plot_keys"] = \
-        matrix_sequential_social_dilemma.PLOT_KEYS + \
-        aggregate_and_plot_tensorboard_data.PLOT_KEYS
+    hp["plot_keys"] = amTFT.PLOT_KEYS + \
+                      aggregate_and_plot_tensorboard_data.PLOT_KEYS
     hp["plot_assemblage_tags"] = \
-        matrix_sequential_social_dilemma.PLOT_ASSEMBLAGE_TAGS + \
+        amTFT.PLOT_ASSEMBLAGE_TAGS + \
         aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS
+    hp["last_exploration_temp_value"] = 0.1
 
-    if "IteratedPrisonersDilemma" in hp["env_name"]:
-        hp["x_limits"] = (-3.5, 0.5)
-        hp["y_limits"] = (-3.5, 0.5)
-        hp["utilitarian_filtering_threshold"] = -2.5
-        hp["env_class"] = \
-            matrix_sequential_social_dilemma.IteratedPrisonersDilemma
-    elif "IteratedAsymChicken" in hp["env_name"]:
-        hp["debit_threshold"] = 2.0
-        hp["x_limits"] = (-11.0, 4.5)
-        hp["y_limits"] = (-11.0, 4.5)
-        hp["utilitarian_filtering_threshold"] = None
-        hp["env_class"] = matrix_sequential_social_dilemma.IteratedAsymChicken
-        raise NotImplementedError(
-            "utilitarian_filtering_threshold must have a value")
-    elif "IteratedAsymBoS" in hp["env_name"]:
-        hp["n_epi"] = 10 if hp["debug"] else 800
-        hp["x_limits"] = (-0.1, 4.1)
-        hp["y_limits"] = (-0.1, 4.1)
-        hp["utilitarian_filtering_threshold"] = 3.2
-        hp["env_class"] = matrix_sequential_social_dilemma.IteratedAsymBoS
-    elif "CoinGame" in hp["env_name"]:
-        hp["plot_keys"] = \
-            vectorized_coin_game.PLOT_KEYS + \
-            aggregate_and_plot_tensorboard_data.PLOT_KEYS
-        hp["plot_assemblage_tags"] = \
-            vectorized_coin_game.PLOT_ASSEMBLAGE_TAGS + \
-            aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS
+    if "CoinGame" in hp["env_name"]:
+        hp["plot_keys"] += \
+            vectorized_coin_game.PLOT_KEYS
+        hp["plot_assemblage_tags"] += \
+            vectorized_coin_game.PLOT_ASSEMBLAGE_TAGS
+
+        hp["n_steps_per_epi"] = 20 if hp["debug"] else 100
         hp["n_epi"] = 10 if hp["debug"] else 4000
-        hp["base_lr"] *= 10
+        hp["base_lr"] = 0.4
+        hp["bs_epi_mul"] = 4
         hp["both_players_can_pick_the_same_coin"] = False
+        hp["sgd_momentum"] = 0.9
+
+        hp["lambda"] = 0.96
+        hp["alpha"] = 0.0
+        hp["beta"] = 0.5
+
+        hp["debit_threshold"] = 4.0
+        hp["jitter"] = 0.02
+        hp["punishment_multiplier"] = 4.0
+        hp["filter_utilitarian"] = False
+
+        hp["temperature_schedule"] = PiecewiseSchedule(
+            endpoints=[
+                (0, 2.0),
+                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.50),
+                 0.5),
+                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.75),
+                 hp["last_exploration_temp_value"])],
+            outside_value=hp["last_exploration_temp_value"],
+            framework="torch")
+
         if "AsymCoinGame" in hp["env_name"]:
             hp["x_limits"] = (-0.5, 3.0)
             hp["y_limits"] = (-1.1, 0.6)
@@ -203,42 +183,67 @@ def modify_hyperparams_for_the_selected_env(hp):
             hp["x_limits"] = (-0.5, 0.6)
             hp["y_limits"] = (-0.5, 0.6)
             hp["env_class"] = vectorized_coin_game.VectorizedCoinGame
-        hp["gamma"] = 0.96
-        hp["lambda"] = 0.95
-        hp["alpha"] = 0.0
-        hp["beta"] = 0.5
-        hp["last_exploration_temp_value"] = 0.1
+    else:
+        hp["plot_keys"] += \
+            matrix_sequential_social_dilemma.PLOT_KEYS
+        hp["plot_assemblage_tags"] += \
+            matrix_sequential_social_dilemma.PLOT_ASSEMBLAGE_TAGS
 
-        # HP for Inequity Aversion
-        hp["n_steps_per_epi"] = 20 if hp["debug"] else 100
+        hp["base_lr"] = 0.03
+        hp["bs_epi_mul"] = 1
+        hp["n_steps_per_epi"] = 20
+        hp["n_epi"] = 10 if hp["debug"] else 400
+        hp["lambda"] = 0.96
+        hp["alpha"] = 0.0
+        hp["beta"] = 1.0
+        hp["sgd_momentum"] = 0.0
+
+        hp["punishment_multiplier"] = 6.0
+        hp["debit_threshold"] = 4.0
+
         hp["temperature_schedule"] = PiecewiseSchedule(
             endpoints=[
                 (0, 2.0),
-                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.50),
+                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.33),
                  0.5),
-                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.75),
+                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.66),
                  hp["last_exploration_temp_value"])],
             outside_value=hp["last_exploration_temp_value"],
-            framework="torch")
+            framework="torch"
+        )
 
-        # HP for Utilitarian
-        hp["n_steps_per_epi_utilitarian"] = 20
-        hp["temperature_schedule_utilitarian"] = PiecewiseSchedule(
-            endpoints=[
-                (0, 2.0),
-                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.50),
-                 0.1),
-                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.75),
-                 hp["last_exploration_temp_value"])],
-            outside_value=hp["last_exploration_temp_value"],
-            framework="torch")
+        if "IteratedPrisonersDilemma" in hp["env_name"]:
+            hp["x_limits"] = (-3.5, 0.5)
+            hp["y_limits"] = (-3.5, 0.5)
+            hp["utilitarian_filtering_threshold"] = -2.5
+            hp["env_class"] = \
+                matrix_sequential_social_dilemma.IteratedPrisonersDilemma
+        elif "IteratedAsymBoS" in hp["env_name"]:
+            hp["n_epi"] = 10 if hp["debug"] else 800
+            hp["x_limits"] = (-0.1, 4.1)
+            hp["y_limits"] = (-0.1, 4.1)
+            hp["utilitarian_filtering_threshold"] = 3.2
+            hp["env_class"] = matrix_sequential_social_dilemma.IteratedAsymBoS
+        else:
+            raise NotImplementedError(f'hp["env_name"]: {hp["env_name"]}')
 
-        hp["debit_threshold"] = 4.0
-        hp["jitter"] = 0.02
-        hp["punishment_multiplier"] = 4.0
-        hp["filter_utilitarian"] = False
+
+    if hp["gamma"] == 0.5:
+        hp["lr_schedule"] = [
+            (0, 0.0),
+            (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.05),
+             hp["base_lr"]),
+            (int(hp["n_steps_per_epi"] * hp["n_epi"]), hp["base_lr"] / 1e9)
+        ]
+    elif hp["gamma"] == 0.96:
+        hp["lr_schedule"] = ExponentialSchedule(
+            schedule_timesteps=int(hp["n_steps_per_epi"] * hp["n_epi"]),
+            initial_p=hp["base_lr"],
+            decay_rate=1 / 20,
+            framework="torch"
+        )
     else:
-        raise NotImplementedError(f'hp["env_name"]: {hp["env_name"]}')
+        raise ValueError()
 
     hp["plot_axis_scale_multipliers"] = (
         (1 / hp["n_steps_per_epi"]),  # for x axis
@@ -282,19 +287,6 @@ def preprocess_utilitarian_config(hp):
         hp_copy['train_n_replicates'] = \
             hp_copy['train_n_replicates'] * \
             hp_copy["n_times_more_utilitarians_seeds"]
-    if "CoinGame" in hp["env_name"]:
-        hp_copy["temp_save"] = {
-            "n_steps_per_epi": hp_copy['n_steps_per_epi'],
-            "temperature_schedule":
-                copy.deepcopy(hp_copy["temperature_schedule"])
-        }
-        hp_copy["temperature_schedule"] = \
-            hp["temperature_schedule_utilitarian"]
-        hp_copy["n_steps_per_epi"] = \
-            hp["n_steps_per_epi_utilitarian"]
-        hp_copy["plot_axis_scale_multipliers"] = (
-            (1 / hp_copy["n_steps_per_epi"]),  # for x axis
-            (1 / hp_copy["n_steps_per_epi"]))  # for y axis
     return hp_copy
 
 
@@ -315,6 +307,13 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         "multiagent": {
             "policies": policies,
             "policy_mapping_fn": lambda agent_id: agent_id,
+            # When replay_mode=lockstep, RLlib will replay all the agent
+            # transitions at a particular timestep together in a batch.
+            # This allows the policy to implement differentiable shared
+            # computations between  agents it controls at that timestep.
+            # When replay_mode=independent,
+            # transitions are replayed independently per policy.
+            "replay_mode": "lockstep",
         },
 
         "gamma": hp["gamma"],
@@ -324,10 +323,7 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         # Learning rate for adam optimizer
         "lr": hp["base_lr"],
         # Learning rate schedule
-        "lr_schedule": [(0,
-                         hp["base_lr"]),
-                        (int(hp["n_steps_per_epi"] * hp["n_epi"]),
-                         hp["base_lr"] / 1e9)],
+        "lr_schedule": hp["lr_schedule"],
         # Adam epsilon hyper parameter
         # "adam_epsilon": 1e-8,
         # If not None, clip gradients during optimization at this value
@@ -370,7 +366,7 @@ def get_rllib_config(hp, welfare_fn, eval=False):
 
         # === DQN Models ===
         # Update the target network every `target_network_update_freq` steps.
-        "target_network_update_freq": hp["n_steps_per_epi"],
+        "target_network_update_freq": 3 * hp["n_steps_per_epi"],
         # === Replay buffer ===
         # Size of the replay buffer. Note that if async_updates is set, then
         # each worker will have a replay buffer of this size.
@@ -467,7 +463,7 @@ def get_policies(hp, env_config, welfare_fn, eval=False):
             "debit_threshold": hp["debit_threshold"],
             "rollout_length": min(hp["n_steps_per_epi"], 40),
 
-            "sgd_momentum": 0.9,
+            "optimizer": {"sgd_momentum": hp["sgd_momentum"],},
             'nested_policies': [
                 {"Policy_class": CoopNestedPolicyClass, "config_update": {}},
                 {"Policy_class": NestedPolicyClass, "config_update": {}},
@@ -543,14 +539,6 @@ def postprocess_utilitarian_results(results, env_config, hp):
             results.trials = results.trials[:hp_cp['train_n_replicates']]
         elif len(results.trials) < hp_cp['train_n_replicates']:
             print("WARNING: not enough Utilitarian trials above threshold!!!")
-
-    if "CoinGame" in hp["env_name"]:
-        hp_cp['n_steps_per_epi'] = \
-            hp_cp["temp_save"]['n_steps_per_epi']
-        hp_cp['temperature_schedule'] = \
-            copy.deepcopy(hp_cp["temp_save"]['temperature_schedule'])
-        hp_cp["plot_axis_scale_multipliers"] = ((1 / hp_cp["n_steps_per_epi"]),
-                                                (1 / hp_cp["n_steps_per_epi"]))
     return results, hp_cp
 
 

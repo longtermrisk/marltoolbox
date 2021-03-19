@@ -20,11 +20,10 @@ from ray.rllib.agents.dqn import DQNTorchPolicy
 
 from marltoolbox.algos.lola.train_cg_tune_class_API import LOLAPGCG
 from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
-# from marltoolbox.envs.matrix_sequential_social_dilemma import \
-#     MatrixSequentialSocialDilemma, IteratedPrisonersDilemma, IteratedAsymBoS
 from marltoolbox.envs import \
     vectorized_coin_game, vectorized_mixed_motive_coin_game, \
     matrix_sequential_social_dilemma
+from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
 from marltoolbox.utils import policy, log, self_and_cross_perf
 from marltoolbox.utils.plot import PlotConfig
 
@@ -36,6 +35,7 @@ def main(debug, env=None):
 
     exp_name, _ = log.log_in_current_day_dir("LOLA_PG")
 
+    # The InfluenceEvader(like)
     use_best_exploiter = False
     # use_best_exploiter = True
 
@@ -105,6 +105,9 @@ def main(debug, env=None):
         "correction_reward_baseline_per_step": False,
 
         "use_critic": False,
+
+        "plot_keys": ["reward", "total_reward", "entrop", ],
+        "plot_assemblage_tags": [("total_reward",), ("entrop",), ],
     }
 
     # Add exploiter hyperparameters
@@ -117,6 +120,7 @@ def main(debug, env=None):
         "use_exploiter_on_fraction_of_batch": 0.5 if debug else 0.1,
 
         # DQN exploiter
+        # TODO remove this (the DQN exploiter versions)
         "use_DQN_exploiter": False,
         # "use_DQN_exploiter": True,
         "train_exploiter_n_times_per_epi": 3,
@@ -171,6 +175,14 @@ def train(tune_hp):
                              stop=stop, metric=tune_config["metric"],
                              mode="max")
     tune_analysis_per_exp = {"": tune_analysis}
+
+    # if not tune_hp["debug"]:
+    aggregate_and_plot_tensorboard_data.add_summary_plots(
+        main_path=os.path.join("~/ray_results/", tune_config["exp_name"]),
+        plot_keys=tune_config["plot_keys"],
+        plot_assemble_tags_in_one_plot=tune_config["plot_assemblage_tags"],
+    )
+
     return tune_analysis_per_exp
 
 
@@ -226,6 +238,11 @@ def get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
             "same_obs_for_each_player": True,
         }
         tune_config['metric'] = "player_blue_pick_speed"
+        tune_config["plot_keys"] += \
+            ["speed", "own_color", ] + vectorized_coin_game.PLOT_KEYS
+        tune_config["plot_assemblage_tags"] += \
+            [("own",), ("own_color",), ("speed",), ("pick_speed",), ] + \
+            vectorized_coin_game.PLOT_ASSEMBLAGE_TAGS
     else:
         if tune_config['env_name'] == "IteratedPrisonersDilemma":
             tune_config['env_class'] = \

@@ -66,7 +66,7 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
     def __init__(self, observation_space, action_space, config, **kwargs):
 
         super().__init__(observation_space, action_space, config,
-                         after_init_nested=_init_weights_fn,
+                         # after_init_nested=_init_weights_fn,
                          **kwargs)
 
         self.percentile_for_likelihood_test = \
@@ -153,7 +153,6 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
             obs_batch, state_batches, prev_action_batch,
             prev_reward_batch, info_batch, episodes, explore,
             timestep, **kwargs)
-
         extra_fetches['punishing'] = [self._is_punishing() for _ in obs_batch]
 
         return actions, [], extra_fetches
@@ -525,6 +524,6 @@ class LTFTCallbacks(DefaultCallbacks):
                 [False] * len(postprocessed_batch[postprocessed_batch.OBS])
 
 
-def _init_weights_fn(policy):
-    return [torch.nn.init.normal_(p, mean=0.0, std=0.1)
-            for p in policy.model.parameters()]
+# def _init_weights_fn(policy):
+#     return [torch.nn.init.normal_(p, mean=0.0, std=0.1)
+#             for p in policy.model.parameters()]

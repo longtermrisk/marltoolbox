@@ -350,7 +350,8 @@ class amTFTRolloutsTorchPolicy(amTFTPolicyBase):
                 worker, policy_map,
                 policy_agent_mapping,
                 partially_coop=False,
-                opp_action=None, last_obs=last_obs,
+                opp_action=None,
+                last_obs=last_obs,
                 k_to_explore=k_to_explore)
 
         opp_total_reward_loss = coop_mean_total_reward - \

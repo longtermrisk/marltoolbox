@@ -276,8 +276,8 @@ def _add_entropy_to_log(train_batch, to_log):
         actions_proba_batch)
     entropy_single = _entropy_proba_distrib(
         actions_proba_batch[-1, :])
-    to_log[f"entropy_during_eval_avg"] = entropy_avg
-    to_log[f"entropy_during_eval_single"] = entropy_single
+    to_log[f"entropy_buffer_samples_avg"] = entropy_avg
+    to_log[f"entropy_buffer_samples_single"] = entropy_single
 
     return to_log
 

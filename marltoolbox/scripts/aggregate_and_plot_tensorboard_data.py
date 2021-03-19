@@ -8,7 +8,6 @@ import argparse
 import ast
 import datetime
 import os
-import random
 import re
 from typing import Iterable
 
@@ -36,26 +35,78 @@ COLORS = list(mcolors.TABLEAU_COLORS)
 
 PLOT_KEYS = ["grad_gnorm",
              "reward",
+             "loss",
+             "entropy",
+             "entropy_avg",
+             "td_error",
+             "error",
+             "act_dist_inputs_avg",
+             "act_dist_inputs_single",
+             "q_values_avg",
+             "action_prob",
+             "q_values_single",
+             "_lr",
+             "max_q_values",
+             "min_q_values",
+             "learn_on_batch",
              ]
 
 PLOT_ASSEMBLAGE_TAGS = [
     ("grad_gnorm",),
     ("reward",),
+    ("policy_reward_mean",),
+    ("entropy_buffer_samples_avg",),
+    ("entropy_avg",),
+    ("loss", "td_error"),
+    ("learn_on_batch",),
+    ("last_training_max_q_values",),
+    ("last_training_min_q_values",),
+    ("act_dist_inputs_avg_act0",),
+    ("act_dist_inputs_avg_act1",),
+    ("act_dist_inputs_avg_act2",),
+    ("act_dist_inputs_avg_act3",),
+    ("q_values_avg_act0",),
+    ("q_values_avg_act1",),
+    ("q_values_avg_act2",),
+    ("q_values_avg_act3",),
+    ("q_values_single_max",),
+    ("act_dist_inputs_single_max",),
+    ("action_prob_single",),
+    ("action_prob_avg",),
+    ("_lr",),
+    ("last_training_max_q_values", "last_training_target_max_q_values"),
+    ("last_training_min_q_values", "last_training_target_min_q_values"),
 ]
-
 
 
 class TensorBoardDataExtractor():
 
-    def extract_data(self, main_path, ignore_keys, group_keys, output):
+    def __init__(self, main_path):
+        self.main_path = main_path
+
+        now = datetime.datetime.now()
+        self.date_hour_str = now.strftime("%Y_%m_%d_%H_%M_%S")
+        save_dir = os.path.join(self.main_path,
+                                FOLDER_NAME)
+        if not os.path.exists(save_dir):
+            os.mkdir(save_dir)
+        save_dir = os.path.join(save_dir,
+                                self.date_hour_str)
+        if not os.path.exists(save_dir):
+            os.mkdir(save_dir)
+
+        self.save_dir = save_dir
+
+    def extract_data(self, ignore_keys, group_keys, output):
         print("\n===== Extract data =====")
-        file_list = list_all_files_in_one_dir_tree(main_path)
+        file_list = list_all_files_in_one_dir_tree(self.main_path)
         file_list_filtered = ignore_str_containing_keys(
             file_list, ignore_keys)
         file_list_dict = separate_str_in_group_containing_keys(
             file_list_filtered, group_keys)
 
-        self._aggregate(main_path, output, file_list_dict)
+        self._aggregate(self.main_path, output, file_list_dict)
+        return self.save_dir
 
     def _aggregate(self, main_path, output, file_list_dict):
 
@@ -157,14 +208,13 @@ class TensorBoardDataExtractor():
 
         steps_per_key = []
         for key_idx, (all_steps_for_one_key, key) in enumerate(zip(
-                all_steps_per_key,keys)):
+                all_steps_per_key, keys)):
             self._print_discrepencies_in_steps(all_steps_for_one_key, key)
             common_steps = self._keep_common_steps(all_steps_for_one_key)
             all_scalar_events_per_key = \
                 self._remove_events_if_step_missing_somewhere(
                     common_steps, all_scalar_events_per_key, key_idx)
             steps_per_key.append(common_steps)
-
 
         return steps_per_key, all_scalar_events_per_key
 
@@ -197,11 +247,10 @@ class TensorBoardDataExtractor():
 
         all_scalar_events_per_key[key_idx] = [
             [scalar_event for scalar_event in scalar_events_batch
-                if scalar_event.step in common_steps]
+             if scalar_event.step in common_steps]
             for scalar_events_batch in all_scalar_events_per_key[key_idx]
         ]
         return all_scalar_events_per_key
-
 
     def _get_values_per_step_per_key(self, all_scalar_events_per_key):
         values_per_key = [
@@ -221,15 +270,10 @@ class TensorBoardDataExtractor():
                 self._write_csv(main_path, group_key, key, aggregations, steps)
 
     def _write_csv(self, main_path, group_key, key, aggregations, steps):
-        save_dir_path = os.path.join(main_path, FOLDER_NAME)
         main_path_split = os.path.split(main_path)
-
-        if not os.path.exists(save_dir_path):
-            os.makedirs(save_dir_path)
-
         group_dir = self._get_valid_filename(group_key)
-        save_group_dir = os.path.join(save_dir_path, group_dir) \
-            if group_key != GROUP_KEY_NONE else save_dir_path
+        save_group_dir = os.path.join(self.save_dir, group_dir) \
+            if group_key != GROUP_KEY_NONE else self.save_dir
         if not os.path.exists(save_group_dir):
             os.mkdir(save_group_dir)
         file_name = self._get_valid_filename(key) + '-' + \
@@ -245,7 +289,7 @@ class TensorBoardDataExtractor():
 
 class SummaryPlotter():
     def plot_selected_keys(self,
-                           main_path,
+                           save_dir,
                            plot_keys,
                            group_keys,
                            plot_aggregates,
@@ -259,7 +303,7 @@ class SummaryPlotter():
         self.additional_plot_config_kwargs = additional_plot_config_kwargs
 
         print("\n===== Plot =====")
-        save_dir_path = os.path.join(main_path, FOLDER_NAME)
+        save_dir_path = save_dir
         file_list = list_all_files_in_one_dir_tree(save_dir_path)
         file_list = keep_strs_containing_keys(file_list, plot_keys)
         csv_file_list = [file_path
@@ -268,15 +312,10 @@ class SummaryPlotter():
         csv_file_groups = separate_str_in_group_containing_keys(
             csv_file_list, group_keys)
 
-        now = datetime.datetime.now()
-        date_hour_str = now.strftime("%Y_%m_%d_%H_%M_%S")
-
         for group_key, csv_files_in_one_group in csv_file_groups.items():
-            save_dir_path_group = os.path.join(save_dir_path, group_key)
-            if not os.path.exists(save_dir_path_group):
-                os.mkdir(save_dir_path_group)
-            save_dir_path_group = os.path.join(save_dir_path_group,
-                                               date_hour_str)
+            save_dir_path_group = os.path.join(save_dir_path, group_key) \
+                if group_key != GROUP_KEY_NONE else save_dir_path
+
             if not os.path.exists(save_dir_path_group):
                 os.mkdir(save_dir_path_group)
 
@@ -332,12 +371,14 @@ class SummaryPlotter():
             assemblage_list = self._group_csv_file_in_aggregates(
                 csv_file_list, list_of_tags_in_assemblage
             )
-            # plot one assemblage
-            y_label = f"{assemblage_idx}_" + \
-                      " or ".join(list_of_tags_in_assemblage)
-            self.plot_one_graph(
-                save_dir_path, assemblage_list,
-                y_label=y_label)
+
+            if len(assemblage_list) > 0:
+                # plot one assemblage
+                y_label = f"{assemblage_idx}_" + \
+                          " or ".join(list_of_tags_in_assemblage)
+                self.plot_one_graph(
+                    save_dir_path, assemblage_list,
+                    y_label=y_label)
 
     def _group_csv_file_in_aggregates(
             self, csv_file_list, list_of_tags_in_assemblage):
@@ -444,13 +485,13 @@ def add_summary_plots(main_path: str,
 
     main_path = os.path.expanduser(main_path)
 
-    tb_data_extractor = TensorBoardDataExtractor()
-    tb_data_extractor.extract_data(main_path, ignore_keys, group_keys, output)
+    tb_data_extractor = TensorBoardDataExtractor(main_path)
+    save_dir = tb_data_extractor.extract_data(ignore_keys, group_keys, output)
 
     if output == "csv":
         plotter = SummaryPlotter()
         plotter.plot_selected_keys(
-            main_path, plot_keys, group_keys, plot_aggregates,
+            save_dir, plot_keys, group_keys, plot_aggregates,
             plot_assemble_tags_in_one_plot, plot_single_lines,
             plot_labels_cleaning, additional_plot_config_kwargs)
 

@@ -1,4 +1,3 @@
-import copy
 import logging
 from typing import List
 
@@ -22,9 +21,9 @@ from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 from torch.nn import CrossEntropyLoss
 
+from marltoolbox.algos import augmented_dqn, supervised_learning, hierarchical
 from marltoolbox.algos.ltft.ltft_torch_policy import \
     LTFTCallbacks, LTFTTorchPolicy
-from marltoolbox.algos import augmented_dqn, supervised_learning, hierarchical
 from marltoolbox.utils import log, miscellaneous, exploration
 
 logger = logging.getLogger(__name__)
@@ -61,7 +60,7 @@ DEFAULT_CONFIG.update({
         LTFTCallbacks,
         log.get_logging_callbacks_class()),
 
-    "sgd_momentum": 0.9,
+    "optimizer": {"sgd_momentum": 0.9, },
     'nested_policies': [
         # Here the trainer need to be a DQNTrainer to provide the config
         # for the 3 MyDQNTorchPolicy
@@ -72,13 +71,14 @@ DEFAULT_CONFIG.update({
          "config_update": {
              "learn_action": True,
              "learn_reward": False,
+             "explore": False,
              # "timesteps_per_iteration": None,  # To fill
              # === Optimization ===
              # Learning rate for adam optimizer
-             "lr": None,  # To fill
+             # "lr": None,  # To fill
              # Learning rate schedule
-             "lr_schedule": [(0, None),
-                             (None, 1e-12)],  # To fill
+             # "lr_schedule": [(0, None),
+             #                 (None, 1e-12)],  # To fill
              "loss_fn": CrossEntropyLoss(),
          }},
     ],
@@ -110,100 +110,32 @@ DEFAULT_CONFIG.update({
 }
 )
 
-PLOT_KEYS = ["policy_reward_mean",
-             "loss",
-             "entropy",
-             "entropy_avg",
-
-             "td_error",
-             "punish",
-             "likelihood_opponent",
-             "likelihood_approximated_opponent",
-             "delta_log_likelihood_coop_mean",
-             "delta_log_likelihood_coop_std",
-             "percentile",
-             "defection",
-             "mean_log_lik_",
-
-             "act_dist_inputs_avg",
-             "act_dist_inputs_single",
-             "q_values_avg",
-             "learn_on_batch",
-             "action_prob",
-             "q_values_single",
-             "_lr",
-             "max_q_values",
-             "min_q_values",
-             ]
+PLOT_KEYS = [
+    "punish",
+    "likelihood_opponent",
+    "likelihood_approximated_opponent",
+    "delta_log_likelihood_coop_mean",
+    "delta_log_likelihood_coop_std",
+    "percentile",
+    "defection",
+    "mean_log_lik_",
+]
 
 PLOT_ASSEMBLAGE_TAGS = [
-    ("policy_reward_mean",),
     ("defection",),
     ("defection", "chosen_percentile"),
-    ("entropy_during_eval",),
-    ("entropy_avg",),
-    ("loss", "td_error"),
-
     ("punish",),
     ("delta_log_likelihood_coop_std", "delta_log_likelihood_coop_mean"),
-    ("likelihood_opponent","likelihood_approximated_opponent"),
-    ("mean_log_lik_cooperate","mean_log_lik_defect"),
+    ("likelihood_opponent", "likelihood_approximated_opponent"),
+    ("mean_log_lik_cooperate", "mean_log_lik_defect"),
     ("chosen_percentile",),
     ("percentile_50",),
     ("percentile",),
     ("delta_log_likelihood_coop_mean",),
     ("delta_log_likelihood_coop_std",),
     ("mean_log_lik_cooperate",),
-    ("mean_log_lik_defect", ),
-
-    ("learn_on_batch",),
-    ("last_training_max_q_values",),
-    ("last_training_min_q_values",),
-    ("act_dist_inputs_avg_act0",),
-    ("act_dist_inputs_avg_act1",),
-    ("act_dist_inputs_avg_act2",),
-    ("act_dist_inputs_avg_act3",),
-    ("q_values_avg_act0",),
-    ("q_values_avg_act1",),
-    ("q_values_avg_act2",),
-    ("q_values_avg_act3",),
-    ("q_values_single_max",),
-    ("act_dist_inputs_single_max",),
-    ("action_prob_single",),
-    ("action_prob_avg",),
-    ("_lr",),
-    ("last_training_max_q_values", "last_training_target_max_q_values"),
-    ("last_training_min_q_values", "last_training_target_min_q_values"),
+    ("mean_log_lik_defect",),
 ]
-
-# TODO is that really needed this this is specific to the env used
-def prepare_default_config(lr, lr_spl, n_steps_per_epi, n_epi):
-    default_config = copy.deepcopy(DEFAULT_CONFIG)
-    default_config["exploration_config"]["temperature_schedule"] = \
-        PiecewiseSchedule(
-            endpoints=[(0, 1.0),
-                       (int(n_steps_per_epi * n_epi * 0.75), 0.1)],
-            outside_value=0.1,
-            framework="torch")
-    default_config.update({
-        "lr": lr,
-        "lr_schedule": [(0, 0.0),
-                        (int(n_steps_per_epi * n_epi*0.1), lr),
-                        (int(n_steps_per_epi * n_epi), lr / 1e9)],
-    })
-    default_config["nested_policies"][3]["config_update"].update({
-        # === Optimization ===
-        # Learning rate for adam optimizer
-        "lr": lr_spl,
-        # Learning rate schedule
-        "lr_schedule": [(0, 0.0),
-                        (int(n_steps_per_epi * n_epi * 0.1), lr_spl),
-                        (int(n_steps_per_epi * n_epi), lr_spl / 1e9)],
-
-        # "timesteps_per_iteration": n_steps_per_epi,
-    })
-
-    return default_config
 
 
 def validate_config(config: TrainerConfigDict) -> None:
@@ -284,8 +216,6 @@ def execution_plan(workers: WorkerSet,
     # opt = train_op_pg.union(replay_op_dqn, deterministic=True).batch(2)
     round_robin_weights = calculate_rr_weights(config)
     round_robin_weights.append(round_robin_weights[-1])
-
-
 
     # Alternate deterministically between (1) and (2). Only return the output
     # of (2) since training metrics are not available until (2) runs.

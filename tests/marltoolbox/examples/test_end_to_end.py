@@ -8,19 +8,23 @@ def test_pg_ipd():
 
 
 def test_ppo_asym_coin_game():
-    from marltoolbox.examples.rllib_api.ppo_asymmetric_coin_game import main
+    from marltoolbox.examples.rllib_api.ppo_coin_game import main
     ray.shutdown()
     main(debug=True, stop_iters=3, tf=False)
 
+def test_ppo_asym_coin_game():
+    from marltoolbox.examples.rllib_api.dqn_coin_game import main
+    ray.shutdown()
+    main(debug=True)
 
 def test_ltft_ipd():
-    from marltoolbox.examples.rllib_api.ltft import main
+    from marltoolbox.examples.rllib_api.ltft_various_env import main
     ray.shutdown()
     main(debug=True, env="IteratedPrisonersDilemma", train_n_replicates=1)
 
 
 def test_ltft_coin_game():
-    from marltoolbox.examples.rllib_api.ltft import main
+    from marltoolbox.examples.rllib_api.ltft_various_env import main
     ray.shutdown()
     main(debug=True, env="CoinGame", train_n_replicates=1)
 

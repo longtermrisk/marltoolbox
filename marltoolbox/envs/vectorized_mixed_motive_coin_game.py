@@ -138,8 +138,7 @@ def compute_reward(batch_size, red_pos, blue_pos, red_coin_pos, blue_coin_pos):
             red_pick_any += 1
             red_pick_red += 1
             blue_pick_any += 1
-
-        if _same_pos(red_pos[i], blue_coin_pos[i]) and \
+        elif _same_pos(red_pos[i], blue_coin_pos[i]) and \
                 _same_pos(blue_pos[i], blue_coin_pos[i]):
             generate[i] = 2
             reward_red[i] += 1

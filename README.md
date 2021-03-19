@@ -21,7 +21,7 @@
 
 
 **Major features of this toolbox:**  
-This toolbox contains algorithms, environments, evaluation tools, and a lot of 
+This toolbox contains algorithms, environments, evaluation tools, and 
 helper functions to conduct research on bargaining in MARL.
 
 **Additional features of using the `Ray/Tune/RLLib` research framework:**  
@@ -37,7 +37,8 @@ to provide the basic RL components and research functionalities.
 
 
 **Philosophy**: Implement when needed.
-Improve at each new use. Keep it simple. Keep it flexible.  
+Improve at each new use. Keep it simple. Keep it flexible. 
+Keep the maintenance cost low.  
 
 **Support**: We <ins>actively support</ins> researchers by adding tools that they see relevant for research on 
 bargaining 
@@ -48,6 +49,14 @@ in MARL.
 ## How to use this toolbox
 
 <b>Introduction</b>
+
+`marltoolbox` is a toolbox in that you should fork/clone and customize 
+for yourself. You can create new experiments by starting from the
+existing examples. You should edit/inherit any functionality that 
+doesn't fit exactly your needs. This repository is intended as a toolbox that 
+can be shared in a research team. It is not intended to be used in production.   
+`marltoolbox` is not a framework that provide a simple API to run experiments 
+in a few lines of codes (this is a feature of `RLLib`).
 
 `RLLib` is built on top of `Tune` and `Tune` is built on top of `Ray`. 
 This toolbox `marltoolbox`, is built to work with `RLLib` 
@@ -347,7 +356,7 @@ Using components directly provided by <code>RLLib</code>
 
 ###### b) Examples using the `RLLib` API:
 - IPD environments: pg_ipd.py (toolbox example)
-- Asymmetric coin game environment: ppo_asymmetric_coin_game.py (toolbox example)
+- Coin game environment: ppo_coin_game.py (toolbox example)
 - APEX_DDPG and the water world environment:
 [`multi_agent_independent_learning.py`](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py)
 - MADDPG and the two step game environment:

@@ -222,7 +222,7 @@ def compute_reward(batch_size, red_pos, blue_pos, coin_pos, red_coin,
         if not both_players_can_pick_the_same_coin:
             if _same_pos(red_pos[i], coin_pos[i]) and \
                     _same_pos(blue_pos[i], coin_pos[i]):
-                red_first_if_both = bool(np.random.randint(0, 1))
+                red_first_if_both = bool(np.random.randint(low=0, high=2))
 
         if red_coin[i]:
             if _same_pos(red_pos[i], coin_pos[i]) and \

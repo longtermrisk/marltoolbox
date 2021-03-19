@@ -70,12 +70,15 @@ class PlotHelper:
     def plot_lines(self, data_groups: dict):
         fig = self._init_plot()
 
+        all_label_plotted = []
         for group_index, (group_id, group_df) in enumerate(
                 data_groups.items()):
-            self._plot_lines_for_one_group(self.plot_cfg.colors[group_index],
-                                           group_id, group_df)
+            new_labels_plotted = self._plot_lines_for_one_group(
+                self.plot_cfg.colors[group_index], group_id, group_df)
+            all_label_plotted.extend(new_labels_plotted)
+        print("all_label_plotted", all_label_plotted)
 
-        self._finalize_plot(fig)
+        return self._finalize_plot(fig)
 
     def _init_plot(self):
         fig = plt.figure(figsize=self.plot_cfg.figsize)
@@ -94,7 +97,7 @@ class PlotHelper:
                          group_df[col] * self.plot_cfg.y_scale_multiplier,
                          label=label, color=group_color)
                 label_plotted.append(label)
-        print("label_plotted", label_plotted)
+        return label_plotted
 
     def _plot_one_envelope(self, group_color, group_df, col):
         upper_envelope_col = col
@@ -140,6 +143,7 @@ class PlotHelper:
             print("save fig to", file_path)
             fig.savefig(file_path, dpi=fig.dpi)
         plt.close(fig)
+        return file_path
 
     def plot_dots(self, data_groups: dict):
         """
@@ -149,12 +153,15 @@ class PlotHelper:
         fig = self._init_plot()
 
         self.counter_labels = 0
+        all_label_plotted = []
         for group_index, (group_id, group_df) in enumerate(
                 data_groups.items()):
-            self._plot_dotes_for_one_group(self.plot_cfg.colors[group_index],
-                                           group_id, group_df)
+            new_labels_plotted = self._plot_dotes_for_one_group(
+                self.plot_cfg.colors[group_index], group_id, group_df)
+            all_label_plotted.extend(new_labels_plotted)
+        print("all_label_plotted", all_label_plotted)
 
-        self._finalize_plot(fig)
+        return self._finalize_plot(fig)
 
     def _plot_dotes_for_one_group(self, group_color, group_id, group_df):
         label_plotted = []
@@ -173,7 +180,7 @@ class PlotHelper:
                      markersize=self.plot_cfg.markersize)
             self.counter_labels += 1
             label_plotted.append(label)
-        print("label_plotted", label_plotted)
+        return label_plotted
 
     def _select_n_points_to_plot(self, group_df, col):
         if self.plot_cfg.plot_max_n_points is not None:

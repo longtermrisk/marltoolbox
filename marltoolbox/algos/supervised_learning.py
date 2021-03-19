@@ -10,7 +10,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
-from marltoolbox.utils import log, optimizers
+from marltoolbox.utils import log, optimizers, policy
 
 SPL_DEFAULT_CONFIG = with_common_config({
     "learn_action": True,
@@ -102,4 +102,13 @@ SPLTorchPolicy = build_torch_policy(
 
 MySPLTorchPolicy = SPLTorchPolicy.with_updates(
     optimizer_fn=optimizers.sgd_optimizer_spl,
-    stats_fn=log.augment_stats_fn_wt_additionnal_logs(spl_stats))
+    stats_fn=log.augment_stats_fn_wt_additionnal_logs(spl_stats),
+    before_init=policy.my_setup_early_mixins,
+    mixins=[
+        policy.MyLearningRateSchedule,
+    ]
+)
+
+MyAdamSPLTorchPolicy = SPLTorchPolicy.with_updates(
+    optimizer_fn=optimizers.adam_optimizer_spl,
+)

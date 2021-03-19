@@ -15,9 +15,15 @@ def test_pg_ipd():
 
 
 def test_ppo_asym_coin_game():
-    from marltoolbox.examples.rllib_api.ppo_asymmetric_coin_game import main
+    from marltoolbox.examples.rllib_api.ppo_coin_game import main
     ray.shutdown()
     tune_analysis = main(debug=False, stop_iters=70)
+    check_learning_achieved(tune_results=tune_analysis, min_=20)
+
+def test_ppo_asym_coin_game():
+    from marltoolbox.examples.rllib_api.dqn_coin_game import main
+    ray.shutdown()
+    tune_analysis = main(debug=False)
     check_learning_achieved(tune_results=tune_analysis, min_=20)
 
 

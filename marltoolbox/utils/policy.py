@@ -64,3 +64,33 @@ def get_tune_policy_class(PolicyClass):
     return FrozenPolicyFromTuneTrainer
 
 
+import gym
+from typing import Iterable
+
+from ray.rllib.policy.torch_policy import LearningRateSchedule
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.typing import TrainerConfigDict
+
+torch, _ = try_import_torch()
+
+
+class MyLearningRateSchedule(LearningRateSchedule):
+    """Mixin for TFPolicy that adds a learning rate schedule."""
+    def __init__(self, lr, lr_schedule):
+        self.cur_lr = lr
+        if lr_schedule is None:
+            self.lr_schedule = ConstantSchedule(lr, framework=None)
+        else:
+            if isinstance(lr_schedule, Iterable):
+                self.lr_schedule = PiecewiseSchedule(
+                    lr_schedule, outside_value=lr_schedule[-1][-1],
+                    framework=None)
+            else:
+                self.lr_schedule = lr_schedule
+
+def my_setup_early_mixins(policy: Policy, obs_space, action_space,
+                       config: TrainerConfigDict) -> None:
+    MyLearningRateSchedule.__init__(policy,
+                                    config["lr"],
+                                    config["lr_schedule"])

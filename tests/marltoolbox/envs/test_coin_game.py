@@ -1,6 +1,7 @@
 import random
 
 import numpy as np
+from flaky import flaky
 
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 
@@ -157,6 +158,7 @@ def assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
                 p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                 red_speed, blue_speed, red_own, blue_own):
     step_i = 0
+    delta_err = 0.01
     for _ in range(n_steps):
         step_i += 1
         actions = {"player_red": p_red_act[step_i - 1],
@@ -167,17 +169,21 @@ def assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
         assert not done["__all__"] or (step_i == max_steps and done["__all__"])
 
         if done["__all__"]:
-            assert info["player_red"]["pick_speed"] == red_speed
-            assert info["player_blue"]["pick_speed"] == blue_speed
+            assert abs(info["player_red"]["pick_speed"] - red_speed) \
+                   < delta_err
+            assert abs(info["player_blue"]["pick_speed"] - blue_speed) \
+                   < delta_err
 
             if red_own is None:
                 assert "pick_own_color" not in info["player_red"]
             else:
-                assert info["player_red"]["pick_own_color"] == red_own
+                assert abs(info["player_red"]["pick_own_color"] - red_own) \
+                       < delta_err
             if blue_own is None:
                 assert "pick_own_color" not in info["player_blue"]
             else:
-                assert info["player_blue"]["pick_own_color"] == blue_own
+                assert abs(info["player_blue"]["pick_own_color"] - blue_own) \
+                       < delta_err
 
             obs = env.reset()
             check_obs(obs, grid_size)
@@ -525,7 +531,7 @@ def test_observations_are_invariant_to_the_player_trained_in_reset():
     max_steps, grid_size = 10, 3
     n_steps = max_steps
     envs = init_several_env(max_steps, grid_size,
-                            same_obs_for_each_player = False)
+                            same_obs_for_each_player=False)
 
     for env_i, env in enumerate(envs):
         obs = env.reset()
@@ -572,7 +578,7 @@ def test_observations_are_invariant_to_the_player_trained_in_step():
     max_steps, grid_size = 10, 3
     n_steps = max_steps
     envs = init_several_env(max_steps, grid_size,
-                            same_obs_for_each_player = False)
+                            same_obs_for_each_player=False)
 
     for env_i, env in enumerate(envs):
         _ = env.reset()
@@ -687,3 +693,42 @@ def test_observations_are_not_invariant_to_the_player_trained_in_step():
 
             overwrite_pos(env, p_red_pos[step_i], p_blue_pos[step_i],
                           c_red_pos[step_i], c_blue_pos[step_i])
+
+
+@flaky(max_runs=4, min_passes=1)
+def test_who_pick_is_random():
+    size = 100
+    p_red_pos = [[1, 0], [1, 0], [1, 0], [1, 0]] * size
+    p_blue_pos = [[1, 0], [1, 0], [1, 0], [1, 0]] * size
+    p_red_act = [0, 0, 0, 0] * size
+    p_blue_act = [0, 0, 0, 0] * size
+    c_red_pos = [None, None, None, None] * size
+    c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]] * size
+    max_steps, grid_size = int(4 * size), 3
+    n_steps = max_steps
+    envs = init_several_env(max_steps, grid_size)
+
+    for env_i, env in enumerate(envs):
+        obs = env.reset()
+        check_obs(obs, grid_size)
+        assert_logger_buffer_size(env, n_steps=0)
+        overwrite_pos(
+            env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+
+        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
+                    red_speed=1.0, blue_speed=1.0, red_own=0.0, blue_own=1.0)
+
+    envs = init_several_env(max_steps, grid_size,
+                            players_can_pick_same_coin=False)
+
+    for env_i, env in enumerate(envs):
+        obs = env.reset()
+        check_obs(obs, grid_size)
+        assert_logger_buffer_size(env, n_steps=0)
+        overwrite_pos(
+            env, p_red_pos[0], p_blue_pos[0], c_red_pos[0], c_blue_pos[0])
+
+        assert_info(n_steps, p_red_act, p_blue_act, env, grid_size, max_steps,
+                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
+                    red_speed=0.5, blue_speed=0.5, red_own=0.0, blue_own=1.0)
