@@ -8,6 +8,8 @@ on:
     # * is a special character in YAML so you have to quote this string
     # every Wednesday and Friday at 2am
     - cron:  '0 2 * * 3,5'
+  workflow_dispatch:
+    branches: [ master ]
 
 jobs:
   build:

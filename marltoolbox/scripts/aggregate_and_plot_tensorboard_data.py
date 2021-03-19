@@ -52,9 +52,8 @@ PLOT_KEYS = ["grad_gnorm",
              ]
 
 PLOT_ASSEMBLAGE_TAGS = [
-    ("grad_gnorm",),
-    ("reward",),
     ("policy_reward_mean",),
+    ("grad_gnorm",),
     ("entropy_buffer_samples_avg",),
     ("entropy_avg",),
     ("loss", "td_error"),
@@ -73,9 +72,10 @@ PLOT_ASSEMBLAGE_TAGS = [
     ("act_dist_inputs_single_max",),
     ("action_prob_single",),
     ("action_prob_avg",),
-    ("_lr",),
+    ("reward",),
     ("last_training_max_q_values", "last_training_target_max_q_values"),
     ("last_training_min_q_values", "last_training_target_min_q_values"),
+    ("_lr",),
 ]
 
 

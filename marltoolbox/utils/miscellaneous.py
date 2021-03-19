@@ -338,12 +338,14 @@ def check_learning_achieved(tune_results, metric="episode_reward_mean",
                             equal_: float = None):
     assert max_ is not None or min_ is not None or equal_ is not None
 
-    logger.info(f"trial {trial_idx} achieved "
+    logger.info(f"Trial {trial_idx} achieved "
                 f"{tune_results.trials[trial_idx].last_result[metric]}"
-                f" on metric {metric}")
+                f" on metric {metric}. This is a success is the value is above"
+                f" {max_} or below {min_} or equal to {equal_}.")
     print(f"trial {trial_idx} achieved "
-                f"{tune_results.trials[trial_idx].last_result[metric]}"
-                f" on metric {metric}")
+            f"{tune_results.trials[trial_idx].last_result[metric]}"
+            f" on metric {metric}. This is a success is the value is above"
+            f" {max_} or below {min_} or equal to {equal_}.")
     if min_ is not None:
         assert tune_results.trials[trial_idx].last_result[metric] > min_
     if max_ is not None:
