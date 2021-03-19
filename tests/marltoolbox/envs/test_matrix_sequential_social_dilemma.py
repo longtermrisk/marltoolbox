@@ -1,4 +1,5 @@
 import random
+import numpy as np
 
 from marltoolbox.envs.matrix_sequential_social_dilemma import \
     IteratedPrisonersDilemma, IteratedChicken, IteratedStagHunt, IteratedBoS
@@ -116,14 +117,14 @@ def assert_info(n_steps, p_row_act, p_col_act, env, max_steps,
         assert not done["__all__"] or (step_i == max_steps and done["__all__"])
 
         if done["__all__"]:
-            assert info["player_row"]["CC"] == CC
-            assert info["player_col"]["CC"] == CC
-            assert info["player_row"]["DD"] == DD
-            assert info["player_col"]["DD"] == DD
-            assert info["player_row"]["CD"] == CD
-            assert info["player_col"]["CD"] == CD
-            assert info["player_row"]["DC"] == DC
-            assert info["player_col"]["DC"] == DC
+            assert info["player_row"]["CC_freq"] == CC
+            assert info["player_col"]["CC_freq"] == CC
+            assert info["player_row"]["DD_freq"] == DD
+            assert info["player_col"]["DD_freq"] == DD
+            assert info["player_row"]["CD_freq"] == CD
+            assert info["player_col"]["CD_freq"] == CD
+            assert info["player_row"]["DC_freq"] == DC
+            assert info["player_col"]["DC_freq"] == DC
 
             obs = env.reset()
             check_obs(obs, env)
@@ -253,3 +254,29 @@ def test_observations_are_invariant_to_the_player_trained():
             elif step_i == 4:
                 assert obs[env.players_ids[0]] == obs_step_3[env.players_ids[1]]
                 assert obs[env.players_ids[1]] == obs_step_3[env.players_ids[0]]
+
+
+def test_observations_are_not_invariant_to_the_player_trained():
+    p_row_act = [0, 1, 1, 0]
+    p_col_act = [0, 1, 0, 1]
+    max_steps = 4
+    env_all = [init_env(max_steps, env_class, same_obs_for_each_player=True)
+               for env_class in ENVS]
+    n_steps = 4
+
+    for env in env_all:
+        obs = env.reset()
+        assert_obs_is_symmetrical(obs, env)
+        step_i = 0
+        for _ in range(n_steps):
+            step_i += 1
+            actions = {"player_row": p_row_act[step_i - 1],
+                       "player_col": p_col_act[step_i - 1]}
+            obs, reward, done, info = env.step(actions)
+
+            assert_obs_is_symmetrical(obs, env)
+
+
+def assert_obs_is_symmetrical(obs, env):
+    assert np.all(obs[env.players_ids[0]] ==
+                  obs[env.players_ids[1]])

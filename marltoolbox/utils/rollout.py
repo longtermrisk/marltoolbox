@@ -3,9 +3,10 @@
 # Code modified from ray.rllib.agent.trainer.py
 #############################################
 
-import copy
-
 import collections
+import copy
+from typing import List
+
 from gym import wrappers as gym_wrappers
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
@@ -15,7 +16,6 @@ from ray.rllib.rollout import DefaultMapping, default_policy_agent_mapping, \
 from ray.rllib.utils.framework import TensorStructType
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.typing import EnvInfoDict, PolicyID
-from typing import List
 
 
 class RolloutManager(RolloutSaver):
@@ -32,7 +32,8 @@ class RolloutManager(RolloutSaver):
         else:
             # Append this rollout to our list, to save laer.
             self._rollouts.append(self._current_rollout)
-        self._num_episodes += 1 # Even if the episode is not completely finished
+        # Even if the episode is not completely finished
+        self._num_episodes += 1
         if self._update_file:
             self._update_file.seek(0)
             self._update_file.write(self._get_progress() + "\n")
@@ -62,24 +63,29 @@ def internal_rollout(worker,
                      seed=None
                      ):
     """
-    Can perform rollouts on the environment from inside a worker_rollout or from a policy.
-    Can perform rollouts during the evaluation rollouts ran from an RLLib Trainer.
+    Can perform rollouts on the environment from inside a worker_rollout or
+    from a policy. Can perform rollouts during the evaluation rollouts ran
+    from an RLLib Trainer.
 
     :param worker: worker from an RLLib Trainer.
     The interal rollouts will be run inside this worker, using its policies.
     :param num_steps: number of maximum steps to perform in total
-    :param policy_map: (optional) by default the policy_map of the provided worker will be used
+    :param policy_map: (optional) by default the policy_map of the provided
+    worker will be used
     :param policy_agent_mapping: (optional) by default the policy_mapping_fn
     of the provided worker will be used
-    :param reset_env_before: (optional) reset the environment from the worker before first using it
+    :param reset_env_before: (optional) reset the environment from the worker
+    before first using it
     :param num_episodes: (optional) number of maximum episodes to perform
     :param last_obs: (optional) if reset_env_before is False then you must
     provide the last observation
     :param saver: (optional) an instance of a RolloutManager
     :param no_render: (optional) option to call env.render()
     :param video_dir: (optional)
-    :param seed: (optional) random seed to set for the environment by calling env.seed(seed)
-    :return: an instance of a RolloutManager, which contains the data about the rollouts performed
+    :param seed: (optional) random seed to set for the environment by calling
+    env.seed(seed)
+    :return: an instance of a RolloutManager, which contains the data about
+    the rollouts performed
     """
 
     assert num_steps is not None or num_episodes is not None
@@ -95,7 +101,8 @@ def internal_rollout(worker,
     multiagent = isinstance(env, MultiAgentEnv)
     if policy_agent_mapping is None:
         if worker.multiagent:
-            policy_agent_mapping = worker.policy_config["multiagent"]["policy_mapping_fn"]
+            policy_agent_mapping = worker.policy_config["multiagent"][
+                "policy_mapping_fn"]
         else:
             policy_agent_mapping = default_policy_agent_mapping
 
@@ -118,7 +125,8 @@ def internal_rollout(worker,
             force=True)
 
     random_policy_id = list(policy_map.keys())[0]
-    virtual_global_timestep = worker.get_policy(random_policy_id).global_timestep
+    virtual_global_timestep = worker.get_policy(
+        random_policy_id).global_timestep
 
     steps = 0
     episodes = 0
@@ -148,20 +156,23 @@ def internal_rollout(worker,
                         agent_id, policy_agent_mapping(agent_id))
                     p_use_lstm = use_lstm[policy_id]
                     if p_use_lstm:
-                        a_action, p_state, _ = _worker_compute_action(worker,
-                                                                      timestep=virtual_global_timestep,
-                                                                      observation=a_obs,
-                                                                      state=agent_states[agent_id],
-                                                                      prev_action=prev_actions[agent_id],
-                                                                      prev_reward=prev_rewards[agent_id],
-                                                                      policy_id=policy_id)
+                        a_action, p_state, _ = _worker_compute_action(
+                            worker,
+                            timestep=virtual_global_timestep,
+                            observation=a_obs,
+                            state=agent_states[agent_id],
+                            prev_action=prev_actions[agent_id],
+                            prev_reward=prev_rewards[agent_id],
+                            policy_id=policy_id)
                         agent_states[agent_id] = p_state
                     else:
-                        a_action = _worker_compute_action(worker, virtual_global_timestep,
-                                                          observation=a_obs,
-                                                          prev_action=prev_actions[agent_id],
-                                                          prev_reward=prev_rewards[agent_id],
-                                                          policy_id=policy_id)
+                        a_action = _worker_compute_action(
+                            worker,
+                            virtual_global_timestep,
+                            observation=a_obs,
+                            prev_action=prev_actions[agent_id],
+                            prev_reward=prev_rewards[agent_id],
+                            policy_id=policy_id)
                     a_action = flatten_to_single_ndarray(a_action)
                     action_dict[agent_id] = a_action
                     prev_actions[agent_id] = a_action

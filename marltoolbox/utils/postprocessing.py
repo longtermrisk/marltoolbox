@@ -80,7 +80,7 @@ def welfares_postprocessing_fn(
 
     def postprocess_fn(policy, sample_batch, other_agent_batches, episode):
 
-        _config_exclude_args(policy)
+        _assert_using_config_xor_args(policy)
         parameters = _read_parameters_from_config_default_to_args(policy)
         sample_batch = _add_welfare_to_own_batch(
             sample_batch, other_agent_batches, episode, policy, *parameters)
@@ -89,7 +89,7 @@ def welfares_postprocessing_fn(
 
         return sample_batch
 
-    def _config_exclude_args(policy):
+    def _assert_using_config_xor_args(policy):
         assert_if_key_in_dict_then_args_are_none(
             policy.config, "add_utilitarian_welfare", add_utilitarian_welfare)
         assert_if_key_in_dict_then_args_are_none(

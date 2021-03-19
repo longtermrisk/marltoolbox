@@ -11,10 +11,13 @@ from numba import jit, prange
 from numba.typed import List
 from ray.rllib.utils import override
 
-from marltoolbox.envs.coin_game import CoinGame
+from marltoolbox.envs import coin_game
+
+PLOT_KEYS = coin_game.PLOT_KEYS
+PLOT_ASSEMBLAGE_TAGS = coin_game.PLOT_ASSEMBLAGE_TAGS
 
 
-class VectorizedCoinGame(CoinGame):
+class VectorizedCoinGame(coin_game.CoinGame):
     """
     Vectorized Coin Game environment.
     """
@@ -24,11 +27,11 @@ class VectorizedCoinGame(CoinGame):
         super().__init__(config)
 
         self.batch_size = config.get("batch_size", 1)
-        self.force_vectorized = config.get("force_vectorize", True)
+        self.force_vectorized = config.get("force_vectorize", False)
         assert self.grid_size == 3, \
             "hardcoded in the generate_state numba function"
 
-    @override(CoinGame)
+    @override(coin_game.CoinGame)
     def _randomize_color_and_player_positions(self):
         # Reset coin color and the players and coin positions
         self.red_coin = np.random.randint(2, size=self.batch_size)
@@ -40,26 +43,26 @@ class VectorizedCoinGame(CoinGame):
 
         self._players_do_not_overlap_at_start()
 
-    @override(CoinGame)
+    @override(coin_game.CoinGame)
     def _players_do_not_overlap_at_start(self):
         for i in range(self.batch_size):
             while _same_pos(self.red_pos[i], self.blue_pos[i]):
                 self.blue_pos[i] = np.random.randint(self.grid_size, size=2)
 
-    @override(CoinGame)
+    @override(coin_game.CoinGame)
     def _generate_coin(self):
         generate = np.ones(self.batch_size, dtype=bool)
-        self.coin_pos = generate_coin(
+        self.coin_pos = generate_coin_wt_numba_optimization(
             self.batch_size, generate, self.red_coin, self.red_pos,
             self.blue_pos, self.coin_pos, self.grid_size)
 
-    @override(CoinGame)
+    @override(coin_game.CoinGame)
     def _generate_observation(self):
         obs = generate_observations_wt_numba_optimization(
             self.batch_size, self.red_pos, self.blue_pos, self.coin_pos,
             self.red_coin, self.grid_size)
 
-        obs = self._get_obs_invariant_to_the_player_trained(obs)
+        obs = self._apply_optional_invariance_to_the_player_trained(obs)
         obs, _ = self._optional_unvectorize(obs)
         return obs
 
@@ -70,7 +73,7 @@ class VectorizedCoinGame(CoinGame):
                 rewards[0], rewards[1] = rewards[0][0], rewards[1][0]
         return obs, rewards
 
-    @override(CoinGame)
+    @override(coin_game.CoinGame)
     def step(self, actions: Iterable):
 
         actions = self._from_RLLib_API_to_list(actions)
@@ -87,13 +90,13 @@ class VectorizedCoinGame(CoinGame):
             self._accumulate_info(
                 red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue)
 
-        obs = self._get_obs_invariant_to_the_player_trained(observation)
-
+        obs = self._apply_optional_invariance_to_the_player_trained(
+            observation)
         obs, rewards = self._optional_unvectorize(obs, rewards)
 
         return self._to_RLLib_API(obs, rewards)
 
-    @override(CoinGame)
+    @override(coin_game.CoinGame)
     def _get_episode_info(self):
 
         player_red_info, player_blue_info = {}, {}
@@ -116,7 +119,7 @@ class VectorizedCoinGame(CoinGame):
 
         return player_red_info, player_blue_info
 
-    @override(CoinGame)
+    @override(coin_game.CoinGame)
     def _from_RLLib_API_to_list(self, actions):
 
         ac_red = actions[self.player_red_id]
@@ -166,6 +169,29 @@ class AsymVectorizedCoinGame(VectorizedCoinGame):
 
 
 @jit(nopython=True)
+def vectorized_step_wt_numba_optimization(
+        actions, batch_size, red_pos, blue_pos, coin_pos, red_coin,
+        grid_size: int, asymmetric: bool, max_steps: int,
+        both_players_can_pick_the_same_coin: bool):
+    red_pos, blue_pos = move_players(
+        batch_size, actions, red_pos, blue_pos, grid_size)
+
+    reward, generate, red_pick_any, red_pick_red, \
+    blue_pick_any, blue_pick_blue = compute_reward(
+        batch_size, red_pos, blue_pos, coin_pos, red_coin,
+        asymmetric, both_players_can_pick_the_same_coin)
+
+    coin_pos = generate_coin_wt_numba_optimization(
+        batch_size, generate, red_coin, red_pos, blue_pos, coin_pos, grid_size)
+
+    obs = generate_observations_wt_numba_optimization(
+        batch_size, red_pos, blue_pos, coin_pos, red_coin, grid_size)
+
+    return red_pos, blue_pos, reward, coin_pos, obs, red_coin, red_pick_any, \
+           red_pick_red, blue_pick_any, blue_pick_blue
+
+
+@jit(nopython=True)
 def move_players(batch_size, actions, red_pos, blue_pos, grid_size):
     moves = List([
         np.array([0, 1]),
@@ -196,7 +222,7 @@ def compute_reward(batch_size, red_pos, blue_pos, coin_pos, red_coin,
         if not both_players_can_pick_the_same_coin:
             if _same_pos(red_pos[i], coin_pos[i]) and \
                     _same_pos(blue_pos[i], coin_pos[i]):
-                red_first_if_both = bool(np.random.randint(0, 1))
+                red_first_if_both = bool(np.random.randint(low=0, high=2))
 
         if red_coin[i]:
             if _same_pos(red_pos[i], coin_pos[i]) and \
@@ -240,6 +266,28 @@ def _same_pos(x, y):
 
 
 @jit(nopython=True)
+def generate_coin_wt_numba_optimization(
+        batch_size, generate, red_coin, red_pos, blue_pos, coin_pos,
+        grid_size):
+    red_coin[generate] = 1 - red_coin[generate]
+    for i in prange(batch_size):
+        if generate[i]:
+            coin_pos[i] = _place_coin(red_pos[i], blue_pos[i], grid_size)
+    return coin_pos
+
+
+@jit(nopython=True)
+def _place_coin(red_pos_i, blue_pos_i, grid_size):
+    red_pos_flat = _flatten_index(red_pos_i, grid_size)
+    blue_pos_flat = _flatten_index(blue_pos_i, grid_size)
+    possible_coin_pos = np.array(
+        [x for x in range(9) if ((x != blue_pos_flat) and (x != red_pos_flat))]
+    )
+    flat_coin_pos = np.random.choice(possible_coin_pos)
+    return _unflatten_index(flat_coin_pos, grid_size)
+
+
+@jit(nopython=True)
 def _flatten_index(pos, grid_size):
     y_pos, x_pos = pos
     idx = grid_size * y_pos
@@ -255,28 +303,6 @@ def _unflatten_index(pos, grid_size):
 
 
 @jit(nopython=True)
-def generate_coin(
-        batch_size, generate, red_coin, red_pos, blue_pos, coin_pos,
-        grid_size):
-    red_coin[generate] = 1 - red_coin[generate]
-    for i in prange(batch_size):
-        if generate[i]:
-            coin_pos[i] = place_coin(red_pos[i], blue_pos[i], grid_size)
-    return coin_pos
-
-
-@jit(nopython=True)
-def place_coin(red_pos_i, blue_pos_i, grid_size):
-    red_pos_flat = _flatten_index(red_pos_i, grid_size)
-    blue_pos_flat = _flatten_index(blue_pos_i, grid_size)
-    possible_coin_pos = np.array(
-        [x for x in range(9) if ((x != blue_pos_flat) and (x != red_pos_flat))]
-    )
-    flat_coin_pos = np.random.choice(possible_coin_pos)
-    return _unflatten_index(flat_coin_pos, grid_size)
-
-
-@jit(nopython=True)
 def generate_observations_wt_numba_optimization(batch_size, red_pos, blue_pos,
                                                 coin_pos, red_coin, grid_size):
     obs = np.zeros((batch_size, grid_size, grid_size, 4))
@@ -288,26 +314,3 @@ def generate_observations_wt_numba_optimization(batch_size, red_pos, blue_pos,
         else:
             obs[i, coin_pos[i][0], coin_pos[i][1], 3] = 1
     return obs
-
-
-@jit(nopython=True)
-def vectorized_step_wt_numba_optimization(
-        actions, batch_size, red_pos, blue_pos, coin_pos, red_coin,
-        grid_size: int, asymmetric: bool, max_steps: int,
-        both_players_can_pick_the_same_coin: bool):
-    red_pos, blue_pos = move_players(
-        batch_size, actions, red_pos, blue_pos, grid_size)
-
-    reward, generate, red_pick_any, red_pick_red, \
-    blue_pick_any, blue_pick_blue = compute_reward(
-        batch_size, red_pos, blue_pos, coin_pos, red_coin,
-        asymmetric, both_players_can_pick_the_same_coin)
-
-    coin_pos = generate_coin(
-        batch_size, generate, red_coin, red_pos, blue_pos, coin_pos, grid_size)
-
-    obs = generate_observations_wt_numba_optimization(
-        batch_size, red_pos, blue_pos, coin_pos, red_coin, grid_size)
-
-    return red_pos, blue_pos, reward, coin_pos, obs, red_coin, red_pick_any, \
-           red_pick_red, blue_pick_any, blue_pick_blue

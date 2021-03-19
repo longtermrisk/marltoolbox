@@ -380,11 +380,14 @@ class SelfAndCrossPlayEvaluator:
         pair_of_group_names = [self.checkpoints[checkpoint_i]["group_name"] for checkpoint_i in checkpoints_idx_used]
         return pair_of_group_names
 
-    def plot_results(self, analysis_metrics_per_mode, plot_config, x_axis_metric, y_axis_metric):
+    def plot_results(self, analysis_metrics_per_mode,
+                     plot_config, x_axis_metric, y_axis_metric):
         plotter = SelfAndCrossPlayPlotter()
-        plotter.plot_results(exp_parent_dir=self.exp_parent_dir,
-                             metrics_per_mode=analysis_metrics_per_mode, plot_config=plot_config,
-                             x_axis_metric=x_axis_metric, y_axis_metric=y_axis_metric)
+        return plotter.plot_results(exp_parent_dir=self.exp_parent_dir,
+                                    metrics_per_mode=analysis_metrics_per_mode,
+                                    plot_config=plot_config,
+                                    x_axis_metric=x_axis_metric,
+                                    y_axis_metric=y_axis_metric)
 
 
 class SelfAndCrossPlayPlotter:
@@ -405,7 +408,7 @@ class SelfAndCrossPlayPlotter:
         for metrics_for_one_evaluation_mode in metrics_per_mode:
             self._extract_performance_evaluation_points(metrics_for_one_evaluation_mode)
         self.stat_summary.save_summary(filename_prefix="self_and_cross_play", folder_dir=exp_parent_dir)
-        self. _plot_and_save_fig(plot_config, exp_parent_dir)
+        return self. _plot_and_save_fig(plot_config, exp_parent_dir)
 
     def _reset(self, x_axis_metric, y_axis_metric, metric_mode):
         self.x_axis_metric, self.y_axis_metric, self.metric_mode = x_axis_metric, y_axis_metric, metric_mode
@@ -477,7 +480,7 @@ class SelfAndCrossPlayPlotter:
     def _plot_and_save_fig(self, plot_config, exp_parent_dir):
         plot_helper = PlotHelper(plot_config)
         plot_helper.plot_cfg.save_dir_path = exp_parent_dir
-        plot_helper.plot_dots(self.data_groups_per_mode)
+        return plot_helper.plot_dots(self.data_groups_per_mode)
 
 class StatisticSummary:
 

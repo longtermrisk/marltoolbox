@@ -23,7 +23,7 @@ class SoftQSchedule(StochasticSampling):
     """
 
     def __init__(self, action_space, *, framework,
-                 initial_temperature=1.0, final_temperature=0.0,
+                 initial_temperature=1.0, final_temperature=1e-6,
                  temperature_timesteps=int(1e5),
                  temperature_schedule=None, **kwargs):
         """Initializes a SoftQ Exploration object.

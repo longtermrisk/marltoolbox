@@ -32,9 +32,9 @@ def main(debug):
         "exp_name": exp_name,
         "train_n_replicates": train_n_replicates,
 
-        "env": "IPD",
-        # "env": "IMP",
-        # "env": "AsymBoS",
+        "env_name": "IPD",
+        # "env_name": "IMP",
+        # "env_name": "AsymBoS",
 
         "num_episodes": 5 if debug else 50,
         "trace_length": 5 if debug else 200,
@@ -81,21 +81,21 @@ def train(hp):
 
 def get_tune_config(hp: dict) -> dict:
     tune_config = copy.deepcopy(hp)
-    assert tune_config['env'] in ("IPD", "IMP", "BoS", "AsymBoS")
+    assert tune_config['env_name'] in ("IPD", "IMP", "BoS", "AsymBoS")
 
-    if tune_config["env"] in ("IPD", "IMP", "BoS", "AsymBoS"):
+    if tune_config["env_name"] in ("IPD", "IMP", "BoS", "AsymBoS"):
         env_config = {
             "players_ids": ["player_row", "player_col"],
             "max_steps": tune_config["trace_length"],
             "get_additional_info": True,
         }
 
-    if tune_config["env"] in ("IPD", "BoS", "AsymBoS"):
+    if tune_config["env_name"] in ("IPD", "BoS", "AsymBoS"):
         tune_config["gamma"] = 0.96 \
             if tune_config["gamma"] is None \
             else tune_config["gamma"]
         tune_config["save_dir"] = "dice_results_ipd"
-    elif tune_config["env"] == "IMP":
+    elif tune_config["env_name"] == "IMP":
         tune_config["gamma"] = 0.9 \
             if tune_config["gamma"] is None \
             else tune_config["gamma"]
@@ -130,36 +130,36 @@ def generate_eval_config(hp):
                                     1 / tune_config['trace_length'])
     hp_eval["jitter"] = 0.05
 
-    if hp_eval["env"] == "IPD":
-        hp_eval["env"] = IteratedPrisonersDilemma
+    if hp_eval["env_name"] == "IPD":
+        hp_eval["env_class"] = IteratedPrisonersDilemma
         hp_eval["x_limits"] = (-3.5, 0.5)
         hp_eval["y_limits"] = (-3.5, 0.5)
-    elif hp_eval["env"] == "IMP":
-        hp_eval["env"] = IteratedMatchingPennies
+    elif hp_eval["env_name"] == "IMP":
+        hp_eval["env_class"] = IteratedMatchingPennies
         hp_eval["x_limits"] = (-1.0, 1.0)
         hp_eval["y_limits"] = (-1.0, 1.0)
-    elif hp_eval["env"] == "AsymBoS":
-        hp_eval["env"] = IteratedAsymBoS
+    elif hp_eval["env_name"] == "AsymBoS":
+        hp_eval["env_class"] = IteratedAsymBoS
         hp_eval["x_limits"] = (-0.1, 4.1)
         hp_eval["y_limits"] = (-0.1, 4.1)
     else:
         raise NotImplementedError()
 
     rllib_config_eval = {
-        "env": hp_eval["env"],
+        "env": hp_eval["env_class"],
         "env_config": env_config,
         "multiagent": {
             "policies": {
                 env_config["players_ids"][0]: (
                     policy.get_tune_policy_class(PGTorchPolicy),
-                    hp_eval["env"](env_config).OBSERVATION_SPACE,
-                    hp_eval["env"].ACTION_SPACE,
+                    hp_eval["env_class"](env_config).OBSERVATION_SPACE,
+                    hp_eval["env_class"].ACTION_SPACE,
                     {"tune_config": copy.deepcopy(tune_config)}),
 
                 env_config["players_ids"][1]: (
                     policy.get_tune_policy_class(PGTorchPolicy),
-                    hp_eval["env"](env_config).OBSERVATION_SPACE,
-                    hp_eval["env"].ACTION_SPACE,
+                    hp_eval["env_class"](env_config).OBSERVATION_SPACE,
+                    hp_eval["env_class"].ACTION_SPACE,
                     {"tune_config": copy.deepcopy(tune_config)}),
             },
             "policy_mapping_fn": lambda agent_id: agent_id,

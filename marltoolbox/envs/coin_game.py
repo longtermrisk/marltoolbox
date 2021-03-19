@@ -1,18 +1,29 @@
 import copy
+import logging
 from collections import Iterable
+from typing import Dict
 
 import gym
-import logging
 import numpy as np
 from gym.spaces import Discrete
 from gym.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import override
-from typing import Dict
 
 from marltoolbox.envs.utils.interfaces import InfoAccumulationInterface
 
 logger = logging.getLogger(__name__)
+
+PLOT_KEYS = ["pick_speed",
+             "pick_own_color",
+             ]
+
+PLOT_ASSEMBLAGE_TAGS = [
+    ("pick_own_color_player_red_mean", "pick_own_color_player_blue_mean"),
+    ("pick_speed_player_red_mean", "pick_speed_player_blue_mean"),
+    ("pick_own_color",),
+    ("pick_speed", "pick_own_color"),
+]
 
 
 class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
@@ -60,7 +71,8 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
             config.get("players_ids", ["player_red", "player_blue"])
         self.max_steps = config.get("max_steps", 20)
         self.grid_size = config.get("grid_size", 3)
-        self.output_additional_info = config.get("output_additional_info", True)
+        self.output_additional_info = config.get("output_additional_info",
+                                                 True)
         self.asymmetric = config.get("asymmetric", False)
         self.both_players_can_pick_the_same_coin = \
             config.get("both_players_can_pick_the_same_coin", True)
@@ -96,7 +108,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
             self.np_random.randint(low=0, high=self.grid_size, size=(2,))
         self.blue_pos = \
             self.np_random.randint(low=0, high=self.grid_size, size=(2,))
-        self.coin_pos = np.zeros(shape=(2,), dtype=np.int8)
+        # self.coin_pos = np.zeros(shape=(2,), dtype=np.int8)
 
         self._players_do_not_overlap_at_start()
 
@@ -127,8 +139,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         else:
             obs[self.coin_pos[0], self.coin_pos[1], 3] = 1
 
-        obs = self._get_obs_invariant_to_the_player_trained(obs)
-
+        obs = self._apply_optional_invariance_to_the_player_trained(obs)
         return obs
 
     @override(gym.Env)
@@ -203,7 +214,6 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
                 blue_pick_any = True
 
         reward_list = [reward_red, reward_blue]
-
         if self.output_additional_info:
             self._accumulate_info(red_pick_any=red_pick_any,
                                   red_pick_red=red_pick_red,
@@ -219,7 +229,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         actions = [actions[player_id] for player_id in self.players_ids]
         return actions
 
-    def _get_obs_invariant_to_the_player_trained(self, observation):
+    def _apply_optional_invariance_to_the_player_trained(self, observation):
         """
         We want to be able to use a policy trained as player 1,
         for evaluation as player 2 and vice versa.
@@ -236,7 +246,6 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
             player_blue_observation[..., 1] = observation[..., 0]
             player_blue_observation[..., 2] = observation[..., 3]
             player_blue_observation[..., 3] = observation[..., 2]
-
         return [player_red_observation, player_blue_observation]
 
     def _to_RLLib_API(self, observations, rewards):

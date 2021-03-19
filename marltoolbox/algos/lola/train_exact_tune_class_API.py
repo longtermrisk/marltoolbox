@@ -152,7 +152,7 @@ def corrections_func(mainQN, corrections, gamma, pseudo, reg):
 
 class LOLAExact(tune.Trainable):
 
-    def _init_lola(self, env, *, num_episodes=50, trace_length=200,
+    def _init_lola(self, env_name, *, num_episodes=50, trace_length=200,
                    simple_net=True, corrections=True, pseudo=False,
                    num_hidden=10, reg=0.0, lr=1., lr_correction=0.5, gamma=0.96,
                    with_linear_LR_decay_to_zero=False, clip_update=None,
@@ -180,14 +180,14 @@ class LOLAExact(tune.Trainable):
             self.sess = tf.Session()
             # Get info about the env
 
-            if env == "IPD":
+            if env_name == "IPD":
                 self.payout_mat_1 = np.array([[-1., 0.], [-3., -2.]])
                 self.payout_mat_2 = self.payout_mat_1.T
-            elif env == "AsymBoS":
+            elif env_name == "AsymmetricIteratedBoS":
                 self.payout_mat_1 = np.array([[+4., 0.], [0., +2.]])
                 self.payout_mat_2 = np.array([[+1., 0.], [0., +2.]])
             else:
-                raise ValueError(f"exp_name: {env}")
+                raise ValueError(f"exp_name: {env_name}")
 
             # Sanity
 

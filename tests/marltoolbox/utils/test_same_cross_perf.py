@@ -9,10 +9,12 @@ from ray.rllib.agents.pg import PGTrainer
 from marltoolbox.utils import log, miscellaneous, restore
 
 def _init_evaluator():
+    exp_name, _ = log.log_in_current_day_dir("testing")
+
     rllib_config, stop_config = get_rllib_config(seeds=get_random_seeds(1))
 
     evaluator = self_and_cross_perf.SelfAndCrossPlayEvaluator(
-        exp_name="testing_amTFT",
+        exp_name=exp_name,
     )
     evaluator.define_the_experiment_to_run(
         evaluation_config=rllib_config,

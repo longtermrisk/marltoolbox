@@ -73,47 +73,47 @@ def test__duration_found_or_continue_search():
         assert new_k_to_explore == k_assert
         assert continue_to_search_k == (k_to_explore != k_assert)
 
-    am_tft_policy.debit_threshold_wt_multiplier = 2.0
+    am_tft_policy.punishment_debit = 2.0
     am_tft_policy.k_opp_loss = {0: 0.0, 1: 1.0}
     am_tft_policy.last_n_steps_played = 1.0
     assert_(k_to_explore=1, k_assert=1)
     am_tft_policy.last_n_steps_played = 3.0
     assert_(k_to_explore=1, k_assert=2)
-    am_tft_policy.debit_threshold_wt_multiplier = 1.0
+    am_tft_policy.punishment_debit = 1.0
     assert_(k_to_explore=1, k_assert=1)
 
-    am_tft_policy.debit_threshold_wt_multiplier = 6.0
+    am_tft_policy.punishment_debit = 6.0
     am_tft_policy.k_opp_loss = {4: 0.0, 5: 5.0}
     am_tft_policy.last_n_steps_played = 4.0
     assert_(k_to_explore=5, k_assert=5)
     am_tft_policy.last_n_steps_played = 6.0
     assert_(k_to_explore=5, k_assert=6)
-    am_tft_policy.debit_threshold_wt_multiplier = 4.0
+    am_tft_policy.punishment_debit = 4.0
     assert_(k_to_explore=5, k_assert=5)
     am_tft_policy.k_opp_loss = {4: 4.0, 5: 5.0}
-    am_tft_policy.debit_threshold_wt_multiplier = 3.0
+    am_tft_policy.punishment_debit = 3.0
     assert_(k_to_explore=5, k_assert=4)
 
-    am_tft_policy.debit_threshold_wt_multiplier = 6.0
+    am_tft_policy.punishment_debit = 6.0
     am_tft_policy.k_opp_loss = {38: 37.5, 39: 39.0, 40: 40.0}
     am_tft_policy.last_n_steps_played = 45
     assert_(k_to_explore=40, k_assert=38)
     assert_(k_to_explore=39, k_assert=38)
     am_tft_policy.last_n_steps_played = 40
     assert_(k_to_explore=40, k_assert=38)
-    am_tft_policy.debit_threshold_wt_multiplier = 41.0
+    am_tft_policy.punishment_debit = 41.0
     am_tft_policy.last_n_steps_played = 40
     assert_(k_to_explore=40, k_assert=40)
     assert_(k_to_explore=39, k_assert=40)
     am_tft_policy.last_n_steps_played = 10
-    am_tft_policy.debit_threshold_wt_multiplier = 38.0
+    am_tft_policy.punishment_debit = 38.0
     assert_(k_to_explore=40, k_assert=10)
     am_tft_policy.last_n_steps_played = 40
     assert_(k_to_explore=40, k_assert=38)
-    am_tft_policy.debit_threshold_wt_multiplier = 41.0
+    am_tft_policy.punishment_debit = 41.0
     assert_(k_to_explore=40, k_assert=40)
     assert_(k_to_explore=39, k_assert=40)
-    am_tft_policy.debit_threshold_wt_multiplier = 39.5
+    am_tft_policy.punishment_debit = 39.5
     assert_(k_to_explore=40, k_assert=40)
 
 

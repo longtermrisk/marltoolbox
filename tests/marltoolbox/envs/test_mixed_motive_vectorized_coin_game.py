@@ -4,8 +4,8 @@ import random
 import numpy as np
 from flaky import flaky
 
-from marltoolbox.envs.vectorized_coin_game import VectorizedCoinGame, \
-    AsymVectorizedCoinGame
+from marltoolbox.envs.vectorized_mixed_motive_coin_game import \
+    VectorizedMixedMotiveCoinGame
 from test_coin_game import \
     assert_obs_is_symmetrical, assert_obs_is_not_symmetrical
 
@@ -26,14 +26,11 @@ def test_reset():
 def init_several_env(max_steps, batch_size, grid_size,
                      players_can_pick_same_coin=True,
                      same_obs_for_each_player=True):
-    coin_game = init_env(max_steps, batch_size, VectorizedCoinGame, grid_size,
-                         players_can_pick_same_coin=players_can_pick_same_coin,
-                         same_obs_for_each_player=same_obs_for_each_player)
-    asymm_coin_game = \
-        init_env(max_steps, batch_size, AsymVectorizedCoinGame, grid_size,
-                 players_can_pick_same_coin=players_can_pick_same_coin,
-                 same_obs_for_each_player=same_obs_for_each_player)
-    return [coin_game, asymm_coin_game]
+    mixed_motive_coin_game = init_env(
+        max_steps, batch_size, VectorizedMixedMotiveCoinGame, grid_size,
+        players_can_pick_same_coin=players_can_pick_same_coin,
+        same_obs_for_each_player=same_obs_for_each_player)
+    return [mixed_motive_coin_game]
 
 
 def init_env(max_steps, batch_size, env_class, seed=None, grid_size=3,
@@ -50,7 +47,6 @@ def init_env(max_steps, batch_size, env_class, seed=None, grid_size=3,
     env.seed(seed)
     return env
 
-
 def check_obs(obs, batch_size, grid_size):
     assert len(obs) == 2, "two players"
     for i in range(batch_size):
@@ -60,7 +56,7 @@ def check_obs(obs, batch_size, grid_size):
                 f"observe 1 player red in grid: {player_obs[i, ..., 0]}"
             assert player_obs[i, ..., 1].sum() == 1.0, \
                 f"observe 1 player blue in grid: {player_obs[i, ..., 1]}"
-            assert player_obs[i, ..., 2:].sum() == 1.0, \
+            assert player_obs[i, ..., 2:].sum() == 2.0, \
                 f"observe 1 coin in grid: {player_obs[i, ..., 0]}"
 
 
@@ -145,25 +141,20 @@ def overwrite_pos(step_i, batch_deltas, n_steps_in_epi, env, p_red_pos,
     assert len(p_blue_pos) == n_steps_in_epi
     assert len(c_red_pos) == n_steps_in_epi
     assert len(c_blue_pos) == n_steps_in_epi
-    env.red_coin = [0
-                    if c_red_pos[(step_i + delta) % n_steps_in_epi] is None
-                    else 1
-                    for delta in batch_deltas]
-    coin_pos = [c_blue_pos[(step_i + delta) % n_steps_in_epi]
-                if c_red_pos[(step_i + delta) % n_steps_in_epi] is None
-                else c_red_pos[(step_i + delta) % n_steps_in_epi]
-                for delta in batch_deltas]
 
     env.red_pos = [p_red_pos[(step_i + delta) % n_steps_in_epi] for delta in
                    batch_deltas]
     env.blue_pos = [p_blue_pos[(step_i + delta) % n_steps_in_epi] for delta in
                     batch_deltas]
-    env.coin_pos = coin_pos
+    env.red_coin_pos = [c_red_pos[(step_i + delta) % n_steps_in_epi] for
+                        delta in batch_deltas]
+    env.blue_coin_pos = [c_blue_pos[(step_i + delta) % n_steps_in_epi] for
+                         delta in batch_deltas]
 
     env.red_pos = np.array(env.red_pos)
     env.blue_pos = np.array(env.blue_pos)
-    env.coin_pos = np.array(env.coin_pos)
-    env.red_coin = np.array(env.red_coin)
+    env.red_coin_pos = np.array(env.red_coin_pos)
+    env.blue_coin_pos = np.array(env.blue_coin_pos)
 
 
 def assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act, env,
@@ -171,7 +162,6 @@ def assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act, env,
                 p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
                 red_speed, blue_speed, red_own, blue_own):
     step_i = 0
-    delta_err = 0.01
 
     for _ in range(n_steps):
         overwrite_pos(step_i, batch_deltas, n_steps_in_epi, env,
@@ -190,21 +180,17 @@ def assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act, env,
                 step_i == n_steps_in_epi and done["__all__"])
 
         if done["__all__"]:
-            assert abs(info["player_red"]["pick_speed"] - red_speed) \
-                   < delta_err
-            assert abs(info["player_blue"]["pick_speed"] - blue_speed) \
-                   < delta_err
+            assert info["player_red"]["pick_speed"] == red_speed
+            assert info["player_blue"]["pick_speed"] == blue_speed
 
             if red_own is None:
                 assert "pick_own_color" not in info["player_red"]
             else:
-                assert abs(info["player_red"]["pick_own_color"] - red_own) \
-                       < delta_err
+                assert info["player_red"]["pick_own_color"] == red_own
             if blue_own is None:
                 assert "pick_own_color" not in info["player_blue"]
             else:
-                assert abs(info["player_blue"]["pick_own_color"] - blue_own) \
-                       < delta_err
+                assert info["player_blue"]["pick_own_color"] == blue_own
 
             obs = env.reset()
             check_obs(obs, batch_size, grid_size)
@@ -218,25 +204,13 @@ def test_logged_info_no_picking():
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    c_blue_pos = [None, None, None, None]
+    c_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-
     envs = init_several_env(max_steps, batch_size, grid_size)
-    batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
-    for env in envs:
-        obs = env.reset()
-        check_obs(obs, batch_size, grid_size)
-        assert_logger_buffer_size(env, n_steps=0)
 
-        assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
-                    env, grid_size, max_steps,
-                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=0.0, blue_speed=0.0, red_own=None, blue_own=None)
-
-    envs = init_several_env(max_steps, batch_size, grid_size,
-                            players_can_pick_same_coin=False)
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
+
     for env in envs:
         obs = env.reset()
         check_obs(obs, batch_size, grid_size)
@@ -254,12 +228,13 @@ def test_logged_info__red_pick_red_all_the_time():
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    c_blue_pos = [None, None, None, None]
+    c_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-
     envs = init_several_env(max_steps, batch_size, grid_size)
+
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
+
     for env_i, env in enumerate(envs):
         obs = env.reset()
         check_obs(obs, batch_size, grid_size)
@@ -268,20 +243,7 @@ def test_logged_info__red_pick_red_all_the_time():
         assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
                     env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=1.0, blue_speed=0.0, red_own=1.0, blue_own=None)
-
-    envs = init_several_env(max_steps, batch_size, grid_size,
-                            players_can_pick_same_coin=False)
-    batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
-    for env_i, env in enumerate(envs):
-        obs = env.reset()
-        check_obs(obs, batch_size, grid_size)
-        assert_logger_buffer_size(env, n_steps=0)
-
-        assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
-                    env, grid_size, max_steps,
-                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=1.0, blue_speed=0.0, red_own=1.0, blue_own=None)
+                    red_speed=0.0, blue_speed=0.0, red_own=None, blue_own=None)
 
 
 def test_logged_info__blue_pick_red_all_the_time():
@@ -290,12 +252,13 @@ def test_logged_info__blue_pick_red_all_the_time():
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    c_blue_pos = [None, None, None, None]
+    c_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-
     envs = init_several_env(max_steps, batch_size, grid_size)
+
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
+
     for env_i, env in enumerate(envs):
         obs = env.reset()
         check_obs(obs, batch_size, grid_size)
@@ -304,20 +267,7 @@ def test_logged_info__blue_pick_red_all_the_time():
         assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
                     env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=0.0, blue_speed=1.0, red_own=None, blue_own=0.0)
-
-    envs = init_several_env(max_steps, batch_size, grid_size,
-                            players_can_pick_same_coin=False)
-    batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
-    for env_i, env in enumerate(envs):
-        obs = env.reset()
-        check_obs(obs, batch_size, grid_size)
-        assert_logger_buffer_size(env, n_steps=0)
-
-        assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
-                    env, grid_size, max_steps,
-                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=0.0, blue_speed=1.0, red_own=None, blue_own=0.0)
+                    red_speed=0.0, blue_speed=0.0, red_own=None, blue_own=None)
 
 
 def test_logged_info__blue_pick_blue_all_the_time():
@@ -325,13 +275,14 @@ def test_logged_info__blue_pick_blue_all_the_time():
     p_blue_pos = [[1, 0], [1, 0], [1, 0], [1, 0]]
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
-    c_red_pos = [None, None, None, None]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-
     envs = init_several_env(max_steps, batch_size, grid_size)
+
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
+
     for env_i, env in enumerate(envs):
         obs = env.reset()
         check_obs(obs, batch_size, grid_size)
@@ -340,20 +291,7 @@ def test_logged_info__blue_pick_blue_all_the_time():
         assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
                     env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=0.0, blue_speed=1.0, red_own=None, blue_own=1.0)
-
-    envs = init_several_env(max_steps, batch_size, grid_size,
-                            players_can_pick_same_coin=False)
-    batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
-    for env_i, env in enumerate(envs):
-        obs = env.reset()
-        check_obs(obs, batch_size, grid_size)
-        assert_logger_buffer_size(env, n_steps=0)
-
-        assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
-                    env, grid_size, max_steps,
-                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=0.0, blue_speed=1.0, red_own=None, blue_own=1.0)
+                    red_speed=0.0, blue_speed=0.0, red_own=None, blue_own=None)
 
 
 def test_logged_info__red_pick_blue_all_the_time():
@@ -361,13 +299,14 @@ def test_logged_info__red_pick_blue_all_the_time():
     p_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
-    c_red_pos = [None, None, None, None]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-
     envs = init_several_env(max_steps, batch_size, grid_size)
+
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
+
     for env_i, env in enumerate(envs):
         obs = env.reset()
         check_obs(obs, batch_size, grid_size)
@@ -376,20 +315,7 @@ def test_logged_info__red_pick_blue_all_the_time():
         assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
                     env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=1.0, blue_speed=0.0, red_own=0.0, blue_own=None)
-
-    envs = init_several_env(max_steps, batch_size, grid_size,
-                            players_can_pick_same_coin=False)
-    batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
-    for env_i, env in enumerate(envs):
-        obs = env.reset()
-        check_obs(obs, batch_size, grid_size)
-        assert_logger_buffer_size(env, n_steps=0)
-
-        assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
-                    env, grid_size, max_steps,
-                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=1.0, blue_speed=0.0, red_own=0.0, blue_own=None)
+                    red_speed=0.0, blue_speed=0.0, red_own=None, blue_own=None)
 
 
 def test_logged_info__red_pick_blue_all_the_time_wt_difference_in_actions():
@@ -397,13 +323,14 @@ def test_logged_info__red_pick_blue_all_the_time_wt_difference_in_actions():
     p_blue_pos = [[0, 0], [0, 0], [0, 1], [0, 1]]
     p_red_act = [0, 1, 2, 3]
     p_blue_act = [0, 1, 2, 3]
-    c_red_pos = [None, None, None, None]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     c_blue_pos = [[1, 1], [1, 2], [2, 0], [0, 0]]
     max_steps, batch_size, grid_size = 4, 4, 3
     n_steps = max_steps
-
     envs = init_several_env(max_steps, batch_size, grid_size)
+
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
+
     for env_i, env in enumerate(envs):
         obs = env.reset()
         check_obs(obs, batch_size, grid_size)
@@ -412,20 +339,7 @@ def test_logged_info__red_pick_blue_all_the_time_wt_difference_in_actions():
         assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
                     env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=1.0, blue_speed=0.0, red_own=0.0, blue_own=None)
-
-    envs = init_several_env(max_steps, batch_size, grid_size,
-                            players_can_pick_same_coin=False)
-    batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
-    for env_i, env in enumerate(envs):
-        obs = env.reset()
-        check_obs(obs, batch_size, grid_size)
-        assert_logger_buffer_size(env, n_steps=0)
-
-        assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
-                    env, grid_size, max_steps,
-                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=1.0, blue_speed=0.0, red_own=0.0, blue_own=None)
+                    red_speed=0.0, blue_speed=0.0, red_own=None, blue_own=None)
 
 
 def test_logged_info__both_pick_blue_all_the_time():
@@ -433,13 +347,14 @@ def test_logged_info__both_pick_blue_all_the_time():
     p_blue_pos = [[1, 0], [1, 0], [1, 0], [1, 0]]
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
-    c_red_pos = [None, None, None, None]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-
     envs = init_several_env(max_steps, batch_size, grid_size)
+
     batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
+
     for env_i, env in enumerate(envs):
         obs = env.reset()
         check_obs(obs, batch_size, grid_size)
@@ -457,7 +372,7 @@ def test_logged_info__both_pick_red_all_the_time():
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    c_blue_pos = [None, None, None, None]
+    c_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
     envs = init_several_env(max_steps, batch_size, grid_size)
@@ -481,7 +396,7 @@ def test_logged_info__both_pick_red_half_the_time():
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    c_blue_pos = [None, None, None, None]
+    c_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
     envs = init_several_env(max_steps, batch_size, grid_size)
@@ -496,7 +411,7 @@ def test_logged_info__both_pick_red_half_the_time():
         assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
                     env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=0.5, blue_speed=0.5, red_own=1.0, blue_own=0.0)
+                    red_speed=0.0, blue_speed=0.0, red_own=None, blue_own=None)
 
 
 def test_logged_info__both_pick_blue_half_the_time():
@@ -504,7 +419,7 @@ def test_logged_info__both_pick_blue_half_the_time():
     p_blue_pos = [[1, 0], [1, 0], [0, 0], [0, 0]]
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
-    c_red_pos = [None, None, None, None]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
@@ -520,7 +435,7 @@ def test_logged_info__both_pick_blue_half_the_time():
         assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
                     env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=0.5, blue_speed=0.5, red_own=0.0, blue_own=1.0)
+                    red_speed=0.0, blue_speed=0.0, red_own=None, blue_own=None)
 
 
 def test_logged_info__both_pick_blue():
@@ -528,7 +443,7 @@ def test_logged_info__both_pick_blue():
     p_blue_pos = [[1, 0], [1, 0], [0, 0], [0, 0]]
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
-    c_red_pos = [None, None, None, None]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
@@ -544,7 +459,7 @@ def test_logged_info__both_pick_blue():
         assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
                     env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=0.25, blue_speed=0.5, red_own=0.0, blue_own=1.0)
+                    red_speed=0.0, blue_speed=0.0, red_own=None, blue_own=None)
 
 
 def test_logged_info__pick_half_the_time_half_blue_half_red():
@@ -552,8 +467,8 @@ def test_logged_info__pick_half_the_time_half_blue_half_red():
     p_blue_pos = [[1, 0], [1, 0], [0, 0], [0, 0]]
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
-    c_red_pos = [[1, 1], None, [1, 1], None]
-    c_blue_pos = [None, [1, 1], None, [1, 1]]
+    c_red_pos = [[1, 1], [0, 0], [1, 1], [0, 0]]
+    c_blue_pos = [[0, 0], [1, 1], [0, 0], [1, 1]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
     envs = init_several_env(max_steps, batch_size, grid_size)
@@ -568,8 +483,153 @@ def test_logged_info__pick_half_the_time_half_blue_half_red():
         assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
                     env, grid_size, max_steps,
                     p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=0.5, blue_speed=0.5, red_own=0.5, blue_own=0.5)
+                    red_speed=0.0, blue_speed=0.0, red_own=None, blue_own=None)
 
+def test_logged_info__pick_slowly_red_coin():
+    p_red_pos = [[1, 0], [0, 0], [0, 0], [0, 0]]
+    p_blue_pos = [[1, 0], [0, 0], [0, 0], [0, 0]]
+    p_red_act = [0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0]
+    c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
+    c_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
+    max_steps, batch_size, grid_size = 4, 28, 3
+    n_steps = max_steps
+    envs = init_several_env(max_steps, batch_size, grid_size)
+
+    batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
+
+    for env_i, env in enumerate(envs):
+        obs = env.reset()
+        check_obs(obs, batch_size, grid_size)
+        assert_logger_buffer_size(env, n_steps=0)
+
+        assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
+                    env, grid_size, max_steps,
+                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
+                    red_speed=0.25, blue_speed=0.25,
+                    red_own=1.0, blue_own=0.0)
+
+def test_logged_info__pick_slowly_blue_coin():
+    p_red_pos = [[1, 0], [0, 0], [0, 0], [0, 0]]
+    p_blue_pos = [[1, 0], [0, 0], [0, 0], [0, 0]]
+    p_red_act = [0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
+    c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
+    max_steps, batch_size, grid_size = 4, 28, 3
+    n_steps = max_steps
+    envs = init_several_env(max_steps, batch_size, grid_size)
+
+    batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
+
+    for env_i, env in enumerate(envs):
+        obs = env.reset()
+        check_obs(obs, batch_size, grid_size)
+        assert_logger_buffer_size(env, n_steps=0)
+
+        assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
+                    env, grid_size, max_steps,
+                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
+                    red_speed=0.25, blue_speed=0.25,
+                    red_own=0.0, blue_own=1.0)
+
+
+def test_logged_info__pick_quickly_red_coin():
+    p_red_pos = [[1, 0], [0, 0], [1, 0], [1, 0]]
+    p_blue_pos = [[1, 0], [0, 0], [1, 0], [1, 0]]
+    p_red_act = [0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0]
+    c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
+    c_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
+    max_steps, batch_size, grid_size = 4, 28, 3
+    n_steps = max_steps
+    envs = init_several_env(max_steps, batch_size, grid_size)
+
+    batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
+
+    for env_i, env in enumerate(envs):
+        obs = env.reset()
+        check_obs(obs, batch_size, grid_size)
+        assert_logger_buffer_size(env, n_steps=0)
+
+        assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
+                    env, grid_size, max_steps,
+                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
+                    red_speed=0.75, blue_speed=0.75,
+                    red_own=1.0, blue_own=0.0)
+
+def test_logged_info__pick_quickly_blue_coin():
+    p_red_pos = [[1, 0], [0, 0], [1, 0], [1, 0]]
+    p_blue_pos = [[1, 0], [0, 0], [1, 0], [1, 0]]
+    p_red_act = [0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
+    c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
+    max_steps, batch_size, grid_size = 4, 28, 3
+    n_steps = max_steps
+    envs = init_several_env(max_steps, batch_size, grid_size)
+
+    batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
+
+    for env_i, env in enumerate(envs):
+        obs = env.reset()
+        check_obs(obs, batch_size, grid_size)
+        assert_logger_buffer_size(env, n_steps=0)
+
+        assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
+                    env, grid_size, max_steps,
+                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
+                    red_speed=0.75, blue_speed=0.75,
+                    red_own=0.0, blue_own=1.0)
+
+
+def test_logged_info__pick_slowly_mixed_coin():
+    p_red_pos = [[1, 0], [0, 0], [0, 0], [1, 0]]
+    p_blue_pos = [[1, 0], [0, 0], [0, 0], [1, 0]]
+    p_red_act = [0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0]
+    c_red_pos = [[1, 1], [1, 1], [0, 0], [0, 0]]
+    c_blue_pos = [[0, 0], [0, 0], [1, 1], [1, 1]]
+    max_steps, batch_size, grid_size = 4, 28, 3
+    n_steps = max_steps
+    envs = init_several_env(max_steps, batch_size, grid_size)
+
+    batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
+
+    for env_i, env in enumerate(envs):
+        obs = env.reset()
+        check_obs(obs, batch_size, grid_size)
+        assert_logger_buffer_size(env, n_steps=0)
+
+        assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
+                    env, grid_size, max_steps,
+                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
+                    red_speed=0.50, blue_speed=0.50,
+                    red_own=0.5, blue_own=0.5)
+
+def test_logged_info__pick_quickly_mixed_coin():
+    p_red_pos = [[1, 0], [1, 0], [1, 0], [1, 0]]
+    p_blue_pos = [[1, 0], [1, 0], [1, 0], [1, 0]]
+    p_red_act = [0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0]
+    c_red_pos = [[1, 1], [1, 1], [0, 0], [0, 0]]
+    c_blue_pos = [[0, 0], [0, 0], [1, 1], [1, 1]]
+    max_steps, batch_size, grid_size = 4, 28, 3
+    n_steps = max_steps
+    envs = init_several_env(max_steps, batch_size, grid_size)
+
+    batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
+
+    for env_i, env in enumerate(envs):
+        obs = env.reset()
+        check_obs(obs, batch_size, grid_size)
+        assert_logger_buffer_size(env, n_steps=0)
+
+        assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
+                    env, grid_size, max_steps,
+                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
+                    red_speed=1.0, blue_speed=1.0,
+                    red_own=0.5, blue_own=0.5)
 
 def test_get_and_set_env_state():
     max_steps, batch_size, grid_size = 20, 100, 3
@@ -627,10 +687,10 @@ def test_observations_are_invariant_to_the_player_trained_wt_step():
                   [0, 0], [0, 1], [2, 0], [1, 2], [2, 2]]
     p_red_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    c_red_pos = [[1, 1], None, [0, 1], None, None,
-                 [2, 2], [0, 0], None, None, [2, 1]]
-    c_blue_pos = [None, [1, 1], None, [0, 1], [2, 2],
-                  None, None, [0, 0], [2, 1], None]
+    c_red_pos = [[1, 1], [0, 0], [0, 1], [0, 0], [0, 0],
+                 [2, 2], [0, 0], [0, 0], [0, 0], [2, 1]]
+    c_blue_pos = [[0, 0], [1, 1], [0, 0], [0, 1], [2, 2],
+                  [0, 0], [0, 0], [0, 0], [2, 1], [0, 0]]
     max_steps, batch_size, grid_size = 10, 52, 3
     n_steps = max_steps
     envs = init_several_env(max_steps, batch_size, grid_size,
@@ -677,10 +737,10 @@ def test_observations_are_invariant_to_the_player_trained_wt_reset():
                   [0, 0], [0, 1], [2, 0], [1, 2], [2, 2]]
     p_red_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    c_red_pos = [[1, 1], None, [0, 1], None, None,
-                 [2, 2], [0, 0], None, None, [2, 1]]
-    c_blue_pos = [None, [1, 1], None, [0, 1], [2, 2],
-                  None, None, [0, 0], [2, 1], None]
+    c_red_pos = [[1, 1], [0, 0], [0, 1], [0, 0], [0, 0],
+                 [2, 2], [0, 0], [0, 0], [0, 0], [2, 1]]
+    c_blue_pos = [[0, 0], [1, 1], [0, 0], [0, 1], [2, 2],
+                  [0, 0], [0, 0], [0, 0], [2, 1], [0, 0]]
     max_steps, batch_size, grid_size = 10, 52, 3
     n_steps = max_steps
     envs = init_several_env(max_steps, batch_size, grid_size,
@@ -716,10 +776,10 @@ def test_observations_are_not_invariant_to_the_player_trained_wt_step():
                   [0, 0], [0, 1], [2, 0], [1, 2], [2, 2]]
     p_red_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    c_red_pos = [[1, 1], None, [0, 1], None, None,
-                 [2, 2], [0, 0], None, None, [2, 1]]
-    c_blue_pos = [None, [1, 1], None, [0, 1], [2, 2],
-                  None, None, [0, 0], [2, 1], None]
+    c_red_pos = [[1, 1], [0, 0], [0, 1], [0, 0], [0, 0],
+                 [2, 2], [0, 0], [0, 0], [0, 0], [2, 1]]
+    c_blue_pos = [[0, 0], [1, 1], [0, 0], [0, 1], [2, 2],
+                  [0, 0], [0, 0], [0, 0], [2, 1], [0, 0]]
     max_steps, batch_size, grid_size = 10, 52, 3
     n_steps = max_steps
     envs = init_several_env(max_steps, batch_size, grid_size,
@@ -768,10 +828,10 @@ def test_observations_are_not_invariant_to_the_player_trained_wt_reset():
                   [0, 0], [0, 1], [2, 0], [1, 2], [2, 2]]
     p_red_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    c_red_pos = [[1, 1], None, [0, 1], None, None,
-                 [2, 2], [0, 0], None, None, [2, 1]]
-    c_blue_pos = [None, [1, 1], None, [0, 1], [2, 2],
-                  None, None, [0, 0], [2, 1], None]
+    c_red_pos = [[1, 1], [0, 0], [0, 1], [0, 0], [0, 0],
+                 [2, 2], [0, 0], [0, 0], [0, 0], [2, 1]]
+    c_blue_pos = [[0, 0], [1, 1], [0, 0], [0, 1], [2, 2],
+                  [0, 0], [0, 0], [0, 0], [2, 1], [0, 0]]
     max_steps, batch_size, grid_size = 10, 52, 3
     n_steps = max_steps
     envs = init_several_env(max_steps, batch_size, grid_size,
@@ -800,39 +860,4 @@ def test_observations_are_not_invariant_to_the_player_trained_wt_reset():
                 break
 
 
-@flaky(max_runs=4, min_passes=1)
-def test_who_pick_is_random():
-    size = 100
-    p_red_pos = [[1, 0], [1, 0], [1, 0], [1, 0]] * size
-    p_blue_pos = [[1, 0], [1, 0], [1, 0], [1, 0]] * size
-    p_red_act = [0, 0, 0, 0] * size
-    p_blue_act = [0, 0, 0, 0] * size
-    c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]] * size
-    c_blue_pos = [None, None, None, None] * size
-    max_steps, batch_size, grid_size = int(4 * size), 28, 3
-    n_steps = max_steps
 
-    envs = init_several_env(max_steps, batch_size, grid_size)
-    batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
-    for env_i, env in enumerate(envs):
-        obs = env.reset()
-        check_obs(obs, batch_size, grid_size)
-        assert_logger_buffer_size(env, n_steps=0)
-
-        assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
-                    env, grid_size, max_steps,
-                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=1.0, blue_speed=1.0, red_own=1.0, blue_own=0.0)
-
-    envs = init_several_env(max_steps, batch_size, grid_size,
-                            players_can_pick_same_coin=False)
-    batch_deltas = np.random.randint(0, max_steps - 1, size=batch_size)
-    for env_i, env in enumerate(envs):
-        obs = env.reset()
-        check_obs(obs, batch_size, grid_size)
-        assert_logger_buffer_size(env, n_steps=0)
-
-        assert_info(batch_deltas, n_steps, batch_size, p_red_act, p_blue_act,
-                    env, grid_size, max_steps,
-                    p_red_pos, p_blue_pos, c_red_pos, c_blue_pos,
-                    red_speed=0.5, blue_speed=0.5, red_own=1.0, blue_own=0.0)

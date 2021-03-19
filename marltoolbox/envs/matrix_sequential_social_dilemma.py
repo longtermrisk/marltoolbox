@@ -18,6 +18,20 @@ from marltoolbox.envs.utils.mixins import TwoPlayersTwoActionsInfoMixin, \
 
 logger = logging.getLogger(__name__)
 
+PLOT_KEYS = ["CC_freq",
+             "DD_freq",
+             "CD_freq",
+             "DC_freq",
+             ]
+
+PLOT_ASSEMBLAGE_TAGS = [
+    ("_freq_player_row_mean","_freq_player_col_mean"),
+    ("_freq",),
+    ("CC_freq",),
+    ("DD_freq",),
+    ("CD_freq",),
+    ("DC_freq",),
+]
 
 class MatrixSequentialSocialDilemma(
     InfoAccumulationInterface, MultiAgentEnv, ABC):
@@ -87,7 +101,7 @@ class MatrixSequentialSocialDilemma(
             self._accumulate_info(action_player_row, action_player_col)
 
         observations = \
-            self._produce_observations_invariant_to_the_player_trained(
+            self._produce_observations(
                 action_player_row, action_player_col)
         rewards = self._get_players_rewards(action_player_row,
                                             action_player_col)
@@ -96,7 +110,6 @@ class MatrixSequentialSocialDilemma(
             logger.warning(
                 "self.step_count_in_current_episode >= self.max_steps")
         info = self._get_info_for_current_epi(epi_is_done)
-
         return self._to_RLLib_API(observations, rewards, epi_is_done, info)
 
     def _produce_observations(self, action_player_row, action_player_col):

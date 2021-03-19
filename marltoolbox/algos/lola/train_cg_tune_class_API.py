@@ -61,7 +61,7 @@ def train_dqn_policy(dqn_data_buffer, dqn_exploiter):
 
 class LOLAPGCG(tune.Trainable):
 
-    def _init_lola(self, env, seed, num_episodes, trace_length, batch_size,
+    def _init_lola(self, env_class, seed, num_episodes, trace_length, batch_size,
                    lola_update, opp_model, grid_size, gamma, hidden, bs_mul,
                    lr, env_config,
                    mem_efficient=True,
@@ -106,14 +106,8 @@ class LOLAPGCG(tune.Trainable):
         corrections = lola_update
 
         # Instantiate the environment
-        if env == VectorizedCoinGame:
-            self.env = VectorizedCoinGame(env_config)
-            self.env.seed(seed)
-        elif env == AsymVectorizedCoinGame:
-            self.env = AsymVectorizedCoinGame(env_config)
-            self.env.seed(seed)
-        else:
-            raise ValueError(f"exp_name: {env}")
+        self.env = env_class(env_config)
+        self.env.seed(seed)
 
         self.timestep = 0
 
@@ -130,7 +124,7 @@ class LOLAPGCG(tune.Trainable):
         self.bs_mul = bs_mul
         self.lr = lr
         self.mem_efficient = mem_efficient
-        self.asymmetry = env == AsymVectorizedCoinGame
+        self.asymmetry = env_class == AsymVectorizedCoinGame
         self.warmup = warmup
         self.changed_config = changed_config
         self.ac_lr = ac_lr
@@ -312,7 +306,6 @@ class LOLAPGCG(tune.Trainable):
     # TODO add something to not load and create everything when only evaluating with RLLib
 
     def setup(self, config):
-        print("_init_lola", config)
         self._init_lola(**config)
 
     def step(self):
@@ -334,17 +327,9 @@ class LOLAPGCG(tune.Trainable):
         if self.warmup_step_n < self.warmup:
             self.warmup_step_n += 1
 
-        # if not self.use_toolbox_env:
-        #     # using coin game from lola.envs
-        #     # Reset environment and get first new observation
-        #     # sP = env.reset()
-        #     # using coin game from lola_dice.envs
-        #     obs, _ = self.env.reset()
-        #     sP = obs[0]
-        # else:
         obs = self.env.reset()
-        # TODO this prevents us to use
-        #  _obs_invariant_to_the_player_trained
+        # Be careful this prevents to use
+        #  _obs_invariant_to_the_player_trained in coin game
         sP = obs["player_red"]
 
         s = sP
@@ -362,8 +347,6 @@ class LOLAPGCG(tune.Trainable):
 
         lstm_state = []
         for agent in these_agents:
-            # self.episodes_run[agent] += 1
-            # self.episodes_run_counter[agent] += 1
             lstm_state.append(np.zeros((self.batch_size, self.h_size[agent] * 2)))
 
         while j < self.max_epLength:
