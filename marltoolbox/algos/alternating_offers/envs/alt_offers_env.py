@@ -11,9 +11,9 @@ from marltoolbox.algos.alternating_offers.envs.alt_offers_env_sieve import Alive
 class AltOffersEnv(object):
     '''State of the environment (max lengths of games, numbers of pool items, reward values for different items)
     '''
-    def __init__(self, batch_size, random_state, utility_type):
+    def __init__(self, batch_size, random_state, utility_types):
         # sample game parameters for a new batch
-        batch_properties = generate_batch(batch_size=batch_size, random_state=random_state, utility_type=utility_type)
+        batch_properties = generate_batch(batch_size=batch_size, random_state=random_state, utility_types=utility_types)
         
         self.pool = batch_properties['pool']
         self.N = batch_properties['N']
@@ -48,7 +48,7 @@ class AltOffersEnv(object):
 class AltOffersEnvMemory(object):
     '''In this class, the states of the players and the arbitrator are stored
     '''
-    def __init__(self, alt_offers_env, msg_len, hidden_embedding_size, enable_arbitrator, enable_cuda,
+    def __init__(self, alt_offers_env, msg_len, hidden_embedding_sizes, enable_arbitrator, enable_cuda,
                  enable_binding_comm, enable_cheap_comm):
         self.env_state = alt_offers_env
         max_batch_size = self.env_state.max_batch_size
@@ -57,15 +57,15 @@ class AltOffersEnvMemory(object):
         self.proposal_1 = torch.zeros(max_batch_size, 3).long()
         self.message_0 = torch.zeros(max_batch_size, msg_len).long()  # cheap utterance
         self.message_1 = torch.zeros(max_batch_size, msg_len).long()
-        self.hidden_state_0 = torch.zeros(max_batch_size, hidden_embedding_size)
-        self.hidden_state_1 = torch.zeros(max_batch_size, hidden_embedding_size)
-        self.cell_state_0 = torch.zeros(max_batch_size, hidden_embedding_size)
-        self.cell_state_1 = torch.zeros(max_batch_size, hidden_embedding_size)
+        self.hidden_state_0 = torch.zeros(max_batch_size, hidden_embedding_sizes[0])
+        self.hidden_state_1 = torch.zeros(max_batch_size, hidden_embedding_sizes[1])
+        self.cell_state_0 = torch.zeros(max_batch_size, hidden_embedding_sizes[0])
+        self.cell_state_1 = torch.zeros(max_batch_size, hidden_embedding_sizes[1])
         
         self.enable_arbitrator = enable_arbitrator
         if self.enable_arbitrator:
-            self.arb_hidden_state = torch.zeros(max_batch_size, hidden_embedding_size)
-            self.arb_cell_state = torch.zeros(max_batch_size, hidden_embedding_size)
+            self.arb_hidden_state = torch.zeros(max_batch_size, hidden_embedding_sizes[2])
+            self.arb_cell_state = torch.zeros(max_batch_size, hidden_embedding_sizes[2])
             
         self.sieve = AliveSieve(batch_size=max_batch_size, enable_cuda=enable_cuda)
         

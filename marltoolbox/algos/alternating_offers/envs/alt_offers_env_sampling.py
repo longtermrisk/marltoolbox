@@ -63,12 +63,11 @@ def sample_N(batch_size, random_state=np.random):
     N = torch.from_numpy(N)
     return N
 
-def generate_batch(batch_size, utility_type, random_state=np.random):
+def generate_batch(batch_size, utility_types, random_state=np.random):
     '''Sample game parameters (items, utilities, the maximum duration of the game)
     '''
     pool = sample_items(batch_size=batch_size, num_values=6, num_items=3, random_state=random_state)
     utilities = []
-    utility_types = utility_type.split(',')
     utilities.append(sample_utility(batch_size=batch_size, num_values=6, num_items=3, random_state=random_state, utility_type=utility_types[0]))
     utilities.append(sample_utility(batch_size=batch_size, num_values=6, num_items=3, random_state=random_state, utility_type=utility_types[1]))
     N = sample_N(batch_size=batch_size, random_state=random_state)

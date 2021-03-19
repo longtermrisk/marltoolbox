@@ -53,7 +53,7 @@ class AltOffersTraining(tune.Trainable):
                 response_entropy_reg=args['response_entropy_reg'],
                 utterance_entropy_reg=args['utterance_entropy_reg'],
                 proposal_entropy_reg=args['proposal_entropy_reg'],
-                hidden_embedding_size=args['hidden_embedding_size'],
+                hidden_embedding_size=args['hidden_embedding_sizes'][i],
             )
             if args['enable_cuda']:
                 model.cuda()
@@ -64,8 +64,9 @@ class AltOffersTraining(tune.Trainable):
                 self.agent_opts.append(optim.Adam(params=self.agent_models[i].parameters()))
 
         if args['enable_arbitrator']:
+            assert len(args['hidden_embedding_sizes']) > 2  # need an embedding size for the arbitrator too then
             self.arbitrator_model = nets.ArbitratorModel(entropy_reg=args['arbitrator_entropy_reg'], share_utilities=args['share_utilities'],
-                                                     hidden_embedding_size=args['hidden_embedding_size'])
+                                                     hidden_embedding_size=args['hidden_embedding_sizes'][2])
             if args['enable_cuda']:
                 self.arbitrator_model.cuda()
             if args['arbitrator_sgd']:
@@ -74,10 +75,6 @@ class AltOffersTraining(tune.Trainable):
                 self.arbitrator_opt = optim.Adam(params=self.arbitrator_model.parameters())
 
         self.last_print = time.time()
-        for d in ['logs', 'model_saves']:
-            if not path.isdir(d):
-                os.makedirs(d)
-
         self.baseline = None
     
     def step(self):
@@ -97,7 +94,7 @@ class AltOffersTraining(tune.Trainable):
         self.arb_entropy_loss_accum = 0
         
         for cur_episode_i in range(self.args['episodes_per_step']):
-            env_state = AltOffersEnv(batch_size=self.args['batch_size'], random_state=self.train_random_state, utility_type=self.args['utility_type'])
+            env_state = AltOffersEnv(batch_size=self.args['batch_size'], random_state=self.train_random_state, utility_types=self.args['utility_types'])
 
             action_logprobs, entropy_loss_by_agent, self.arb_logprobs_accum, arb_entropy_loss, rewards, num_turns, alive_masks, \
             self.new_agent_forward_stats, self.new_arb_forward_stats = run_episode(
@@ -105,7 +102,7 @@ class AltOffersTraining(tune.Trainable):
                 env_state=env_state,
                 agent_models=self.agent_models,
                 arbitrator_model=self.arbitrator_model if self.args['enable_arbitrator'] else None,
-                render_flag=(cur_episode_i == self.args['episodes_per_step']-1),
+                render_flag=(cur_episode_i == self.args['episodes_per_step']-1) and not self.args['suppress_output'],
                 deterministic=False,
             )
     
@@ -202,13 +199,13 @@ class AltOffersTraining(tune.Trainable):
 
                     # only correct if scale_before_redist==True, otherwise the welfare changes
                     # because of redistribution and needs to be recomputed in a different way
-                    assert self.args['scale_before_redist'] or self.args['prosociality_level']==0
+                    assert self.args['scale_before_redist'] or self.args['prosociality_levels'][agent]==0
                     # to use fairness_coeff with arbitrator, need to compute how fairness penalties affect
                     # the before-redistribution welfare in mediator optimization code, this is not implemented
-                    assert not self.args['enable_arbitrator'] or self.args['fairness_coeff'] == 0
-                    total_agent_reward = (1-self.args['prosociality_level'])*baselined_rewards[reward_name][global_idxes] + \
-                                          self.args['prosociality_level']*baselined_rewards['sum_share_of_max'][global_idxes] - \
-                                          self.args['fairness_coeff']*baselined_rewards['difference_in_share_of_max'][global_idxes]
+                    assert not self.args['enable_arbitrator'] or self.args['fairness_coeffs'][agent] == 0
+                    total_agent_reward = (1-self.args['prosociality_levels'][agent])*baselined_rewards[reward_name][global_idxes] + \
+                                          self.args['prosociality_levels'][agent]*baselined_rewards['sum_share_of_max'][global_idxes] - \
+                                          self.args['fairness_coeffs'][agent]*baselined_rewards['difference_in_share_of_max'][global_idxes]
 
                     total_agent_reward = total_agent_reward.float().contiguous().view(sieve_playback.batch_size, 1)
                     main_loss_by_agent[agent] += -(action * Variable(total_agent_reward)).sum()
@@ -232,7 +229,8 @@ class AltOffersTraining(tune.Trainable):
             self.episodes_completed += 1
 
         log_data = logging_utils.get_step_log(self)
-        logging_utils.print_step_log(self, log_data)
+        if not self.args['suppress_output']:
+            logging_utils.print_step_log(self, log_data)
         return log_data
 
     def save_checkpoint(self, tmp_checkpoint_dir):
@@ -262,7 +260,7 @@ class AltOffersTraining(tune.Trainable):
         pass
 
 def run_episode(args, env_state, agent_models, arbitrator_model, deterministic, render_flag):
-    env_agents_state = AltOffersEnvMemory(env_state, msg_len=3, hidden_embedding_size=args['hidden_embedding_size'], enable_arbitrator=(arbitrator_model is not None), enable_cuda=args['enable_cuda'], enable_binding_comm=args['enable_binding_comm'], enable_cheap_comm=args['enable_cheap_comm'])
+    env_agents_state = AltOffersEnvMemory(env_state, msg_len=3, hidden_embedding_sizes=args['hidden_embedding_sizes'], enable_arbitrator=(arbitrator_model is not None), enable_cuda=args['enable_cuda'], enable_binding_comm=args['enable_binding_comm'], enable_cheap_comm=args['enable_cheap_comm'])
     type_constr = torch.cuda if args['enable_cuda'] else torch
     max_batch_size = env_state.N.size()[0]
 
