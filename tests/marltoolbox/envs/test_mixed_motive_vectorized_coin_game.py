@@ -5,7 +5,7 @@ import numpy as np
 from flaky import flaky
 
 from marltoolbox.envs.vectorized_mixed_motive_coin_game import \
-    VectorizedMixedMotiveCoinGame
+    VectMixedMotiveCG
 from test_coin_game import \
     assert_obs_is_symmetrical, assert_obs_is_not_symmetrical
 
@@ -27,7 +27,7 @@ def init_several_env(max_steps, batch_size, grid_size,
                      players_can_pick_same_coin=True,
                      same_obs_for_each_player=True):
     mixed_motive_coin_game = init_env(
-        max_steps, batch_size, VectorizedMixedMotiveCoinGame, grid_size,
+        max_steps, batch_size, VectMixedMotiveCG, grid_size,
         players_can_pick_same_coin=players_can_pick_same_coin,
         same_obs_for_each_player=same_obs_for_each_player)
     return [mixed_motive_coin_game]
