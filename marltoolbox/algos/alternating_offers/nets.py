@@ -10,6 +10,8 @@ import torch.nn.functional as F
 import numpy as np
 
 
+eps = 1e-6
+
 class NumberSequenceEncoder(nn.Module):
     def __init__(self, num_values, embedding_size=100):
         super().__init__()
@@ -38,7 +40,7 @@ class TermPolicy(nn.Module):
         super().__init__()
         self.h1 = nn.Linear(embedding_size, 1)
 
-    def forward(self, thoughtvector, testing, eps=1e-8):
+    def forward(self, thoughtvector, testing):
         logits = self.h1(thoughtvector)
         response_probs = torch.clamp(F.sigmoid(logits), eps, 1-eps)  # acceptance probabilities
         stochastic_draws = 0
@@ -77,7 +79,7 @@ class ProposalPolicy(nn.Module):
             self.fcs.append(fc)
             self.__setattr__('h1_%s' % i, fc)
 
-    def forward(self, x, testing, eps=1e-8):
+    def forward(self, x, testing):
         batch_size = x.size()[0]
         nodes = []
         entropy = 0
@@ -108,7 +110,7 @@ class ProposalPolicy(nn.Module):
             if log_g is not None:
                 nodes.append(log_g)
 #             probs = probs + eps
-            entropy += (- probs * probs.log()).sum()
+            entropy += (- probs * probs.log()).sum()  # probs are from softmax so there's the required sum from the entropy formula
             proposal[:, i] = a[:, 0]
 
         return nodes, proposal, entropy, matches_argmax_count, stochastic_draws
@@ -126,7 +128,7 @@ class ProposalReprPolicy(nn.Module):
             self.fcs.append(fc)
             self.__setattr__('h1_%s' % i, fc)
 
-    def forward(self, x, hidden_proposal, testing, eps=1e-8):
+    def forward(self, x, hidden_proposal, testing):
         batch_size = x.size()[0]
         nodes = []
         entropy = 0
@@ -163,7 +165,7 @@ class ProposalReprPolicy(nn.Module):
             if log_g is not None:
                 nodes.append(log_g)
 #             probs = probs + eps
-            entropy += (- probs * probs.log()).sum()
+            entropy += (- probs * probs.log()).sum()  # probs are from softmax so there's the required sum from the entropy formula
             proposal[:, i] = a[:, 0]
 
         return nodes, proposal, entropy, matches_argmax_count, stochastic_draws
@@ -174,7 +176,7 @@ class RedistributionPolicy(nn.Module):
         self.enable_redist = nn.Linear(embedding_size, 1)
         self.favor_first_player = nn.Linear(embedding_size, 1)
 
-    def forward(self, thoughtvector, testing, mid_move_indices, eps=1e-8):
+    def forward(self, thoughtvector, testing, mid_move_indices):
         enable_probs = torch.clamp(F.sigmoid(self.enable_redist(thoughtvector)), eps, 1-eps)
         favor_probs = torch.clamp(F.sigmoid(self.favor_first_player(thoughtvector)), eps, 1-eps)
         
