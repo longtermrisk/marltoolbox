@@ -17,6 +17,8 @@ def main():
     print(config)
     
     if config['enable_cuda']:
+        # double backward that is needed for the arbitration was not available on GPU
+        # so lately I have just been testing the code for CPU training
         raise NotImplementedError
     
     # each logical step of training contains several episodes, each episode is a batch of games

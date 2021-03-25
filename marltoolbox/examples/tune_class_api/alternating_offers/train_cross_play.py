@@ -66,7 +66,7 @@ config = {
 #     'match_mode': tune.grid_search(['default_vs_custom']),
 #     'cond_params': tune.grid_search(list(cond_params_iter_small())),
     
-    'name': 'cross_play_20K_episodes',
+    'name': 'cross_play_20K_episodes_cheap',
     'communication_mode': tune.grid_search(['cheap']),
     'repetition_i': tune.grid_search(list(range(0, 5))),
     'match_mode': tune.grid_search(['custom_vs_custom_1', 'custom_vs_custom_2', 'default_vs_custom', 'custom_vs_default']),
