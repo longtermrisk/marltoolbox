@@ -146,19 +146,24 @@ class SelfAndCrossPlayEvaluator:
     def _is_policy_to_load(self, policy_id, policies_to_load_from_checkpoint):
         return policy_id in policies_to_load_from_checkpoint or "All" in policies_to_load_from_checkpoint
 
-    def preload_checkpoints_from_tune_results(self, tune_results: Dict[str, ExperimentAnalysis]):
+    def preload_checkpoints_from_tune_results(
+            self, tune_results: Dict[str, ExperimentAnalysis]):
         """
-        :param tune_results: Dict of the tune_analysis you want to extract the groups of checkpoints from.
+        :param tune_results: Dict of the tune_analysis you want to extract
+            the groups of checkpoints from.
             All the checkpoints in these tune_analysis will be extracted.
         """
         self._extract_groups_of_checkpoints(tune_results)
         self.n_checkpoints = len(self.checkpoints)
-        print(f"Found {self.n_checkpoints} checkpoints in {len(tune_results)} tune_results")
+        msg = f"Found {self.n_checkpoints} checkpoints in " \
+              f"{len(tune_results)} tune_results"
+        print(msg)
+        logger.info(msg)
 
         self.checkpoints_loaded = True
 
-    def _extract_groups_of_checkpoints(self,
-                                       tune_results: Dict[str, ExperimentAnalysis]):
+    def _extract_groups_of_checkpoints(
+            self, tune_results: Dict[str, ExperimentAnalysis]):
         self.checkpoints = []
         for group_name, one_tune_result in tune_results.items():
             self._extract_one_group_of_checkpoints(one_tune_result, group_name)
@@ -196,22 +201,29 @@ class SelfAndCrossPlayEvaluator:
         if n_cross_play_per_checkpoint > 0:
             assert n_cross_play_per_checkpoint <= self.n_checkpoints - 1
 
-    def _evaluate_performances_in_parallel(self, n_self_play_per_checkpoint, n_cross_play_per_checkpoint):
-        master_config, all_metadata = self._prepare_one_master_config_dict(n_self_play_per_checkpoint,
-                                                                           n_cross_play_per_checkpoint)
-        results = ray.tune.run(self.TrainerClass, config=master_config,
-                               stop=self.stop_config, name=os.path.join(self.exp_name, "self_and_cross_play_eval"),
-                               checkpoint_freq=0, checkpoint_at_end=False)
+    def _evaluate_performances_in_parallel(
+            self, n_self_play_per_checkpoint, n_cross_play_per_checkpoint):
+        master_config, all_metadata = self._prepare_one_master_config_dict(
+            n_self_play_per_checkpoint, n_cross_play_per_checkpoint)
+
+        results = ray.tune.run(
+            self.TrainerClass,
+            config=master_config,
+            stop=self.stop_config,
+            name=os.path.join(self.exp_name, "self_and_cross_play_eval"),
+            )
 
         all_metadata_wt_results = self._add_results_into_metadata(all_metadata, results)
         return all_metadata_wt_results
 
-    def _prepare_one_master_config_dict(self, n_self_play_per_checkpoint, n_cross_play_per_checkpoint):
-        opponents_per_checkpoint = self._get_opponents_per_checkpoints(n_cross_play_per_checkpoint)
-        all_config_variations, all_metadata = self._produce_config_variations(n_self_play_per_checkpoint,
-                                                                              n_cross_play_per_checkpoint,
-                                                                              opponents_per_checkpoint)
-        master_config = self._assemble_in_one_master_config(all_config_variations)
+    def _prepare_one_master_config_dict(
+            self, n_self_play_per_ckpt, n_cross_play_per_ckpt):
+        opponents_per_ckpt = self._get_opponents_per_checkpoints(
+            n_cross_play_per_ckpt)
+        all_config_variations, all_metadata = self._produce_config_variations(
+            n_self_play_per_ckpt,  n_cross_play_per_ckpt, opponents_per_ckpt)
+        master_config = self._assemble_in_one_master_config(
+            all_config_variations)
 
         return master_config, all_metadata
 
@@ -220,16 +232,23 @@ class SelfAndCrossPlayEvaluator:
                                     for checkpoint_i in range(self.n_checkpoints)]
         return opponents_per_checkpoint
 
-    def _produce_config_variations(self, n_self_play_per_checkpoint,
-                                   n_cross_play_per_checkpoint, opponents_per_checkpoint):
-        self_plays = [self._get_config_for_one_self_play(checkpoint_i)
-                      for checkpoint_i in range(self.n_checkpoints)
-                      for _ in range(n_self_play_per_checkpoint)]
-        cross_plays = [self._get_config_for_one_cross_play(checkpoint_i,
-                                                           opponents_per_checkpoint[checkpoint_i][cross_play_n])
-                       for checkpoint_i in range(self.n_checkpoints)
-                       for cross_play_n in range(n_cross_play_per_checkpoint)]
-        print(f"Prepared {len(self_plays)} sself_plays and {len(cross_plays)} cross_plays")
+    def _produce_config_variations(self, n_self_play_per_ckpt,
+                                   n_cross_play_per_ckpt, opponents_per_ckpt):
+        self_plays = [
+            self._get_config_for_one_self_play(checkpoint_i)
+            for checkpoint_i in range(self.n_checkpoints)
+            for _ in range(n_self_play_per_ckpt)
+        ]
+        cross_plays = [
+            self._get_config_for_one_cross_play(
+                checkpoint_i,opponents_per_ckpt[checkpoint_i][cross_play_n])
+            for checkpoint_i in range(self.n_checkpoints)
+            for cross_play_n in range(n_cross_play_per_ckpt)
+        ]
+        msg = f"Prepared {len(self_plays)} self_plays and " \
+              f"{len(cross_plays)} cross_plays"
+        logger.info(msg)
+        print(msg)
         all_plays = self_plays + cross_plays
 
         all_metadata = [play[0] for play in all_plays]
@@ -239,8 +258,10 @@ class SelfAndCrossPlayEvaluator:
 
     def _assemble_in_one_master_config(self, all_config_variations):
         master_config = all_config_variations[0]
-        all_multiagent_policies = [play["multiagent"]["policies"] for play in all_config_variations]
-        master_config["multiagent"]["policies"] = tune.grid_search(all_multiagent_policies)
+        all_multiagent_policies = [play["multiagent"]["policies"]
+                                   for play in all_config_variations]
+        master_config["multiagent"]["policies"] = tune.grid_search(
+            all_multiagent_policies)
         return master_config
 
     def _add_results_into_metadata(self, all_metadata, results):
@@ -260,8 +281,9 @@ class SelfAndCrossPlayEvaluator:
             json.dump(metrics, outfile)
 
     def load_results(self, to_load_path):
-        assert to_load_path.endswith(self.results_file_name), f"to_load_path {to_load_path} should end with " \
-                                                              f"self.results_file_name {self.results_file_name}"
+        assert to_load_path.endswith(self.results_file_name), \
+            f"to_load_path {to_load_path} should end with " \
+            f"self.results_file_name {self.results_file_name}"
         all_results = pickle.load(open(to_load_path, "rb"))
         tail, head = os.path.split(to_load_path)
         self.exp_parent_dir = tail
@@ -275,10 +297,11 @@ class SelfAndCrossPlayEvaluator:
         for policy_id in self.policies_to_load_from_checkpoint:
             metadata[policy_id] = {"checkpoint_path": self.checkpoints[checkpoint_i]["path"],
                                    "checkpoint_i": checkpoint_i}
-            config_copy["multiagent"]["policies"][policy_id][3][restore.LOAD_FROM_CONFIG_KEY] = (
+            policy_config = config_copy["multiagent"]["policies"][policy_id][3]
+            policy_config[restore.LOAD_FROM_CONFIG_KEY] = (
                 self.checkpoints[checkpoint_i]["path"], policy_id)
-            config_copy["multiagent"]["policies"][policy_id][3]["policy_id"] = policy_id
-            config_copy["multiagent"]["policies"][policy_id][3]["TuneTrainerClass"] = self.TuneTrainerClass
+            policy_config["policy_id"] = policy_id
+            policy_config["TuneTrainerClass"] = self.TuneTrainerClass
         return metadata, config_copy
 
     def _get_config_for_one_cross_play(self, own_checkpoint_i, opponent_i):
@@ -300,10 +323,11 @@ class SelfAndCrossPlayEvaluator:
             checkpoint_path = self.checkpoints[checkpoint_idx]["path"]
             metadata[policy_id] = {"checkpoint_path": checkpoint_path,
                                    "checkpoint_i": checkpoint_idx}
-            config_copy["multiagent"]["policies"][policy_id][3][restore.LOAD_FROM_CONFIG_KEY] = (
+            policy_config = config_copy["multiagent"]["policies"][policy_id][3]
+            policy_config[restore.LOAD_FROM_CONFIG_KEY] = (
                 checkpoint_path, policy_id)
-            config_copy["multiagent"]["policies"][policy_id][3]["policy_id"] = policy_id
-            config_copy["multiagent"]["policies"][policy_id][3]["TuneTrainerClass"] = self.TuneTrainerClass
+            policy_config["policy_id"] = policy_id
+            policy_config["TuneTrainerClass"] = self.TuneTrainerClass
         return metadata, config_copy
 
     def _select_opponent_randomly(self, checkpoint_i, n_cross_play_per_checkpoint):

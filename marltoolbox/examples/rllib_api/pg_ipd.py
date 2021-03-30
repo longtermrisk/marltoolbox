@@ -7,12 +7,7 @@ from ray.rllib.agents.pg import PGTrainer
 from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersDilemma
 from marltoolbox.utils import log, miscellaneous
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--tf", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=200)
-
-
-def main(debug, stop_iters=200, tf=False):
+def main(debug, stop_iters=300, tf=False):
     train_n_replicates = 1 if debug else 1
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("PG_IPD")
@@ -26,7 +21,7 @@ def main(debug, stop_iters=200, tf=False):
     return tune_analysis
 
 
-def get_rllib_config(seeds, debug=False, stop_iters=200, tf=False):
+def get_rllib_config(seeds, debug=False, stop_iters=300, tf=False):
     stop_config = {
         "training_iteration": 2 if debug else stop_iters,
     }
@@ -69,5 +64,4 @@ def get_rllib_config(seeds, debug=False, stop_iters=200, tf=False):
 
 if __name__ == "__main__":
     debug_mode = True
-    args = parser.parse_args()
-    main(debug_mode, args.stop_iters, args.tf)
+    main(debug_mode)

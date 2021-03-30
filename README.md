@@ -342,7 +342,8 @@ You can find such examples in `marltoolbox.examples.tune_class_api` and in `marl
 <details>
 
 <summary>
-Using components directly provided by <code>RLLib</code> 
+Using components directly provided by <code>RLLib</code> or 
+<code>marltoolbox</code>
 </summary>
 
 ###### Tutorials: 
@@ -396,7 +397,7 @@ In `RLLib`, customizing a policy allows to change its training and evaluation lo
 - Hardcoded fixed Policy:
 [`rock_paper_scissors_multiagent.py`](https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py)  
 (in the `run_heuristic_vs_learned` function)
-- Policy with nested Policies: `ltft.py` (toolbox example)
+- Policy with nested Policies: `ltft_with_various_env.py` (toolbox example)
 
 </details>
 
@@ -457,11 +458,7 @@ Algorithms
   - amTFT ([Approximate Markov Tit-For-Tat](https://arxiv.org/abs/1707.01068))
   - LTFT ([Learning Tit-For-Tat](https://longtermrisk.org/files/toward_cooperation_learning_games_oct_2020.pdf), 
     **simplified version**)
-  - LOLA-Exact, LOLA-PG
-  - LOLA-DICE ([paper](https://arxiv.org/pdf/1802.05098.pdf), 
-    [unofficial](https://github.com/alexis-jacq/LOLA_DiCE), 
-    in the `experimental` branch, **WIP: 
-    not working properly**)  
+  - LOLA-Exact, LOLA-PG, LOLA-DICE
   - supervised learning
   - population
       - This policy plays an episode by sampling a policy 

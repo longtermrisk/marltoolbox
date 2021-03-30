@@ -60,7 +60,8 @@ def internal_rollout(worker,
                      saver=None,
                      no_render=True,
                      video_dir=None,
-                     seed=None
+                     seed=None,
+                     explore=None,
                      ):
     """
     Can perform rollouts on the environment from inside a worker_rollout or
@@ -155,6 +156,7 @@ def internal_rollout(worker,
                     policy_id = mapping_cache.setdefault(
                         agent_id, policy_agent_mapping(agent_id))
                     p_use_lstm = use_lstm[policy_id]
+                    # print("rollout")
                     if p_use_lstm:
                         a_action, p_state, _ = _worker_compute_action(
                             worker,
@@ -163,7 +165,9 @@ def internal_rollout(worker,
                             state=agent_states[agent_id],
                             prev_action=prev_actions[agent_id],
                             prev_reward=prev_rewards[agent_id],
-                            policy_id=policy_id)
+                            policy_id=policy_id,
+                            explore=explore
+                        )
                         agent_states[agent_id] = p_state
                     else:
                         a_action = _worker_compute_action(
@@ -172,7 +176,9 @@ def internal_rollout(worker,
                             observation=a_obs,
                             prev_action=prev_actions[agent_id],
                             prev_reward=prev_rewards[agent_id],
-                            policy_id=policy_id)
+                            policy_id=policy_id,
+                            explore=explore
+                        )
                     a_action = flatten_to_single_ndarray(a_action)
                     action_dict[agent_id] = a_action
                     prev_actions[agent_id] = a_action

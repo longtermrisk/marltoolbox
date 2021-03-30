@@ -57,7 +57,7 @@ def welfares_postprocessing_fn(
     samples.
 
     The parameters used to add a welfare can be given as arguments or
-    can will be read in the policy config dict (this is preferred since this
+    will be read in the policy config dict (this should be preferred since this
     allows for hyperparameter search over these parameters with Tune).
 
     :param add_utilitarian_welfare:
@@ -350,10 +350,13 @@ class OverwriteRewardWtWelfareCallback(DefaultCallbacks):
 
         for welfare_key in WELFARES:
             if welfare_key in postprocessed_batch.data.keys():
+
                 postprocessed_batch[postprocessed_batch.REWARDS] = \
                     postprocessed_batch.data[welfare_key]
-                logger.debug(f"overwrite reward of agent_id {agent_id} with"
-                            f"welfare_key {welfare_key}")
+                msg = f"overwrite reward of agent_id {agent_id} with" \
+                      f"welfare_key {welfare_key}"
+                print(msg)
+                logger.debug(msg)
                 break
 
         return postprocessed_batch

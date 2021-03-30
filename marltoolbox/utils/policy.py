@@ -1,5 +1,9 @@
+from typing import Iterable
+
 import gym
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.torch_policy import LearningRateSchedule
+from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.typing import TrainerConfigDict
 
 from marltoolbox.utils.restore import LOAD_FROM_CONFIG_KEY
@@ -64,19 +68,12 @@ def get_tune_policy_class(PolicyClass):
     return FrozenPolicyFromTuneTrainer
 
 
-import gym
-from typing import Iterable
-
-from ray.rllib.policy.torch_policy import LearningRateSchedule
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
-from ray.rllib.utils.typing import TrainerConfigDict
-
-torch, _ = try_import_torch()
-
-
 class MyLearningRateSchedule(LearningRateSchedule):
-    """Mixin for TFPolicy that adds a learning rate schedule."""
+    """
+    Mixin for TorchPolicy that adds a learning rate schedule.
+    This custom mixin allow to use schedulers other that the linear one
+    """
+
     def __init__(self, lr, lr_schedule):
         self.cur_lr = lr
         if lr_schedule is None:
@@ -89,8 +86,9 @@ class MyLearningRateSchedule(LearningRateSchedule):
             else:
                 self.lr_schedule = lr_schedule
 
+
 def my_setup_early_mixins(policy: Policy, obs_space, action_space,
-                       config: TrainerConfigDict) -> None:
+                          config: TrainerConfigDict) -> None:
     MyLearningRateSchedule.__init__(policy,
                                     config["lr"],
                                     config["lr_schedule"])
