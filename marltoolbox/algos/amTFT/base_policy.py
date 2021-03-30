@@ -100,7 +100,7 @@ PLOT_ASSEMBLAGE_TAGS = [
 ]
 
 
-class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
+class AmTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
 
     def __init__(self, observation_space, action_space, config, **kwargs):
         super().__init__(observation_space, action_space, config, **kwargs)
@@ -229,7 +229,6 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
 
 
             self._to_log['debit_threshold'] = self.debit_threshold
-            print('debit_threshold', self.debit_threshold)
 
     def _is_punishment_planned(self):
         return self.n_steps_to_punish > 0
@@ -245,10 +244,9 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
                             episode, env_index, coop_opp_simulated_action):
 
         if coop_opp_simulated_action != opp_action:
-            if self.verbose > 0:
-                print("coop_opp_simulated_action != opp_action:",
-                      coop_opp_simulated_action, opp_action)
-
+            # if self.verbose > 0:
+            #
+            #
             if worker.env.step_count_in_current_episode >= \
                     worker.env.max_steps:
                 debit = 0
@@ -260,15 +258,18 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
             if self.verbose > 0:
                 print("coop_opp_simulated_action == opp_action")
             debit = 0
+        tmp = self.total_debit
         self.total_debit += debit
         self._to_log['summed_debit'] = (
             debit + self._to_log['summed_debit']
             if 'summed_debit' in self._to_log else debit
         )
-        if self.verbose > 0:
-            print(f"debit {debit}")
-            print(f"self.total_debit {self.total_debit}")
-
+        if coop_opp_simulated_action != opp_action:
+            if self.verbose > 0:
+                print("coop_opp_simulated_action != opp_action:",
+                      coop_opp_simulated_action, opp_action)
+                print(f"debit {debit}")
+                print(f"self.total_debit {self.total_debit}, previous was {tmp}")
 
     def _is_starting_new_punishment_required(self):
         return self.total_debit > self.debit_threshold
@@ -290,11 +291,15 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
             if 'summed_n_steps_to_punish' in self._to_log else
             self.n_steps_to_punish
         )
+        if self.verbose > 0:
+            print(f"reset self.total_debit to 0 since planned punishement")
 
     def on_episode_end(self):
         if self.working_state == WORKING_STATES[2]:
             self.total_debit = 0
             self.n_steps_to_punish = 0
+            if self.verbose > 0:
+                print(f"reset self.total_debit to 0 since end of episode")
 
     def _compute_debit(self, last_obs, opp_action, worker, base_env,
                        episode, env_index, coop_opp_simulated_action):
@@ -310,7 +315,7 @@ class amTFTPolicyBase(hierarchical.HierarchicalTorchPolicy):
 # TODO do the same in postprocessing (closure)
 def get_amTFTCallBacks(additionnal_callbacks=[], **kwargs):
 
-    class amTFTCallBacksPart(DefaultCallbacks):
+    class AmTFTCallBacksPart(DefaultCallbacks):
 
         def on_episode_start(self, *, worker: "RolloutWorker",
                              base_env: BaseEnv,
@@ -330,6 +335,7 @@ def get_amTFTCallBacks(additionnal_callbacks=[], **kwargs):
                 self._call_on_episode_step_from_policy(
                     agent_id, policy, agent_ids, episode, worker,
                     base_env, env_index)
+
             if self._amTF_episode_starting:
                 self._amTF_episode_starting = False
 
@@ -339,12 +345,14 @@ def get_amTFTCallBacks(additionnal_callbacks=[], **kwargs):
 
             if self._is_callback_implemented_in_policy(
                     policy, 'on_episode_step'):
+
                 opp_obs, raw_obs, opp_a = \
                     self.__extract_info_about_opponent(
                         agent_id, agent_ids, episode)
+
                 if not self._amTF_episode_starting:
-                    # Ignore the first call because the actions provided are
-                    # fake (they were not played)
+                    # Ignored the first step in epi because the
+                    # actions provided are fake (they were not played)
                     policy.on_episode_step(opp_obs, raw_obs, opp_a, worker,
                                            base_env, episode, env_index)
 
@@ -412,7 +420,7 @@ def get_amTFTCallBacks(additionnal_callbacks=[], **kwargs):
 
         def _are_policies_in_training(self, local_policy_map):
             in_training = all([
-                isinstance(policy, amTFTPolicyBase) and
+                isinstance(policy, AmTFTPolicyBase) and
                 policy.working_state not in WORKING_STATES_IN_EVALUATION
                 for policy in local_policy_map.values()
             ])
@@ -453,7 +461,7 @@ def get_amTFTCallBacks(additionnal_callbacks=[], **kwargs):
 
         def _assert_training_wt_only_amTFT_policies(self, local_policy_map):
             for policy in local_policy_map.values():
-                assert isinstance(policy, amTFTPolicyBase), \
+                assert isinstance(policy, AmTFTPolicyBase), \
                     "if amTFT is training then " \
                     "all players must be " \
                     "using amTFT too"
@@ -464,7 +472,7 @@ def get_amTFTCallBacks(additionnal_callbacks=[], **kwargs):
         additionnal_callbacks = [additionnal_callbacks]
 
     amTFTCallBacks = miscellaneous.merge_callbacks(
-        amTFTCallBacksPart,
+        AmTFTCallBacksPart,
         *additionnal_callbacks)
 
     return amTFTCallBacks

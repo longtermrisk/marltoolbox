@@ -23,6 +23,8 @@ PLOT_ASSEMBLAGE_TAGS = [
     ("pick_speed_player_red_mean", "pick_speed_player_blue_mean"),
     ("pick_own_color",),
     ("pick_speed", "pick_own_color"),
+    ("pick_own_color_player_red_mean", "pick_own_color_player_blue_mean",
+     "pick_speed_player_red_mean", "pick_speed_player_blue_mean"),
 ]
 
 

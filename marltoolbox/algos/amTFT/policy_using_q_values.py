@@ -1,7 +1,7 @@
-from marltoolbox.algos.amTFT.base_policy import amTFTPolicyBase, OPP_SELFISH_POLICY_IDX, OWN_SELFISH_POLICY_IDX
+from marltoolbox.algos.amTFT.base_policy import AmTFTPolicyBase, OPP_SELFISH_POLICY_IDX, OWN_SELFISH_POLICY_IDX
 
 
-class amTFTQValuesTorchPolicy(amTFTPolicyBase):
+class amTFTQValuesTorchPolicy(AmTFTPolicyBase):
 
     def __init__(self, *args, **kwargs):
         assert 0, "The amTFTQValuesTorchPolicy algorithm is not entirely functional."

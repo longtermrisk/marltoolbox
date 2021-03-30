@@ -88,7 +88,7 @@ class MixedMotiveCoinGame(coin_game.CoinGame):
                 self._same_pos(self.blue_pos, self.red_coin_pos):
             generate_new_coin = "red"
             reward_red += 2
-            reward_blue += 1
+            reward_blue += 2
             red_pick_any = True
             red_pick_red = True
             blue_pick_any = True
@@ -96,7 +96,7 @@ class MixedMotiveCoinGame(coin_game.CoinGame):
                 self._same_pos(self.blue_pos, self.blue_coin_pos):
             generate_new_coin = "blue"
             reward_red += 1
-            reward_blue += 2
+            reward_blue += 4
             red_pick_any = True
             blue_pick_any = True
             blue_pick_blue = True

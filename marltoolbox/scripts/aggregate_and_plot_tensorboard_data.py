@@ -49,6 +49,9 @@ PLOT_KEYS = ["grad_gnorm",
              "max_q_values",
              "min_q_values",
              "learn_on_batch",
+             "timers",
+             "ms",
+             "throughput",
              ]
 
 PLOT_ASSEMBLAGE_TAGS = [
@@ -75,6 +78,9 @@ PLOT_ASSEMBLAGE_TAGS = [
     ("reward",),
     ("last_training_max_q_values", "last_training_target_max_q_values"),
     ("last_training_min_q_values", "last_training_target_min_q_values"),
+    ("timers",),
+    ("ms",),
+    ("throughput",),
     ("_lr",),
 ]
 
@@ -352,7 +358,7 @@ class SummaryPlotter():
             data_groups[tag] = df
 
         plot_options = PlotConfig(
-            xlabel="points logged in tensorboard",
+            xlabel="steps",
             ylabel=fing_longer_substr(all_tags_seen).strip("_")
             if y_label is None else y_label,
             save_dir_path=save_dir_path,

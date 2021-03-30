@@ -24,6 +24,6 @@ setup(
                  'dm-sonnet==1.20', 'tensorflow>=1.8.0,<2.0.0',
                  'trueskill', 'seaborn==0.9.0'],
         "ci": ['pytest', 'pytest-cov', 'flake8', 'ipython', 'notebook',
-               'jupyter_contrib_nbextensions', 'flaky'],
+               'jupyter_contrib_nbextensions', 'flaky', 'pytest-xdist'],
     },
 )

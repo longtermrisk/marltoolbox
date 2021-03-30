@@ -1,4 +1,5 @@
 import copy
+import logging
 import os
 
 import ray
@@ -12,10 +13,13 @@ from ray.rllib.utils.schedules import PiecewiseSchedule, ExponentialSchedule
 from marltoolbox.algos import amTFT
 from marltoolbox.envs import \
     matrix_sequential_social_dilemma, vectorized_coin_game, \
-    mixed_motive_coin_game
+    vectorized_mixed_motive_coin_game
+from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
 from marltoolbox.utils import exploration, log, \
     postprocessing, miscellaneous, plot, self_and_cross_perf
-from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
+
+logger = logging.getLogger(__name__)
+
 
 def main(debug, train_n_replicates=None, filter_utilitarian=None, env=None):
     hparams = get_hyperparameters(debug, train_n_replicates,
@@ -52,7 +56,7 @@ def get_hyperparameters(debug, train_n_replicates=None,
     if debug:
         train_n_replicates = 2
     elif train_n_replicates is None:
-        train_n_replicates = 2
+        train_n_replicates = 3
 
     n_times_more_utilitarians_seeds = 4
     n_seeds_to_prepare = \
@@ -87,26 +91,76 @@ def get_hyperparameters(debug, train_n_replicates=None,
         #         ".../IBP/amTFT/trials/"
         #         "DQN_AsymCoinGame_..."],
         # },
+        # "load_policy_data": {
+        #     "Util": [
+        #         "~/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/amTFT"
+        #         "/2021_03_28/19_38_55/utilitarian_welfare/coop"
+        #         "/DQN_VectMixedMotiveCG_06231_00000_0_seed=1616960338_2021-03-29_00-52-23/checkpoint_250/checkpoint-250",
+        #         # "~/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/amTFT"
+        #         # "/2021_03_24/18_22_47/utilitarian_welfare/coop"
+        #         # "/DQN_VectMixedMotiveCG_e1de7_00001_1_seed=1616610171_2021-03-25_00-27-29/checkpoint_250/checkpoint-250",
+        #         # "~/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/amTFT"
+        #         # "/2021_03_24/18_22_47/utilitarian_welfare/coop"
+        #         # "/DQN_VectMixedMotiveCG_e1de7_00002_2_seed=1616610172_2021-03-25_00-27-29/checkpoint_250/checkpoint-250",
+        #         ],
+        #     'IA':[
+        #         "~/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible"
+        #         "/amTFT/2021_03_28/19_38_55/inequity_aversion_welfare/coop"
+        #         "/DQN_VectMixedMotiveCG_d5a2a_00000_0_seed=1616960335_2021-03-28_21-23-26/checkpoint_250/checkpoint-250",
+        #         # "~/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible"
+        #         # "/amTFT/2021_03_24/18_22_47/inequity_aversion_welfare/coop"
+        #         # "/DQN_VectMixedMotiveCG_9cfe6_00001_1_seed=1616610168_2021-03-24_20-22-11/checkpoint_250/checkpoint-250",
+        #         # "~/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible"
+        #         # "/amTFT/2021_03_24/18_22_47/inequity_aversion_welfare/coop"
+        #         # "/DQN_VectMixedMotiveCG_9cfe6_00002_2_seed=1616610169_2021-03-24_20-22-11/checkpoint_250/checkpoint-250",
+        #         ],
+        # },
+        # "load_policy_data": {
+        #     "Util": [
+        #         "~/ray_results/amTFT"
+        #         "/2021_03_24/18_22_47/utilitarian_welfare/coop"
+        #         "/DQN_VectMixedMotiveCG_e1de7_00000_0_seed=1616610170_2021-03-25_00-27-29/checkpoint_250/checkpoint-250",
+        #         "~/ray_results/amTFT"
+        #         "/2021_03_24/18_22_47/utilitarian_welfare/coop"
+        #         "/DQN_VectMixedMotiveCG_e1de7_00001_1_seed=1616610171_2021-03-25_00-27-29/checkpoint_250/checkpoint-250",
+        #         "~/ray_results/amTFT"
+        #         "/2021_03_24/18_22_47/utilitarian_welfare/coop"
+        #         "/DQN_VectMixedMotiveCG_e1de7_00002_2_seed=1616610172_2021-03-25_00-27-29/checkpoint_250/checkpoint-250",
+        #     ],
+        #     'IA': [
+        #         "~/ray_results"
+        #         "/amTFT/2021_03_24/18_22_47/inequity_aversion_welfare/coop"
+        #         "/DQN_VectMixedMotiveCG_9cfe6_00000_0_seed=1616610167_2021-03-24_20-22-10/checkpoint_250/checkpoint-250",
+        #         "~/ray_results"
+        #         "/amTFT/2021_03_24/18_22_47/inequity_aversion_welfare/coop"
+        #         "/DQN_VectMixedMotiveCG_9cfe6_00001_1_seed=1616610168_2021-03-24_20-22-11/checkpoint_250/checkpoint-250",
+        #         "~/ray_results"
+        #         "/amTFT/2021_03_24/18_22_47/inequity_aversion_welfare/coop"
+        #         "/DQN_VectMixedMotiveCG_9cfe6_00002_2_seed=1616610169_2021-03-24_20-22-11/checkpoint_250/checkpoint-250",
+        #     ],
+        # },
 
-        "amTFTPolicy": amTFT.amTFTRolloutsTorchPolicy,
+        "amTFTPolicy": amTFT.AmTFTRolloutsTorchPolicy,
         "welfare_functions": [
             (postprocessing.WELFARE_INEQUITY_AVERSION, "inequity_aversion"),
             (postprocessing.WELFARE_UTILITARIAN, "utilitarian")],
         "jitter": 0.05,
         "hiddens": [64],
-        "gamma": 0.5,
-        # "gamma": 0.96,
+        # "gamma": 0.5,
+        "gamma": 0.96,
+        # "clustering_distance": 0.2,
+        # "clustering_distance_eval": 0.4,
 
         # If not in self play then amTFT
         # will be evaluated against a naive selfish policy or an exploiter
         "self_play": True,
         # "self_play": False, # Not tested
 
-        "env_name": "IteratedPrisonersDilemma" if env is None else env,
+        # "env_name": "IteratedPrisonersDilemma" if env is None else env,
         # "env_name": "IteratedAsymBoS" if env is None else env,
         # "env_name": "CoinGame" if env is None else env,
         # "env_name": "AsymCoinGame" if env is None else env,
-        # "env_name": "MixedMotiveCoinGame" if env is None else env,
+        "env_name": "MixedMotiveCoinGame" if env is None else env,
 
         "overwrite_reward": True,
         "explore_during_evaluation": True,
@@ -123,10 +177,16 @@ def get_hyperparameters(debug, train_n_replicates=None,
 
 def load_tune_analysis(grouped_checkpoints_paths: dict):
     tune_analysis = {}
+    msg = "start load_tune_analysis"
+    print(msg)
+    logger.info(msg)
     for group_name, checkpoints_paths in grouped_checkpoints_paths.items():
         one_tune_analysis = miscellaneous.load_one_tune_analysis(
-            checkpoints_paths)
+            checkpoints_paths, n_dir_level_between_ckpt_and_exp_state=3)
         tune_analysis[group_name] = one_tune_analysis
+    msg = "end load_tune_analysis"
+    print(msg)
+    logger.info(msg)
     return tune_analysis
 
 
@@ -136,7 +196,11 @@ def modify_hyperparams_for_the_selected_env(hp):
     hp["plot_assemblage_tags"] = \
         amTFT.PLOT_ASSEMBLAGE_TAGS + \
         aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS
-    hp["last_exploration_temp_value"] = 0.1
+    mul_temp = 1.0
+
+    hp["punishment_multiplier"] = 3.0
+    hp["buf_frac"] = 0.125
+    hp["training_intensity"] = 10
 
     if "CoinGame" in hp["env_name"]:
         hp["plot_keys"] += \
@@ -146,8 +210,8 @@ def modify_hyperparams_for_the_selected_env(hp):
 
         hp["n_steps_per_epi"] = 20 if hp["debug"] else 100
         hp["n_epi"] = 10 if hp["debug"] else 4000
-        hp["base_lr"] = 0.4
-        hp["bs_epi_mul"] = 4
+        hp["base_lr"] = 0.1
+        hp["bs_epi_mul"] = 1
         hp["both_players_can_pick_the_same_coin"] = False
         hp["sgd_momentum"] = 0.9
 
@@ -155,35 +219,43 @@ def modify_hyperparams_for_the_selected_env(hp):
         hp["alpha"] = 0.0
         hp["beta"] = 0.5
 
-        hp["debit_threshold"] = 4.0
+        hp["debit_threshold"] = 30.0
         hp["jitter"] = 0.02
-        hp["punishment_multiplier"] = 4.0
         hp["filter_utilitarian"] = False
+
+        hp["target_network_update_freq"] = 100 * hp["n_steps_per_epi"]
+        hp["last_exploration_temp_value"] = 0.5 * mul_temp
 
         hp["temperature_schedule"] = PiecewiseSchedule(
             endpoints=[
-                (0, 2.0),
-                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.50),
-                 0.5),
-                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.75),
+                (0, 2.0*mul_temp),
+                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.20),
+                 0.5*mul_temp),
+                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.60),
                  hp["last_exploration_temp_value"])],
             outside_value=hp["last_exploration_temp_value"],
             framework="torch")
 
+
         if "AsymCoinGame" in hp["env_name"]:
             hp["x_limits"] = (-0.5, 3.0)
             hp["y_limits"] = (-1.1, 0.6)
+            # hp["env_class"] = coin_game.AsymCoinGame
             hp["env_class"] = vectorized_coin_game.AsymVectorizedCoinGame
         elif "MixedMotiveCoinGame" in hp["env_name"]:
-            hp["x_limits"] = (-0.5, 1.0)
-            hp["y_limits"] = (-0.5, 1.0)
-            hp["env_class"] = mixed_motive_coin_game.MixedMotiveCoinGame
+            hp["x_limits"] = (-2.0, 2.0)
+            hp["y_limits"] = (-0.5, 3.0)
+            hp["env_class"] = \
+                vectorized_mixed_motive_coin_game.VectMixedMotiveCG
             hp["both_players_can_pick_the_same_coin"] = True
         else:
             hp["x_limits"] = (-0.5, 0.6)
             hp["y_limits"] = (-0.5, 0.6)
+            # hp["env_class"] = coin_game.CoinGame
             hp["env_class"] = vectorized_coin_game.VectorizedCoinGame
     else:
+
+
         hp["plot_keys"] += \
             matrix_sequential_social_dilemma.PLOT_KEYS
         hp["plot_assemblage_tags"] += \
@@ -192,25 +264,28 @@ def modify_hyperparams_for_the_selected_env(hp):
         hp["base_lr"] = 0.03
         hp["bs_epi_mul"] = 1
         hp["n_steps_per_epi"] = 20
-        hp["n_epi"] = 10 if hp["debug"] else 400
+        hp["n_epi"] = 10 if hp["debug"] else 800
         hp["lambda"] = 0.96
         hp["alpha"] = 0.0
         hp["beta"] = 1.0
         hp["sgd_momentum"] = 0.0
 
-        hp["punishment_multiplier"] = 6.0
-        hp["debit_threshold"] = 4.0
+        hp["debit_threshold"] = 10.0
+
+        hp["target_network_update_freq"] = 30 * hp["n_steps_per_epi"]
+        hp["last_exploration_temp_value"] = 0.1 * mul_temp
 
         hp["temperature_schedule"] = PiecewiseSchedule(
             endpoints=[
-                (0, 2.0),
+                (0, 2.0*mul_temp),
                 (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.33),
-                 0.5),
+                 0.5*mul_temp),
                 (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.66),
                  hp["last_exploration_temp_value"])],
             outside_value=hp["last_exploration_temp_value"],
             framework="torch"
         )
+
 
         if "IteratedPrisonersDilemma" in hp["env_name"]:
             hp["x_limits"] = (-3.5, 0.5)
@@ -219,7 +294,6 @@ def modify_hyperparams_for_the_selected_env(hp):
             hp["env_class"] = \
                 matrix_sequential_social_dilemma.IteratedPrisonersDilemma
         elif "IteratedAsymBoS" in hp["env_name"]:
-            hp["n_epi"] = 10 if hp["debug"] else 800
             hp["x_limits"] = (-0.1, 4.1)
             hp["y_limits"] = (-0.1, 4.1)
             hp["utilitarian_filtering_threshold"] = 3.2
@@ -227,23 +301,24 @@ def modify_hyperparams_for_the_selected_env(hp):
         else:
             raise NotImplementedError(f'hp["env_name"]: {hp["env_name"]}')
 
-
-    if hp["gamma"] == 0.5:
-        hp["lr_schedule"] = [
-            (0, 0.0),
-            (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.05),
-             hp["base_lr"]),
-            (int(hp["n_steps_per_epi"] * hp["n_epi"]), hp["base_lr"] / 1e9)
-        ]
-    elif hp["gamma"] == 0.96:
-        hp["lr_schedule"] = ExponentialSchedule(
-            schedule_timesteps=int(hp["n_steps_per_epi"] * hp["n_epi"]),
-            initial_p=hp["base_lr"],
-            decay_rate=1 / 20,
-            framework="torch"
-        )
-    else:
-        raise ValueError()
+    # if hp["gamma"] == 0.5:
+    hp["lr_schedule"] = [
+        (0, 0.0),
+        (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.05),
+         hp["base_lr"]),
+        # (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.5),
+        #  hp["base_lr"]/10),
+        (int(hp["n_steps_per_epi"] * hp["n_epi"]), hp["base_lr"] / 1e9)
+    ]
+    # elif hp["gamma"] == 0.96:
+    #     hp["lr_schedule"] = ExponentialSchedule(
+    #         schedule_timesteps=int(hp["n_steps_per_epi"] * hp["n_epi"]),
+    #         initial_p=hp["base_lr"],
+    #         decay_rate=1 / 20,
+    #         framework="torch"
+    #     )
+    # else:
+    #     raise ValueError()
 
     hp["plot_axis_scale_multipliers"] = (
         (1 / hp["n_steps_per_epi"]),  # for x axis
@@ -264,7 +339,7 @@ def train_for_each_welfare_function(hp):
             get_rllib_config(hp, welfare_fn)
 
         exp_name = os.path.join(hp["exp_name"], welfare_fn)
-        results = amTFT.train_amTFT(
+        results = amTFT.train_amtft(
             stop=stop,
             config=trainer_config_update,
             name=exp_name,
@@ -335,6 +410,7 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         # if async_updates is set, then each worker returns gradients for a
         # batch of this size.
         "train_batch_size": int(hp["n_steps_per_epi"] * hp["bs_epi_mul"]),
+        "training_intensity": hp["training_intensity"],
 
         # Minimum env steps to optimize for per train call. This value does
         # not affect learning, only the length of iterations.
@@ -366,13 +442,14 @@ def get_rllib_config(hp, welfare_fn, eval=False):
 
         # === DQN Models ===
         # Update the target network every `target_network_update_freq` steps.
-        "target_network_update_freq": 3 * hp["n_steps_per_epi"],
+        "target_network_update_freq": hp["target_network_update_freq"],
         # === Replay buffer ===
         # Size of the replay buffer. Note that if async_updates is set, then
         # each worker will have a replay buffer of this size.
-        "buffer_size": int(hp["n_steps_per_epi"] * hp["n_epi"]) // 4,
+        "buffer_size": max(int(hp["n_steps_per_epi"] * hp["n_epi"]
+                           * hp["buf_frac"]), 5),
         # Whether to use dueling dqn
-        "dueling": False,
+        "dueling": True,
         # Dense-layer setup for each the advantage branch and the value branch
         # in a dueling architecture.
         "hiddens": hp["hiddens"],
@@ -405,9 +482,10 @@ def get_rllib_config(hp, welfare_fn, eval=False):
             # "ray.rllib.utils.exploration.epsilon_greedy.
             # EpsilonGreedy").
             "type": exploration.SoftQSchedule,
+            # "type": exploration.SoftQScheduleWtClustering,
             # Add constructor kwargs here (if any).
-            "temperature_schedule":
-                hp["temperature_schedule"],
+            # "clustering_distance": hp["clustering_distance"],
+            "temperature_schedule": hp["temperature_schedule"],
         },
 
     }
@@ -459,11 +537,12 @@ def get_policies(hp, env_config, welfare_fn, eval=False):
             "working_state": "train_coop",
             "welfare": welfare_fn,
             "verbose": 1 if hp["debug"] else 0,
+            # "verbose": 1 if hp["debug"] else 1,
             "punishment_multiplier": hp["punishment_multiplier"],
             "debit_threshold": hp["debit_threshold"],
             "rollout_length": min(hp["n_steps_per_epi"], 40),
 
-            "optimizer": {"sgd_momentum": hp["sgd_momentum"],},
+            "optimizer": {"sgd_momentum": hp["sgd_momentum"], },
             'nested_policies': [
                 {"Policy_class": CoopNestedPolicyClass, "config_update": {}},
                 {"Policy_class": NestedPolicyClass, "config_update": {}},
@@ -544,7 +623,8 @@ def postprocess_utilitarian_results(results, env_config, hp):
 
 def evaluate_self_and_cross_perf(tune_analysis_per_welfare, hp):
     config_eval, env_config, stop, hp_eval = generate_eval_config(hp)
-
+    print("config_eval[explore]", config_eval["explore"])
+    print("config_eval[exploration_config]", config_eval["exploration_config"])
     exp_name = os.path.join(hp_eval["exp_name"], "eval")
     evaluator = self_and_cross_perf.SelfAndCrossPlayEvaluator(
         exp_name=exp_name)
@@ -555,10 +635,13 @@ def evaluate_self_and_cross_perf(tune_analysis_per_welfare, hp):
             env_config["players_ids"]),
         tune_analysis_per_exp=tune_analysis_per_welfare,
         TrainerClass=dqn.DQNTrainer,
+        # n_self_play_per_checkpoint=0,
+        # n_cross_play_per_checkpoint=1,
         n_cross_play_per_checkpoint=
         min(5,
             (hp_eval["train_n_replicates"] *
-             len(hp_eval["welfare_functions"])) - 1),
+             len(hp_eval["welfare_functions"])) - 1
+            ),
         to_load_path=hp_eval["load_plot_data"])
 
     if "CoinGame" in hp["env_name"]:
@@ -630,10 +713,18 @@ def modify_config_for_evaluation(config_eval, hp, env_config):
         naive_player_policy_config["working_state"] = "eval_naive_selfish"
 
     if hp["explore_during_evaluation"]:
+        tmp_mul = 1.0
         config_eval["explore"] = (miscellaneous.OVERWRITE_KEY, True)
         config_eval["exploration_config"] = {
-            "type": "SoftQ",
-            "temperature": hp["last_exploration_temp_value"],
+            "type": config_eval["exploration_config"]["type"],
+            # "type": exploration.SoftQScheduleWtClustering,
+            # "clustering_distance": hp["clustering_distance_eval"],
+            "temperature_schedule": PiecewiseSchedule(
+                endpoints=[
+                    (0, tmp_mul*hp["last_exploration_temp_value"]),
+                    (0, tmp_mul*hp["last_exploration_temp_value"])],
+                outside_value=tmp_mul*hp["last_exploration_temp_value"],
+                framework="torch"),
         }
 
     if hp["debug"]:

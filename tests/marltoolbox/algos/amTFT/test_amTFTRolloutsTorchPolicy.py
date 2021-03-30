@@ -16,14 +16,13 @@ from marltoolbox.envs.matrix_sequential_social_dilemma import \
     IteratedPrisonersDilemma
 from marltoolbox.examples.rllib_api.amtft_various_env import get_rllib_config, \
     get_hyperparameters
-from marltoolbox.utils import log
-from marltoolbox.utils import postprocessing
+from marltoolbox.utils import postprocessing, log
 from test_base_policy import init_amTFT, generate_fake_discrete_actions
 
 
 def test_compute_actions_overwrite():
     am_tft_policy, env = init_amTFT(
-        policy_class=amTFT.amTFTRolloutsTorchPolicy)
+        policy_class=amTFT.AmTFTRolloutsTorchPolicy)
 
     fake_actions = generate_fake_discrete_actions(env)
     env.reset()
@@ -49,7 +48,7 @@ def test_compute_actions_overwrite():
 
 def test__select_algo_to_use_in_eval():
     am_tft_policy, env = init_amTFT(
-        policy_class=amTFT.amTFTRolloutsTorchPolicy)
+        policy_class=amTFT.AmTFTRolloutsTorchPolicy)
 
     def assert_(working_state_idx, active_algo_idx):
         am_tft_policy.working_state = base_policy.WORKING_STATES[
@@ -80,7 +79,7 @@ def test__select_algo_to_use_in_eval():
 
 def test__duration_found_or_continue_search():
     am_tft_policy, env = init_amTFT(
-        policy_class=amTFT.amTFTRolloutsTorchPolicy)
+        policy_class=amTFT.AmTFTRolloutsTorchPolicy)
 
     def assert_(k_to_explore, k_assert):
         new_k_to_explore, continue_to_search_k = \
@@ -152,6 +151,7 @@ def make_FakePolicyWtDefinedActions(list_actions_to_play, ParentPolicyCLass):
     return FakePolicyWtDefinedActions
 
 
+#
 def init_worker(n_rollout_replicas,
                 max_steps,
                 actions_list_0=None,
@@ -164,7 +164,8 @@ def init_worker(n_rollout_replicas,
     exp_name, _ = log.log_in_current_day_dir("testing")
 
     hparams = get_hyperparameters(
-        debug, train_n_replicates, filter_utilitarian=False,
+        debug, train_n_replicates,
+        filter_utilitarian=False,
         env="IteratedPrisonersDilemma")
 
     _, _, rllib_config = \
@@ -353,13 +354,13 @@ def test__compute_punishment_duration_from_rollouts():
             max_steps=max_steps_,
             # n steps x 2 rollouts x n_rollout_replicas//2
             actions_list_0=[0] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100),
             actions_list_1=[0] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100),
             actions_list_2=[0] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100),
             actions_list_3=[0] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100))
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100))
         return worker, am_tft_policy_row, am_tft_policy_col
 
     max_steps = 10
@@ -380,13 +381,13 @@ def test__compute_punishment_duration_from_rollouts():
             max_steps=max_steps_,
             # n steps x 2 rollouts x n_rollout_replicas//2
             actions_list_0=[0] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100),
             actions_list_1=[0] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100),
             actions_list_2=[1] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100),
             actions_list_3=[0] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100))
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100))
         return worker, am_tft_policy_row, am_tft_policy_col
 
     max_steps = 10
@@ -439,13 +440,13 @@ def test__compute_punishment_duration_from_rollouts():
             max_steps=max_steps_,
             # n steps x 2 rollouts x n_rollout_replicas//2
             actions_list_0=[0] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100),
             actions_list_1=[0] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100),
             actions_list_2=[0] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100),
             actions_list_3=[1] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100))
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100))
         return worker, am_tft_policy_row, am_tft_policy_col
 
     max_steps = 10
@@ -474,13 +475,13 @@ def test__compute_punishment_duration_from_rollouts():
             max_steps=max_steps_,
             # n steps x 2 rollouts x n_rollout_replicas//2
             actions_list_0=[0] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100),
             actions_list_1=[0] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100),
             actions_list_2=[1] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100),
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100),
             actions_list_3=[1] * (
-                        max_steps_ * 2 * n_rollout_replicas // 2 * 100))
+                    max_steps_ * 2 * n_rollout_replicas // 2 * 100))
         return worker, am_tft_policy_row, am_tft_policy_col
 
     max_steps = 10
