@@ -18,7 +18,7 @@ import ray
 from ray import tune
 from ray.rllib.agents.dqn import DQNTorchPolicy
 
-from marltoolbox.algos.lola.train_cg_tune_class_API import LOLAPGCG
+from marltoolbox.algos.lola import train_cg_tune_class_API
 from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
 from marltoolbox.envs import \
     vectorized_coin_game, vectorized_mixed_motive_coin_game, \
@@ -56,6 +56,9 @@ def main(debug, env=None):
         "trace_length": 4 if debug else 20,
         "lr": None,
         "gamma": 0.5,
+        # "lr": 0.005,
+        # "gamma": 0.96,
+
         "batch_size": 8 if debug else 512,
 
         # "env_name": "IteratedPrisonersDilemma" if env is None else env,
@@ -112,42 +115,15 @@ def main(debug, env=None):
 
     # Add exploiter hyperparameters
     tune_hparams.update({
-        "playing_against_exploiter": False,
-        # "playing_against_exploiter": True,
         "start_using_exploiter_at_update_n":
             1 if debug else 3000 if high_coop_speed_hp else 1500,
-        # "use_exploiter_on_fraction_of_batch": 0.5 if debug else 1.0,
-        "use_exploiter_on_fraction_of_batch": 0.5 if debug else 0.1,
-
-        # DQN exploiter
-        # TODO remove this (the DQN exploiter versions)
-        "use_DQN_exploiter": False,
-        # "use_DQN_exploiter": True,
-        "train_exploiter_n_times_per_epi": 3,
-        "exploiter_base_lr": 0.1,
-        "exploiter_decay_lr_in_n_epi":
-            3000 if high_coop_speed_hp else 1500,
-        "exploiter_stop_training_after_n_epi":
-            3000 if high_coop_speed_hp else 1500,
-        "exploiter_rolling_avg": 0.9,
-        "always_train_PG": True,
-        # (if not None) DQN exploiter use thresholds on opp cooperation to
-        # switch between policies
-        # otherwise the DQN exploiter will use the best policy
-        # (from simulated reward)
-        # "exploiter_thresholds": None,
-        "exploiter_thresholds": [0.6, 0.7] if debug else [0.80, 0.95],
 
         # PG exploiter
-        # "use_PG_exploiter": False,
         "use_PG_exploiter": True if use_best_exploiter else False,
         "every_n_updates_copy_weights": 1 if debug else 100,
-        "adding_scaled_weights": False,
+        # "adding_scaled_weights": False,
         # "adding_scaled_weights": 0.33,
 
-        # Destabilizer exploiter
-        "use_destabilizer": True,
-        # "use_destabilizer": False,
     })
 
     if tune_hparams["load_plot_data"] is None:
@@ -164,7 +140,7 @@ def train(tune_hp):
     tune_config, stop, env_config = get_tune_config(tune_hp)
 
     if "CoinGame" in tune_config['env_name']:
-        trainable_class = LOLAPGCG
+        trainable_class = train_cg_tune_class_API.LOLAPGCG
     else:
         trainable_class = LOLAPGMatrice
 
@@ -201,7 +177,7 @@ def get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
                 vectorized_coin_game.AsymVectorizedCoinGame
         elif tune_config['env_name'] == "VectorizedMixedMotiveCoinGame":
             tune_config['env_class'] = \
-                vectorized_mixed_motive_coin_game.VectorizedMixedMotiveCoinGame
+                vectorized_mixed_motive_coin_game.VectMixedMotiveCG
         else:
             raise ValueError()
 
@@ -225,6 +201,10 @@ def get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
         if tune_config['env_class'] == \
                 vectorized_coin_game.AsymVectorizedCoinGame:
             tune_hp["x_limits"] = (-1.0, 3.0)
+        elif tune_config['env_class'] == \
+                vectorized_mixed_motive_coin_game.VectMixedMotiveCG:
+            tune_hp["x_limits"] = (-2.0, 4.0)
+            tune_hp["y_limits"] = (-2.0, 4.0)
         tune_hp["jitter"] = 0.02
         env_config = {
             "players_ids": ["player_red", "player_blue"],
@@ -239,10 +219,13 @@ def get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
         }
         tune_config['metric'] = "player_blue_pick_speed"
         tune_config["plot_keys"] += \
-            ["speed", "own_color", ] + vectorized_coin_game.PLOT_KEYS
+            train_cg_tune_class_API.PLOT_KEYS + \
+            vectorized_coin_game.PLOT_KEYS + \
+            aggregate_and_plot_tensorboard_data.PLOT_KEYS
         tune_config["plot_assemblage_tags"] += \
-            [("own",), ("own_color",), ("speed",), ("pick_speed",), ] + \
-            vectorized_coin_game.PLOT_ASSEMBLAGE_TAGS
+            train_cg_tune_class_API.PLOT_ASSEMBLAGE_TAGS + \
+            vectorized_coin_game.PLOT_ASSEMBLAGE_TAGS + \
+            aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS
     else:
         if tune_config['env_name'] == "IteratedPrisonersDilemma":
             tune_config['env_class'] = \
@@ -311,7 +294,7 @@ def generate_eval_config(tune_hp, debug):
 
     if "CoinGame" in tune_config['env_name']:
         env_config["batch_size"] = 1
-        tune_config['TuneTrainerClass'] = LOLAPGCG
+        tune_config['TuneTrainerClass'] = train_cg_tune_class_API.LOLAPGCG
     else:
         tune_config['TuneTrainerClass'] = LOLAPGMatrice
 
@@ -343,7 +326,7 @@ def generate_eval_config(tune_hp, debug):
     policies_to_load = copy.deepcopy(env_config["players_ids"])
 
     if "CoinGame" in rllib_hp['env_name']:
-        trainable_class = LOLAPGCG
+        trainable_class = train_cg_tune_class_API.LOLAPGCG
         rllib_config_eval["model"] = {
             "dim": env_config["grid_size"],
             # [Channel, [Kernel, Kernel], Stride]]

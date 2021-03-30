@@ -9,10 +9,12 @@ from marltoolbox.algos.lola.utils import flatgrad
 
 
 def corrections_func(mainPN, batch_size, trace_length,
-                     corrections=False, cube=None, clip_lola_update_norm=False,
+                     corrections=False, cube=None,
+                     clip_lola_update_norm=False,
                      lola_correction_multiplier=1.0,
                      clip_lola_correction_norm=False,
-                     clip_lola_actor_norm=False, against_destabilizer_exploiter=False):
+                     clip_lola_actor_norm=False,
+                     against_destabilizer_exploiter=False):
     """Computes corrections for policy gradients.
 
     Args:
@@ -195,10 +197,7 @@ def corrections_func(mainPN, batch_size, trace_length,
 
 
 def simple_actor_training_func(policy_network, opp_policy_network, batch_size, trace_length, cube=None):
-                               # corrections=False, , clip_lola_update_norm=False,
-                     # lola_correction_multiplier=1.0,
-                     # clip_lola_correction_norm=False,
-                     # clip_lola_actor_norm=False, against_exploiter=False):
+
     # not mem_efficient
     if cube is not None:
         ac_logp0 = tf.reshape(policy_network.log_pi_action_bs_t,
