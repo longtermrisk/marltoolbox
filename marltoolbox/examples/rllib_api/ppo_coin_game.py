@@ -23,6 +23,7 @@ def main(debug, stop_iters=2000, tf=False):
         "training_iteration": 2 if debug else stop_iters,
     }
 
+    env_class = AsymCoinGame
     env_config = {
         "players_ids": ["player_red", "player_blue"],
         "max_steps": 20,
@@ -31,18 +32,18 @@ def main(debug, stop_iters=2000, tf=False):
     }
 
     rllib_config = {
-        "env": AsymCoinGame,
+        "env": env_class,
         "env_config": env_config,
 
         "multiagent": {
             "policies": {
                 env_config["players_ids"][0]: (None,
-                                               AsymCoinGame(env_config).OBSERVATION_SPACE,
-                                               AsymCoinGame.ACTION_SPACE,
+                                               env_class(env_config).OBSERVATION_SPACE,
+                                               env_class.ACTION_SPACE,
                                                {}),
                 env_config["players_ids"][1]: (None,
-                                               AsymCoinGame(env_config).OBSERVATION_SPACE,
-                                               AsymCoinGame.ACTION_SPACE,
+                                               env_class(env_config).OBSERVATION_SPACE,
+                                               env_class.ACTION_SPACE,
                                                {}),
             },
             "policy_mapping_fn": lambda agent_id: agent_id,

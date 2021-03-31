@@ -46,7 +46,7 @@ def get_hyperparameters(debug, env):
         "welfare_functions": [
             (postprocessing.WELFARE_UTILITARIAN, "utilitarian")],
 
-        "amTFTPolicy": amTFT.amTFTRolloutsTorchPolicy,
+        "amTFTPolicy": amTFT.AmTFTRolloutsTorchPolicy,
         "explore_during_evaluation": True,
 
         "n_seeds_lvl0": train_n_replicates,
@@ -58,6 +58,7 @@ def get_hyperparameters(debug, env):
         "beta": 1.0,
 
         "temperature_schedule": False,
+        "clustering_distance": 0.2,
         "debit_threshold": 4.0,
         "jitter": 0.05,
         "hiddens": [64],

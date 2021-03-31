@@ -88,77 +88,32 @@ class Pnetwork:
             self.is_training = tf.placeholder(tf.bool, name='is_training')
 
             with tf.variable_scope('input_proc', reuse=reuse):
-                # if not changed_config:
                 output = layers.convolution2d(self.state_input,
                     stride=1, kernel_size=3, num_outputs=20,
-                    normalizer_fn=layers.batch_norm, activation_fn=tf.nn.relu)
+                    normalizer_fn=layers.batch_norm,
+                    activation_fn=tf.nn.relu,
+                    # weights_initializer=tf.contrib.layers.xavier_initializer(
+                    #     uniform=False,
+                    # ),
+                    # biases_initializer=tf.contrib.layers.xavier_initializer(
+                    #     # uniform=True,
+                    #     uniform=False,
+                    # )
+                )
                 output = layers.convolution2d(output,
                     stride=1, kernel_size=3, num_outputs=20,
-                    normalizer_fn=layers.batch_norm, activation_fn=tf.nn.relu)
-                # output = layers.convolution2d(self.state_input,
-                #     stride=1, kernel_size=3, num_outputs=20,
-                #     normalizer_fn=partial(layers.batch_norm,
-                #                           is_training=self.is_training,
-                #                           # scale=True,
-                #                           # updates_collections=None,
-                #                           variables_collections=["batch_norm_non_trainable_variables_collection"]),
-                #                               activation_fn=tf.nn.relu)
-                # output = layers.convolution2d(output,
-                #     stride=1, kernel_size=3, num_outputs=20,
-                #     normalizer_fn=partial(layers.batch_norm,
-                #                           is_training=self.is_training,
-                #                           # scale=True,
-                #                           # updates_collections=None,
-                #                           variables_collections=["batch_norm_non_trainable_variables_collection"]),
-                #                               activation_fn=tf.nn.relu)
-                # output = layers.convolution2d(self.state_input,
-                #     stride=1, kernel_size=3, num_outputs=20,
-                #                               normalizer_fn = None, activation_fn=None)
-                #     # normalizer_fn=partial(tf.layers.batch_normalization, training=self.is_training),
-                #     #                           activation_fn=tf.nn.relu)
-                # output = tf.layers.batch_normalization(output, training=self.is_training)
-                # output = tf.nn.relu(output)
-                # output = layers.convolution2d(output,
-                #     stride=1, kernel_size=3, num_outputs=20,
-                #                               normalizer_fn=None, activation_fn=None)
-                # # normalizer_fn=partial(tf.layers.batch_normalization, training=self.is_training),
-                # #                               activation_fn=tf.nn.relu)
-                # output = tf.layers.batch_normalization(output, training=self.is_training)
-                # output = tf.nn.relu(output)
+                    normalizer_fn=layers.batch_norm,
+                    activation_fn=tf.nn.relu,
+                    # weights_initializer=tf.contrib.layers.xavier_initializer(
+                    #     uniform=False,
+                    # ),
+                    # biases_initializer=tf.contrib.layers.xavier_initializer(
+                    #     # uniform=True,
+                    #     uniform=False,
+                    # )
+                  )
 
                 output = layers.flatten(output)
-
-                # if step:
-                #     position_in_epi = self.j
-                # else:
-                #     position_in_epi = tf.range(start=0, limit=trace_length, delta=1)
-                # position_in_epi = tf.cast(position_in_epi, tf.float32)
-                # position_in_epi = tf.reshape(position_in_epi, [-1, 1])
-                # position_in_epi = tf.concat([position_in_epi for i in range(self.batch_size)], axis=0)
-                # print_op_23 = tf.print("position_in_epi", tf.shape(position_in_epi))
-                # print_op_24 = tf.print("position_in_epi", position_in_epi)
-                # with tf.control_dependencies(
-                #         [print_op_23, print_op_24]):
-                #     output_for_value = tf.concat([output, position_in_epi], 1)
-                # print_op_23 = tf.print("output_for_value", tf.shape(output_for_value))
-                # print_op_24 = tf.print("output_for_value", output_for_value)
-                # with tf.control_dependencies(
-                #         [print_op_23, print_op_24]):
-                #     interm = layers.fully_connected(tf.nn.relu(output_for_value), 1, activation_fn=None)
-                # print("interm", interm.shape)
-                # interm_splits = tf.split(interm, [ self.batch_size for i in range(trace_length)], 0)
-                # print_op_23 = tf.print("interm_splits", tf.shape(interm_splits))
-                # print_op_24 = tf.print("interm_splits", interm_splits)
-                # with tf.control_dependencies(
-                #         [print_op_23, print_op_24]):
-                #     self.value = tf.reshape(tf.stack(interm_splits, axis=1), [-1, trace_length])
-                # print("self.value", self.value.shape)
-
-                # output_temp = tf.stop_gradient(output)
-
-                # With a corrected Critic
-                # self.value = tf.reshape(layers.fully_connected(
-                #     tf.nn.relu(output), 1, activation_fn=None), [-1, trace_length])
 
                 # Without a Critic
                 if use_critic:
@@ -168,10 +123,6 @@ class Pnetwork:
                     self.value = tf.reshape(layers.fully_connected(
                         tf.nn.relu(output), 1), [-1, trace_length]) * 0.0
 
-                # Original:
-                # self.value = tf.reshape(layers.fully_connected(
-                #     tf.nn.relu(output), 1), [-1, trace_length]) * 0.0
-
             if step:
                 output_seq = batch_to_seq(output, self.batch_size, 1)
             else:
@@ -180,9 +131,18 @@ class Pnetwork:
                                             scope='rnn', nh=h_size)
             output = seq_to_batch(output_seq)
 
-            output = layers.fully_connected(output,
-                                            num_outputs=env.NUM_ACTIONS,
-                                            activation_fn=None)
+            output = layers.fully_connected(
+                output,
+                num_outputs=env.NUM_ACTIONS,
+                activation_fn=None,
+                # weights_initializer=tf.contrib.layers.xavier_initializer(
+                #     uniform=False,
+                # ),
+                # biases_initializer=tf.contrib.layers.xavier_initializer(
+                #     # uniform=True,
+                #     uniform=False,
+                # )
+            )
             self.log_pi = tf.nn.log_softmax(output)
             self.lstm_state_output = state_output
 
@@ -204,8 +164,6 @@ class Pnetwork:
                 self.target = self.sample_reward_bis + self.next_v
             else:
                 self.target = self.sample_return + self.next_v
-            # self.target = self.sample_return #+ self.next_v
-            # self.target = self.sample_reward_bis + self.next_v
 
             if not use_MAE:
                 self.td_error = tf.square(self.target-self.value) / 2
@@ -245,7 +203,6 @@ class Pnetwork:
                 self.log_pi_action, [-1, trace_length]),1)
             self.log_pi_action_bs_t = tf.reshape(
                 self.log_pi_action, [self.batch_size, trace_length])
-            # self.trainer = tf.train.GradientDescentOptimizer(learning_rate=1)
             self.trainer = tf.train.GradientDescentOptimizer(learning_rate=ac_lr)
 
             weigths_norm = tf.concat(axis=0, values=[tf.reshape(v, [numel(v)]) for v in self.parameters])
@@ -266,8 +223,6 @@ class Pnetwork:
                 total_loss = (entropy_coeff * self.entropy + weigth_decay * self.weigths_norm) * self.loss_multiplier
             self.updateModel = self.trainer.minimize(
                 total_loss, var_list=self.value_params)
-        # self.setparams= SetFromFlat(self.parameters)
-        # self.getparams= GetFlat(self.parameters)
 
         self.param_len = len(self.parameters)
 

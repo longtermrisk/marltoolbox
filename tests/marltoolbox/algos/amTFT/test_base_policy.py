@@ -10,7 +10,7 @@ from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersD
 from marltoolbox.utils.postprocessing import WELFARE_UTILITARIAN
 
 
-def init_amTFT(policy_config_update={}, policy_class=base_policy.amTFTPolicyBase):
+def init_amTFT(policy_config_update={}, policy_class=base_policy.AmTFTPolicyBase):
     policy_config = copy.deepcopy(amTFT.DEFAULT_CONFIG)
     policy_config["welfare"] = WELFARE_UTILITARIAN
     policy_config.update(policy_config_update)

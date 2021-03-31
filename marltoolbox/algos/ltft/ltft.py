@@ -97,11 +97,11 @@ DEFAULT_CONFIG.update({
         # EpsilonGreedy").
         "type": exploration.SoftQScheduleWtClustering,
         # Add constructor kwargs here (if any).
-        "clustering_distance": 0.5,
+        "clustering_distance": 0.2,
         "temperature_schedule": PiecewiseSchedule(
             endpoints=[
                 (0, 1.0),
-                (0, 0.1)],
+                (1000000, 0.1)],
             outside_value=0.1,
             framework="torch")
     },
@@ -128,6 +128,8 @@ PLOT_ASSEMBLAGE_TAGS = [
     ("delta_log_likelihood_coop_std", "delta_log_likelihood_coop_mean"),
     ("likelihood_opponent", "likelihood_approximated_opponent"),
     ("mean_log_lik_cooperate", "mean_log_lik_defect"),
+    ("mean_log_lik_cooperate",),
+    ("mean_log_lik_defect",),
     ("chosen_percentile",),
     ("percentile_50",),
     ("percentile",),
@@ -221,10 +223,8 @@ def execution_plan(workers: WorkerSet,
     # of (2) since training metrics are not available until (2) runs.
     train_op = Concurrently(
         [store_op, replay_op_dqn, train_op_pg],
-        # [store_op, opt],
         mode="round_robin",
         output_indexes=[1, 2],
-        # output_indexes=[1],
         round_robin_weights=round_robin_weights)
 
     return StandardMetricsReporting(train_op, workers, config)

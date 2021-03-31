@@ -5,12 +5,12 @@ from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.utils.typing import TensorType
 
 from marltoolbox.algos.amTFT.base_policy import \
-    amTFTPolicyBase, OWN_COOP_POLICY_IDX, OWN_SELFISH_POLICY_IDX, \
+    AmTFTPolicyBase, OWN_COOP_POLICY_IDX, OWN_SELFISH_POLICY_IDX, \
     OPP_SELFISH_POLICY_IDX, OPP_COOP_POLICY_IDX, WORKING_STATES
 from marltoolbox.utils import rollout
 
 
-class amTFTRolloutsTorchPolicy(amTFTPolicyBase):
+class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
 
     def __init__(self, observation_space, action_space, config, **kwargs):
         super().__init__(observation_space, action_space, config, **kwargs)
@@ -111,9 +111,9 @@ class amTFTRolloutsTorchPolicy(amTFTPolicyBase):
                                                 last_obs=last_obs)
 
         if self.verbose > 0:
-            print("mean_total_reward_for_partially_coop_opp",
-                  mean_total_reward_for_partially_coop_opp)
-            print("mean_total_reward_for_totally_coop_opp",
+            print("r_partially_coop_opp",
+                  mean_total_reward_for_partially_coop_opp,
+                  "r_totally_coop_opp",
                   mean_total_reward_for_totally_coop_opp)
         opp_reward_gain_from_picking_this_action = \
             mean_total_reward_for_partially_coop_opp - \

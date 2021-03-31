@@ -1,10 +1,16 @@
 import copy
 import time
+import os
+import tempfile
+
 
 import numpy as np
 from ray.rllib.agents.pg import PGTrainer, PGTorchPolicy
+from ray.tune.logger import UnifiedLogger
+from ray.tune.result import DEFAULT_RESULTS_DIR
 
-from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersDilemma
+from marltoolbox.envs.matrix_sequential_social_dilemma import \
+    IteratedPrisonersDilemma
 from marltoolbox.examples.rllib_api.pg_ipd import get_rllib_config
 from marltoolbox.utils import log, miscellaneous
 from marltoolbox.utils import rollout
@@ -51,9 +57,29 @@ def init_worker(actions_list=None):
             policy_to_modify[0] = make_FakePolicyWtDefinedActions(copy.deepcopy(actions_list))
             rllib_config['multiagent']["policies"][policy_id] = policy_to_modify
 
-    pg_trainer = PGTrainer(rllib_config)
+    pg_trainer = PGTrainer(rllib_config, logger_creator=_get_logger_creator(exp_name))
     return pg_trainer.workers._local_worker
 
+def _get_logger_creator(exp_name):
+    logdir_prefix = exp_name + '/'
+    tail, head = os.path.split(exp_name)
+    tail_bis, _ = os.path.split(tail)
+    def default_logger_creator(config):
+        """Creates a Unified logger with a default logdir prefix
+        containing the agent name and the env id
+        """
+        if not os.path.exists(DEFAULT_RESULTS_DIR):
+            os.makedirs(DEFAULT_RESULTS_DIR)
+        if not os.path.exists(os.path.join(DEFAULT_RESULTS_DIR, tail_bis)):
+            os.mkdir(os.path.join(DEFAULT_RESULTS_DIR, tail_bis))
+        if not os.path.exists(os.path.join(DEFAULT_RESULTS_DIR, tail)):
+            os.mkdir(os.path.join(DEFAULT_RESULTS_DIR, tail))
+        if not os.path.exists(os.path.join(DEFAULT_RESULTS_DIR,exp_name)):
+            os.mkdir(os.path.join(DEFAULT_RESULTS_DIR,exp_name))
+        logdir = tempfile.mkdtemp(
+            prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
+        return UnifiedLogger(config, logdir, loggers=None)
+    return default_logger_creator
 
 def test_rollout_constant_reward():
     policy_agent_mapping = (lambda policy_id: policy_id)

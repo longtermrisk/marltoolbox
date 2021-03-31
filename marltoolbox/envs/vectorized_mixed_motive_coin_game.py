@@ -17,7 +17,7 @@ PLOT_KEYS = vectorized_coin_game.PLOT_KEYS
 PLOT_ASSEMBLAGE_TAGS = vectorized_coin_game.PLOT_ASSEMBLAGE_TAGS
 
 
-class VectorizedMixedMotiveCoinGame(vectorized_coin_game.VectorizedCoinGame):
+class VectMixedMotiveCG(vectorized_coin_game.VectorizedCoinGame):
 
     @override(vectorized_coin_game.VectorizedCoinGame)
     def _load_config(self, config):
@@ -134,7 +134,7 @@ def compute_reward(batch_size, red_pos, blue_pos, red_coin_pos, blue_coin_pos):
                 _same_pos(blue_pos[i], red_coin_pos[i]):
             generate[i] = 1
             reward_red[i] += 2
-            reward_blue[i] += 1
+            reward_blue[i] += 2
             red_pick_any += 1
             red_pick_red += 1
             blue_pick_any += 1
@@ -142,7 +142,7 @@ def compute_reward(batch_size, red_pos, blue_pos, red_coin_pos, blue_coin_pos):
                 _same_pos(blue_pos[i], blue_coin_pos[i]):
             generate[i] = 2
             reward_red[i] += 1
-            reward_blue[i] += 2
+            reward_blue[i] += 4
             red_pick_any += 1
             blue_pick_any += 1
             blue_pick_blue += 1
