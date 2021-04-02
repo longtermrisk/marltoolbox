@@ -13,7 +13,7 @@ from marltoolbox.envs import matrix_sequential_social_dilemma
 from marltoolbox.algos import amTFT, population
 from marltoolbox.utils import log, \
     postprocessing, lvl1_best_response, miscellaneous
-from marltoolbox.examples.rllib_api import amtft_various_env
+from marltoolbox.experiments.rllib_api import amtft_various_env
 
 
 def main(debug, env=None):

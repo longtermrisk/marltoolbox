@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
 
 from marltoolbox.algos import hierarchical, augmented_dqn
+from marltoolbox.algos.amTFT.weights_exchanger import \
+    WeightsExchangerWtExploiter
 from marltoolbox.utils import \
     postprocessing, miscellaneous, restore, callbacks
 
@@ -97,86 +99,13 @@ PLOT_ASSEMBLAGE_TAGS = [
 ]
 
 
-class WeightsExchanger:
-    """
-    Mixin to add the method on_train_result (called by the callback of the
-    same name).
-    For both amTFT policies: copy the weights from the opponent policy into the
-    policy.
-    Copy policy OWN_COOP_POLICY_IDX from opponent into
-    OPP_COOP_POLICY_IDX inside own policy.
-    Copy OWN_SELFISH_POLICY_IDX from opponent into
-    OPP_SELFISH_POLICY_IDX inside own policy.
-    """
-
-    @staticmethod
-    def on_train_result(trainer, *args, **kwargs):
-        AmTFTPolicyBase._share_weights_during_training(trainer)
-
-    @staticmethod
-    def _share_weights_during_training(trainer):
-        local_policy_map = trainer.workers.local_worker().policy_map
-        policy_ids = list(local_policy_map.keys())
-        assert len(policy_ids) == 2, "amTFT only works in two player " \
-                                     "environments"
-
-        in_training = AmTFTPolicyBase._are_policies_in_training(
-            local_policy_map)
-        if in_training:
-            AmTFTPolicyBase._assert_training_wt_only_amTFT_policies(
-                local_policy_map)
-            policies_weights = trainer.get_weights()
-            policies_weights = AmTFTPolicyBase._get_opp_policies_from_opponents(
-                policy_ids, local_policy_map, policies_weights)
-            trainer.set_weights(policies_weights)
-
-    @staticmethod
-    def _are_policies_in_training(local_policy_map):
-        in_training = all([
-            isinstance(policy, AmTFTPolicyBase) and
-            policy.working_state not in WORKING_STATES_IN_EVALUATION
-            for policy in local_policy_map.values()
-        ])
-        return in_training
-
-    @staticmethod
-    def _get_opp_policies_from_opponents(
-            policy_ids, local_policy_map, policies_weights):
-
-        for i, policy_id in enumerate(policy_ids):
-            opp_policy_id = policy_ids[(i + 1) % 2]
-            policy = local_policy_map[policy_id]
-
-            policies_weights = AmTFTPolicyBase._load_weights_of_the_opponent(
-                policy, policies_weights, policy_id, opp_policy_id)
-        return policies_weights
-
-    @staticmethod
-    def _load_weights_of_the_opponent(
-            policy, policies_weights, policy_id, opp_policy_id):
-
-        opp_coop_pi_key = policy._nested_key(OPP_COOP_POLICY_IDX)
-        own_coop_pi_key = policy._nested_key(OWN_COOP_POLICY_IDX)
-        opp_selfish_pi_key = policy._nested_key(OPP_SELFISH_POLICY_IDX)
-        own_selfish_pi_key = policy._nested_key(OWN_SELFISH_POLICY_IDX)
-
-        # share weights during training of amTFT
-        policies_weights[policy_id][opp_coop_pi_key] = \
-            policies_weights[opp_policy_id][own_coop_pi_key]
-        policies_weights[policy_id][opp_selfish_pi_key] = \
-            policies_weights[opp_policy_id][own_selfish_pi_key]
-        return policies_weights
-
-    @staticmethod
-    def _assert_training_wt_only_amTFT_policies(local_policy_map):
-        for policy in local_policy_map.values():
-            assert isinstance(policy, AmTFTPolicyBase), \
-                "if amTFT is training then " \
-                "all players must be " \
-                "using amTFT too"
+class AmTFTReferenceClass:
+    pass
 
 
-class AmTFTPolicyBase(hierarchical.HierarchicalTorchPolicy, WeightsExchanger):
+class AmTFTPolicyBase(hierarchical.HierarchicalTorchPolicy,
+                      WeightsExchangerWtExploiter,
+                      AmTFTReferenceClass):
 
     def __init__(self, observation_space, action_space, config, **kwargs):
         super().__init__(observation_space, action_space, config, **kwargs)
@@ -189,8 +118,10 @@ class AmTFTPolicyBase(hierarchical.HierarchicalTorchPolicy, WeightsExchanger):
         self.opp_new_obs = None
         self.both_previous_raw_obs = None
         self.both_new_raw_obs = None
-        self.debit_threshold = config["debit_threshold"]  # T
-        self.punishment_multiplier = config["punishment_multiplier"]  # alpha
+        # notation T in the paper
+        self.debit_threshold = config["debit_threshold"]
+        # notation alpha in the paper
+        self.punishment_multiplier = config["punishment_multiplier"]
         self.welfare = config["welfare"]
         self.working_state = config["working_state"]
         self.verbose = config["verbose"]
@@ -313,7 +244,7 @@ class AmTFTPolicyBase(hierarchical.HierarchicalTorchPolicy, WeightsExchanger):
             policy._on_episode_step(opp_obs, raw_obs, opp_a, worker,
                                     base_env, episode, env_index)
 
-            self.observed_n_step_in_current_epi +=1
+            self.observed_n_step_in_current_epi += 1
         else:
             self._first_fake_step_played = True
 
@@ -391,7 +322,9 @@ class AmTFTPolicyBase(hierarchical.HierarchicalTorchPolicy, WeightsExchanger):
                 print(
                     f"self.total_debit {self.total_debit}, previous was {tmp}")
 
-    def _is_starting_new_punishment_required(self):
+    def _is_starting_new_punishment_required(self, manual_threshold=None):
+        if manual_threshold is not None:
+            return self.total_debit > manual_threshold
         return self.total_debit > self.debit_threshold
 
     def _plan_punishment(
@@ -421,7 +354,7 @@ class AmTFTPolicyBase(hierarchical.HierarchicalTorchPolicy, WeightsExchanger):
                 "Each epi, LTFT must observe the opponent each step. " \
                 f"Observed {self.observed_n_step_in_current_epi} times for " \
                 f"{kwargs['base_env'].get_unwrapped()[0].max_steps} " \
-                                   "steps per episodes."
+                "steps per episodes."
             self.observed_n_step_in_current_epi = 0
 
         if self.working_state == WORKING_STATES[2]:
@@ -452,7 +385,7 @@ class AmTFTCallbacks(callbacks.PolicyCallbacks):
         self._call_method_from_policy(
             *args,
             worker=trainer.workers.local_worker(),
-            method="on_postprocess_trajectory",
+            method="on_train_result",
             policy=local_policy_map[one_policy_id],
             policy_id=one_policy_id,
             trainer=trainer,
@@ -468,7 +401,7 @@ def observation_fn(agent_obs,
     assert len(agent_ids) == 2, "LTFT Implemented for 2 players"
 
     for agent_id, policy in policies.items():
-        if isinstance(policy, AmTFTPolicyBase):
+        if isinstance(policy, AmTFTReferenceClass):
             opp_agent_id = [one_id
                             for one_id in agent_ids
                             if one_id != agent_id][0]

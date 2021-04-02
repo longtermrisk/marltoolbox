@@ -13,7 +13,7 @@ def print_metrics_available(tune_analysis):
 
 
 def test_pg_ipd():
-    from marltoolbox.examples.rllib_api.pg_ipd import main
+    from examples.rllib_api.pg_ipd import main
     # Restart Ray defensively in case the ray connection is lost.
     ray.shutdown()
     tune_analysis = main(debug=False)
@@ -29,7 +29,7 @@ def test_pg_ipd():
 
 
 def test_ltft_ipd():
-    from marltoolbox.examples.rllib_api.ltft_various_env import main
+    from marltoolbox.experiments.rllib_api.ltft_various_env import main
     ray.shutdown()
     tune_analysis_self_play, tune_analysis_against_opponent = main(
         debug=False,
@@ -57,7 +57,7 @@ def test_ltft_ipd():
 
 
 def test_amtft_ipd():
-    from marltoolbox.examples.rllib_api.amtft_various_env import main
+    from marltoolbox.experiments.rllib_api.amtft_various_env import main
     ray.shutdown()
     tune_analysis_per_welfare, analysis_metrics_per_mode = main(
         debug=False, train_n_replicates=1, filter_utilitarian=False,
@@ -77,7 +77,7 @@ def test_amtft_ipd():
 
 
 def test_ppo_asym_coin_game():
-    from marltoolbox.examples.rllib_api.ppo_coin_game import main
+    from examples.rllib_api.ppo_coin_game import main
     ray.shutdown()
     tune_analysis = main(debug=False, stop_iters=70)
     print_metrics_available(tune_analysis)
@@ -91,7 +91,7 @@ def test_ppo_asym_coin_game():
 
 
 def test_dqn_coin_game():
-    from marltoolbox.examples.rllib_api.dqn_coin_game import main
+    from examples.rllib_api.dqn_coin_game import main
     ray.shutdown()
     tune_analysis = main(debug=False)
     print_metrics_available(tune_analysis)
@@ -111,7 +111,7 @@ def test_dqn_coin_game():
 
 
 def test_dqn_wt_utilitarian_welfare_coin_game():
-    from marltoolbox.examples.rllib_api.dqn_wt_welfare import main
+    from examples.rllib_api.dqn_wt_welfare import main
     ray.shutdown()
     tune_analysis = main(debug=False)
     print_metrics_available(tune_analysis)
@@ -131,7 +131,7 @@ def test_dqn_wt_utilitarian_welfare_coin_game():
 
 
 def test_dqn_wt_inequity_aversion_welfare_coin_game():
-    from marltoolbox.examples.rllib_api.dqn_wt_welfare import main
+    from examples.rllib_api.dqn_wt_welfare import main
     ray.shutdown()
     tune_analysis = main(debug=False,
                          welfare=postprocessing.WELFARE_INEQUITY_AVERSION)
@@ -152,7 +152,7 @@ def test_dqn_wt_inequity_aversion_welfare_coin_game():
 
 
 def test_ltft_coin_game():
-    from marltoolbox.examples.rllib_api.ltft_various_env import main
+    from marltoolbox.experiments.rllib_api.ltft_various_env import main
     ray.shutdown()
     tune_analysis_self_play, tune_analysis_against_opponent = main(
         debug=False, env="CoinGame", train_n_replicates=1,
@@ -190,7 +190,7 @@ def test_ltft_coin_game():
 
 
 def test_amtft_coin_game():
-    from marltoolbox.examples.rllib_api.amtft_various_env import main
+    from marltoolbox.experiments.rllib_api.amtft_various_env import main
     ray.shutdown()
     tune_analysis_per_welfare, analysis_metrics_per_mode = main(
         debug=False, train_n_replicates=1, filter_utilitarian=False,

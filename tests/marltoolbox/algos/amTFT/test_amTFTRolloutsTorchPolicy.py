@@ -14,7 +14,7 @@ from marltoolbox.algos.amTFT.base_policy import DEFAULT_NESTED_POLICY_COOP, \
     DEFAULT_NESTED_POLICY_SELFISH, WORKING_STATES
 from marltoolbox.envs.matrix_sequential_social_dilemma import \
     IteratedPrisonersDilemma
-from marltoolbox.examples.rllib_api.amtft_various_env import get_rllib_config, \
+from marltoolbox.experiments.rllib_api.amtft_various_env import get_rllib_config, \
     get_hyperparameters
 from marltoolbox.utils import postprocessing, log
 from test_base_policy import init_amTFT, generate_fake_discrete_actions

@@ -60,8 +60,8 @@ def _get_hyparameters(debug, env=None, train_n_replicates=None,
         "clustering_distance": 0.2,
         "gamma": 0.96,
 
-        # "env_name": "IteratedPrisonersDilemma" if env is None else env,
-        "env_name": "CoinGame" if env is None else env,
+        "env_name": "IteratedPrisonersDilemma" if env is None else env,
+        # "env_name": "CoinGame" if env is None else env,
         "reward_uncertainty_std": 0.1,
 
         # "against_evader_exploiter": None,

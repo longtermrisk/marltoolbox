@@ -15,7 +15,7 @@ from marltoolbox.algos.lola_dice.train_tune_class_API import LOLADICE
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
 from marltoolbox.envs.matrix_sequential_social_dilemma import \
     IteratedPrisonersDilemma, IteratedMatchingPennies, IteratedAsymBoS
-from marltoolbox.examples.tune_class_api import lola_pg_official
+from marltoolbox.experiments.tune_class_api import lola_pg_official
 from marltoolbox.utils import policy, log
 
 

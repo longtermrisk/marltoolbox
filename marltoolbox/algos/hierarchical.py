@@ -130,14 +130,14 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         return nested_update_target
 
     def get_weights(self):
-        return {self._nested_key(i): algo.get_weights()
+        return {self.nested_key(i): algo.get_weights()
                 for i, algo in enumerate(self.algorithms)}
 
     def set_weights(self, weights):
         for i, algo in enumerate(self.algorithms):
-            algo.set_weights(weights[self._nested_key(i)])
+            algo.set_weights(weights[self.nested_key(i)])
 
-    def _nested_key(self, i):
+    def nested_key(self, i):
         return f"nested_{i}"
 
     def compute_actions(

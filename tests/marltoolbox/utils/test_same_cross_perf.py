@@ -1,6 +1,6 @@
 
 from marltoolbox.utils import self_and_cross_perf
-from marltoolbox.examples.rllib_api.pg_ipd import get_rllib_config
+from examples.rllib_api.pg_ipd import get_rllib_config
 from marltoolbox.utils.miscellaneous import get_random_seeds
 import os
 import ray

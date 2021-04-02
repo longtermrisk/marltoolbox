@@ -1,7 +1,7 @@
 from ray.rllib.agents.dqn.dqn_torch_policy import postprocess_nstep_and_prio
 
 from marltoolbox.algos import augmented_dqn
-from marltoolbox.examples.rllib_api import dqn_coin_game
+from examples.rllib_api import dqn_coin_game
 from marltoolbox.utils import log, miscellaneous, postprocessing
 
 

@@ -12,7 +12,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from marltoolbox.algos import amTFT
 from marltoolbox.envs.matrix_sequential_social_dilemma import \
     IteratedPrisonersDilemma
-from marltoolbox.examples.rllib_api.amtft_various_env import \
+from marltoolbox.experiments.rllib_api.amtft_various_env import \
     get_rllib_config, get_hyperparameters
 from marltoolbox.utils import postprocessing, log
 

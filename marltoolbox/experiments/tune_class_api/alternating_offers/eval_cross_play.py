@@ -9,7 +9,7 @@ from collections import defaultdict
 
 from marltoolbox.algos.alternating_offers.alt_offers_training import AltOffersTraining, run_episode
 from marltoolbox.algos.alternating_offers.envs.alt_offers_env import AltOffersEnv
-from marltoolbox.examples.tune_class_api.alternating_offers import train_cross_play
+from marltoolbox.experiments.tune_class_api.alternating_offers import train_cross_play
 
 
 

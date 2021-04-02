@@ -14,7 +14,7 @@ from ray.rllib.agents.pg import PGTorchPolicy
 from marltoolbox.algos.lola.train_exact_tune_class_API import LOLAExact
 from marltoolbox.envs.matrix_sequential_social_dilemma import \
     IteratedPrisonersDilemma, IteratedMatchingPennies, IteratedAsymBoS
-from marltoolbox.examples.tune_class_api import lola_pg_official
+from marltoolbox.experiments.tune_class_api import lola_pg_official
 from marltoolbox.utils import policy, log, miscellaneous
 
 
