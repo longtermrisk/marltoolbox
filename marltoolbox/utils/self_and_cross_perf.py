@@ -4,8 +4,8 @@ import logging
 import os
 import pickle
 import random
-from typing import Dict
 import warnings
+from typing import Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,6 +17,9 @@ import ray
 from ray import tune
 from ray.rllib.agents.pg import PGTrainer
 from ray.tune.analysis import ExperimentAnalysis
+from ray.tune.integration.wandb import WandbLogger
+from ray.tune.logger import DEFAULT_LOGGERS
+
 from marltoolbox.utils import restore, log, miscellaneous
 from marltoolbox.utils.plot import PlotHelper, PlotConfig
 
@@ -36,8 +39,11 @@ class SelfAndCrossPlayEvaluator:
     CROSS_PLAY_MODE = "cross-play"
     MODES = [CROSS_PLAY_MODE, SELF_PLAY_MODE]
 
-    def __init__(self, exp_name: str,
-                 use_random_policy_from_own_checkpoint: bool = False):
+    def __init__(self,
+                 exp_name: str,
+                 local_mode: bool = False,
+                 use_random_policy_from_own_checkpoint: bool = False,
+                 use_wandb: bool = False):
         """
         You should take a look at examples using this class.
         Any training is deactivated here. Only the worker rollout will evaluate
@@ -50,23 +56,28 @@ class SelfAndCrossPlayEvaluator:
         :param use_random_policy_from_own_checkpoint: (optional, default to False)
         """
         self.default_selected_order = 0
-        self.exp_name, self.exp_parent_dir = log.log_in_current_day_dir(exp_name)
+        self.running_in_local_mode = local_mode
+        self.use_wandb = use_wandb
+        self.exp_name, self.exp_parent_dir = log.log_in_current_day_dir(
+            exp_name)
         self.results_file_name = "SelfAndCrossPlay_save.p"
-        self.save_path = os.path.join(self.exp_parent_dir, self.results_file_name)
-        # TODO this var name is not clear enough (use_random_policy_from_own_checkpoint)
-        self.use_random_policy_from_own_checkpoint = use_random_policy_from_own_checkpoint
+        self.save_path = os.path.join(self.exp_parent_dir,
+                                      self.results_file_name)
+        # TODO this var name is not clear enough
+        self.use_random_policy_from_own_checkpoint = \
+            use_random_policy_from_own_checkpoint
 
         self.experiment_defined = False
         self.checkpoints_loaded = False
 
     def perform_evaluation_or_load_data(self, evaluation_config, stop_config,
                                         policies_to_load_from_checkpoint,
-                                        tune_analysis_per_exp:list,
+                                        tune_analysis_per_exp: list,
                                         TrainerClass=PGTrainer,
                                         TuneTrainerClass=None,
-                                        n_cross_play_per_checkpoint:int=1,
-                                        n_self_play_per_checkpoint:int=1,
-                                        to_load_path:str=None):
+                                        n_cross_play_per_checkpoint: int = 1,
+                                        n_self_play_per_checkpoint: int = 1,
+                                        to_load_path: str = None):
         """
 
         :param evaluation_config: Normal config argument provided to tune.run().
@@ -97,22 +108,25 @@ class SelfAndCrossPlayEvaluator:
                 stop_config=stop_config,
                 policies_to_load_from_checkpoint=policies_to_load_from_checkpoint,
             )
-            self.preload_checkpoints_from_tune_results(tune_results=tune_analysis_per_exp)
+            self.preload_checkpoints_from_tune_results(
+                tune_results=tune_analysis_per_exp)
             analysis_metrics_per_mode = self.evaluate_performances(
                 n_self_play_per_checkpoint=n_self_play_per_checkpoint,
                 n_cross_play_per_checkpoint=n_cross_play_per_checkpoint,
             )
         else:
-            analysis_metrics_per_mode = self.load_results(to_load_path=to_load_path)
+            analysis_metrics_per_mode = self.load_results(
+                to_load_path=to_load_path)
         return analysis_metrics_per_mode
 
-    def define_the_experiment_to_run(self,
-                                     evaluation_config: dict,
-                                     stop_config: dict,
-                                     TuneTrainerClass=None,
-                                     TrainerClass=PGTrainer,
-                                     policies_to_load_from_checkpoint: list = ["All"],
-                                     ):
+    def define_the_experiment_to_run(
+            self,
+            evaluation_config: dict,
+            stop_config: dict,
+            TuneTrainerClass=None,
+            TrainerClass=PGTrainer,
+            policies_to_load_from_checkpoint: list = ["All"],
+        ):
         """
         :param evaluation_config: Normal config argument provided to tune.run().
             This RLLib config will be used to run many similar runs.
@@ -127,24 +141,29 @@ class SelfAndCrossPlayEvaluator:
 
         self.TrainerClass = TrainerClass
         self.TuneTrainerClass = TuneTrainerClass
-        self.evaluation_config = miscellaneous.set_config_for_evaluation(evaluation_config)
+        self.evaluation_config = miscellaneous.set_config_for_evaluation(
+            evaluation_config)
         self.stop_config = stop_config
 
         self._config_is_for_two_players()
 
-        self.policies_ids_sorted = sorted(list(self.evaluation_config["multiagent"]["policies"].keys()))
+        self.policies_ids_sorted = sorted(
+            list(self.evaluation_config["multiagent"]["policies"].keys()))
         self.policies_to_load_from_checkpoint = sorted(
             [policy_id for policy_id in self.policies_ids_sorted if
-                                                 self._is_policy_to_load(policy_id, policies_to_load_from_checkpoint)])
+             self._is_policy_to_load(policy_id,
+                                     policies_to_load_from_checkpoint)])
 
         self.experiment_defined = True
 
     def _config_is_for_two_players(self):
         assert "multiagent" in self.evaluation_config.keys()
-        assert len(self.evaluation_config["multiagent"]["policies"].keys()) == 2
+        assert len(
+            self.evaluation_config["multiagent"]["policies"].keys()) == 2
 
     def _is_policy_to_load(self, policy_id, policies_to_load_from_checkpoint):
-        return policy_id in policies_to_load_from_checkpoint or "All" in policies_to_load_from_checkpoint
+        return policy_id in policies_to_load_from_checkpoint or \
+               "All" in policies_to_load_from_checkpoint
 
     def preload_checkpoints_from_tune_results(
             self, tune_results: Dict[str, ExperimentAnalysis]):
@@ -168,14 +187,19 @@ class SelfAndCrossPlayEvaluator:
         for group_name, one_tune_result in tune_results.items():
             self._extract_one_group_of_checkpoints(one_tune_result, group_name)
 
-    def _extract_one_group_of_checkpoints(self,
-                                          one_tune_result: ExperimentAnalysis,
-                                          group_name):
-        checkpoints_in_one_group = miscellaneous.extract_checkpoints(one_tune_result)
+    def _extract_one_group_of_checkpoints(
+            self,
+            one_tune_result: ExperimentAnalysis,
+            group_name):
+        checkpoints_in_one_group = miscellaneous.extract_checkpoints(
+            one_tune_result)
         self.checkpoints.extend([{"group_name": group_name, "path": checkpoint}
                                  for checkpoint in checkpoints_in_one_group])
 
-    def evaluate_performances(self, n_self_play_per_checkpoint: int, n_cross_play_per_checkpoint: int):
+    def evaluate_performances(
+            self,
+            n_self_play_per_checkpoint: int,
+            n_cross_play_per_checkpoint: int):
         """
         :param n_self_play_per_checkpoint: (int) How many self-play experiment per checkpoint you want to run.
             More than 1 mean that you are going to run several times the same experiments.
@@ -183,18 +207,25 @@ class SelfAndCrossPlayEvaluator:
             They are run randomly against the other checkpoints.
         :return: data formatted in a way ready for plotting by the plot_results method.
         """
-        assert self.checkpoints_loaded, "You must define the checkpoints to evaluate with the " \
-                                               "preload_checkpoints_from_tune_results method"
-        assert self.experiment_defined, "You must define the evaluation experiment with the " \
-                                              "define_the_experiment_to_run method."
+        assert self.checkpoints_loaded, \
+            "You must define the checkpoints to evaluate with the " \
+            "preload_checkpoints_from_tune_results method"
+        assert self.experiment_defined, \
+            "You must define the evaluation experiment with the " \
+            "define_the_experiment_to_run method."
 
-        self._validate_number_of_requested_evaluations(n_self_play_per_checkpoint, n_cross_play_per_checkpoint)
-        all_metadata = self._evaluate_performances_in_parallel(n_self_play_per_checkpoint, n_cross_play_per_checkpoint)
-        analysis_metrics_per_mode = self._group_results_and_extract_metrics(all_metadata)
+        self._validate_number_of_requested_evaluations(
+            n_self_play_per_checkpoint, n_cross_play_per_checkpoint)
+        all_metadata = self._evaluate_performances_in_parallel(
+            n_self_play_per_checkpoint, n_cross_play_per_checkpoint)
+        analysis_metrics_per_mode = self._group_results_and_extract_metrics(
+            all_metadata)
         self.save_results(analysis_metrics_per_mode)
         return analysis_metrics_per_mode
 
-    def _validate_number_of_requested_evaluations(self, n_self_play_per_checkpoint, n_cross_play_per_checkpoint):
+    def _validate_number_of_requested_evaluations(self,
+                                                  n_self_play_per_checkpoint,
+                                                  n_cross_play_per_checkpoint):
         assert n_self_play_per_checkpoint + n_cross_play_per_checkpoint >= 1
         assert n_self_play_per_checkpoint >= 0
         assert n_cross_play_per_checkpoint >= 0
@@ -211,9 +242,13 @@ class SelfAndCrossPlayEvaluator:
             config=master_config,
             stop=self.stop_config,
             name=os.path.join(self.exp_name, "self_and_cross_play_eval"),
-            )
+            log_to_file=not self.running_in_local_mode,
+            loggers=None if self.use_wandb
+                else DEFAULT_LOGGERS + (WandbLogger,),
+        )
 
-        all_metadata_wt_results = self._add_results_into_metadata(all_metadata, results)
+        all_metadata_wt_results = self._add_results_into_metadata(
+            all_metadata, results)
         return all_metadata_wt_results
 
     def _prepare_one_master_config_dict(
@@ -221,15 +256,17 @@ class SelfAndCrossPlayEvaluator:
         opponents_per_ckpt = self._get_opponents_per_checkpoints(
             n_cross_play_per_ckpt)
         all_config_variations, all_metadata = self._produce_config_variations(
-            n_self_play_per_ckpt,  n_cross_play_per_ckpt, opponents_per_ckpt)
+            n_self_play_per_ckpt, n_cross_play_per_ckpt, opponents_per_ckpt)
         master_config = self._assemble_in_one_master_config(
             all_config_variations)
 
         return master_config, all_metadata
 
     def _get_opponents_per_checkpoints(self, n_cross_play_per_checkpoint):
-        opponents_per_checkpoint = [self._select_opponent_randomly(checkpoint_i, n_cross_play_per_checkpoint)
-                                    for checkpoint_i in range(self.n_checkpoints)]
+        opponents_per_checkpoint = [
+            self._select_opponent_randomly(checkpoint_i,
+                                           n_cross_play_per_checkpoint)
+            for checkpoint_i in range(self.n_checkpoints)]
         return opponents_per_checkpoint
 
     def _produce_config_variations(self, n_self_play_per_ckpt,
@@ -241,7 +278,7 @@ class SelfAndCrossPlayEvaluator:
         ]
         cross_plays = [
             self._get_config_for_one_cross_play(
-                checkpoint_i,opponents_per_ckpt[checkpoint_i][cross_play_n])
+                checkpoint_i, opponents_per_ckpt[checkpoint_i][cross_play_n])
             for checkpoint_i in range(self.n_checkpoints)
             for cross_play_n in range(n_cross_play_per_ckpt)
         ]
@@ -258,8 +295,9 @@ class SelfAndCrossPlayEvaluator:
 
     def _assemble_in_one_master_config(self, all_config_variations):
         master_config = all_config_variations[0]
-        all_multiagent_policies = [play["multiagent"]["policies"]
-                                   for play in all_config_variations]
+        all_multiagent_policies = [
+            play["multiagent"]["policies"] for play in all_config_variations
+        ]
         master_config["multiagent"]["policies"] = tune.grid_search(
             all_multiagent_policies)
         return master_config
@@ -295,8 +333,9 @@ class SelfAndCrossPlayEvaluator:
 
         # Add the checkpoints to load from in the policy_config
         for policy_id in self.policies_to_load_from_checkpoint:
-            metadata[policy_id] = {"checkpoint_path": self.checkpoints[checkpoint_i]["path"],
-                                   "checkpoint_i": checkpoint_i}
+            metadata[policy_id] = {
+                "checkpoint_path": self.checkpoints[checkpoint_i]["path"],
+                "checkpoint_i": checkpoint_i}
             policy_config = config_copy["multiagent"]["policies"][policy_id][3]
             policy_config[restore.LOAD_FROM_CONFIG_KEY] = (
                 self.checkpoints[checkpoint_i]["path"], policy_id)
@@ -309,7 +348,8 @@ class SelfAndCrossPlayEvaluator:
         config_copy = copy.deepcopy(self.evaluation_config)
 
         if self.use_random_policy_from_own_checkpoint:
-            own_position = random.randint(0, len(config_copy["multiagent"]["policies"]) - 1)
+            own_position = random.randint(0, len(
+                config_copy["multiagent"]["policies"]) - 1)
         else:
             own_position = self.default_selected_order
 
@@ -330,48 +370,69 @@ class SelfAndCrossPlayEvaluator:
             policy_config["TuneTrainerClass"] = self.TuneTrainerClass
         return metadata, config_copy
 
-    def _select_opponent_randomly(self, checkpoint_i, n_cross_play_per_checkpoint):
+    def _select_opponent_randomly(self, checkpoint_i,
+                                  n_cross_play_per_checkpoint):
         checkpoint_list_minus_i = list(range(len(self.checkpoints)))
         checkpoint_list_minus_i.pop(checkpoint_i)
-        opponents = random.sample(checkpoint_list_minus_i, n_cross_play_per_checkpoint)
+        opponents = random.sample(checkpoint_list_minus_i,
+                                  n_cross_play_per_checkpoint)
         return opponents
 
-    def _split_results_per_mode_and_group_pair_id(self, all_metadata_wt_results):
+    def _split_results_per_mode_and_group_pair_id(self,
+                                                  all_metadata_wt_results):
         analysis_per_mode = []
 
-        metadata_per_modes = self._split_metadata_per_mode(all_metadata_wt_results)
+        metadata_per_modes = self._split_metadata_per_mode(
+            all_metadata_wt_results)
         for mode, metadata_for_one_mode in metadata_per_modes.items():
-            analysis_per_mode.extend(self._split_metadata_per_group_pair_id(metadata_for_one_mode, mode))
+            analysis_per_mode.extend(
+                self._split_metadata_per_group_pair_id(metadata_for_one_mode,
+                                                       mode))
 
         return analysis_per_mode
 
     def _split_metadata_per_mode(self, all_results):
-        return {mode: [report for report in all_results if report["mode"] == mode] for mode in self.MODES}
+        return {
+            mode: [report for report in all_results if report["mode"] == mode]
+            for mode in self.MODES}
 
     def _split_metadata_per_group_pair_id(self, metadata_for_one_mode, mode):
         analysis_per_group_pair_id = []
 
-        tune_analysis = [metadata["results"] for metadata in metadata_for_one_mode]
-        group_pair_names = [self._get_pair_of_group_names(metadata) for metadata in metadata_for_one_mode]
-        group_pair_ids = [self._get_id_of_pair_of_group_names(one_pair_of_names) for one_pair_of_names in group_pair_names]
+        tune_analysis = [metadata["results"] for metadata in
+                         metadata_for_one_mode]
+        group_pair_names = [self._get_pair_of_group_names(metadata) for
+                            metadata in metadata_for_one_mode]
+        group_pair_ids = [
+            self._get_id_of_pair_of_group_names(one_pair_of_names) for
+            one_pair_of_names in group_pair_names]
         group_pair_ids_in_this_mode = sorted(set(group_pair_ids))
 
         for group_pair_id in list(group_pair_ids_in_this_mode):
             filtered_analysis_list, one_pair_of_names = \
                 self._find_and_group_results_for_one_group_pair_id(
-                    group_pair_id, tune_analysis, group_pair_ids, group_pair_names)
-            analysis_per_group_pair_id.append((mode, filtered_analysis_list, group_pair_id, one_pair_of_names))
+                    group_pair_id, tune_analysis, group_pair_ids,
+                    group_pair_names)
+            analysis_per_group_pair_id.append(
+                (mode, filtered_analysis_list, group_pair_id,
+                 one_pair_of_names))
         return analysis_per_group_pair_id
 
     def _find_and_group_results_for_one_group_pair_id(self,
-                                                      group_pair_id, tune_analysis, group_pair_ids, group_pair_names):
+                                                      group_pair_id,
+                                                      tune_analysis,
+                                                      group_pair_ids,
+                                                      group_pair_names):
         filtered_group_pair_names, filtered_tune_analysis = [], []
-        for one_tune_analysis, id_, pair_of_names in zip(tune_analysis, group_pair_ids, group_pair_names):
+        for one_tune_analysis, id_, pair_of_names in zip(tune_analysis,
+                                                         group_pair_ids,
+                                                         group_pair_names):
             if id_ == group_pair_id:
                 filtered_tune_analysis.append(one_tune_analysis)
                 filtered_group_pair_names.append(pair_of_names)
 
-        filtered_ids = [ self._get_id_of_pair_of_group_names(one_pair_of_names) for one_pair_of_names in filtered_group_pair_names]
+        filtered_ids = [self._get_id_of_pair_of_group_names(one_pair_of_names)
+                        for one_pair_of_names in filtered_group_pair_names]
         assert len(set(filtered_ids)) == 1
         one_pair_of_names = filtered_group_pair_names[0]
 
@@ -386,12 +447,17 @@ class SelfAndCrossPlayEvaluator:
             for trial in analysis_list:
                 available_metrics = trial.metric_analysis
                 available_metrics_list.append(available_metrics)
-            analysis_metrics_per_mode.append((mode, available_metrics_list, group_pair_id, group_pair_name))
+            analysis_metrics_per_mode.append(
+                (mode, available_metrics_list, group_pair_id, group_pair_name))
         return analysis_metrics_per_mode
 
     def _group_results_and_extract_metrics(self, all_metadata_wt_results):
-        analysis_per_mode_per_group_pair_id = self._split_results_per_mode_and_group_pair_id(all_metadata_wt_results)
-        analysis_metrics_per_mode_per_group_pair_id = self._extract_all_metrics(analysis_per_mode_per_group_pair_id)
+        # TODO improve the design to remove these unclear names
+        analysis_per_mode_per_group_pair_id = \
+            self._split_results_per_mode_and_group_pair_id(
+                all_metadata_wt_results)
+        analysis_metrics_per_mode_per_group_pair_id = \
+            self._extract_all_metrics(analysis_per_mode_per_group_pair_id)
         return analysis_metrics_per_mode_per_group_pair_id
 
     def _get_id_of_pair_of_group_names(self, pair_of_group_names):
@@ -400,8 +466,10 @@ class SelfAndCrossPlayEvaluator:
 
     def _get_pair_of_group_names(self, metadata):
         checkpoints_idx_used = [metadata[policy_id]["checkpoint_i"]
-                                for policy_id in self.policies_to_load_from_checkpoint]
-        pair_of_group_names = [self.checkpoints[checkpoint_i]["group_name"] for checkpoint_i in checkpoints_idx_used]
+                                for policy_id in
+                                self.policies_to_load_from_checkpoint]
+        pair_of_group_names = [self.checkpoints[checkpoint_i]["group_name"] for
+                               checkpoint_i in checkpoints_idx_used]
         return pair_of_group_names
 
     def plot_results(self, analysis_metrics_per_mode,
@@ -416,7 +484,9 @@ class SelfAndCrossPlayEvaluator:
 
 class SelfAndCrossPlayPlotter:
     def __init__(self):
-        self.x_axis_metric, self.y_axis_metric, self.metric_mode = None, None, None
+        self.x_axis_metric = None
+        self.y_axis_metric = None
+        self.metric_mode = None
         self.stat_summary = None
         self.data_groups_per_mode = None
 
@@ -430,16 +500,23 @@ class SelfAndCrossPlayPlotter:
                      ):
         self._reset(x_axis_metric, y_axis_metric, metric_mode)
         for metrics_for_one_evaluation_mode in metrics_per_mode:
-            self._extract_performance_evaluation_points(metrics_for_one_evaluation_mode)
-        self.stat_summary.save_summary(filename_prefix="self_and_cross_play", folder_dir=exp_parent_dir)
-        return self. _plot_and_save_fig(plot_config, exp_parent_dir)
+            self._extract_performance_evaluation_points(
+                metrics_for_one_evaluation_mode)
+        self.stat_summary.save_summary(filename_prefix="self_and_cross_play",
+                                       folder_dir=exp_parent_dir)
+        return self._plot_and_save_fig(plot_config, exp_parent_dir)
 
     def _reset(self, x_axis_metric, y_axis_metric, metric_mode):
-        self.x_axis_metric, self.y_axis_metric, self.metric_mode = x_axis_metric, y_axis_metric, metric_mode
-        self.stat_summary = StatisticSummary(self.x_axis_metric, self.y_axis_metric, self.metric_mode)
+        self.x_axis_metric = x_axis_metric
+        self.y_axis_metric = y_axis_metric
+        self.metric_mode = metric_mode
+        self.stat_summary = StatisticSummary(self.x_axis_metric,
+                                             self.y_axis_metric,
+                                             self.metric_mode)
         self.data_groups_per_mode = {}
 
-    def _extract_performance_evaluation_points(self, metrics_for_one_evaluation_mode):
+    def _extract_performance_evaluation_points(self,
+                                               metrics_for_one_evaluation_mode):
         (mode, available_metrics_list, group_pair_id, group_pair_name) = \
             metrics_for_one_evaluation_mode
 
@@ -464,13 +541,13 @@ class SelfAndCrossPlayPlotter:
         else:
             label = mode
         label = label.replace('_', ' ')
-        print("label",label)
+        print("label", label)
         return label
 
     def _suffix_needed(self, group_pair_name):
         return group_pair_name is not None and \
-                all([name is not None for name in group_pair_name]) and \
-                all(group_pair_name)
+               all([name is not None for name in group_pair_name]) and \
+               all(group_pair_name)
 
     def _extract_x_y_points(self, available_metrics_list):
         x, y = [], []
@@ -479,25 +556,29 @@ class SelfAndCrossPlayPlotter:
 
         for available_metrics in available_metrics_list:
             if self.x_axis_metric in available_metrics.keys():
-                x_point = available_metrics[self.x_axis_metric][self.metric_mode]
+                x_point = available_metrics[self.x_axis_metric][
+                    self.metric_mode]
             else:
                 x_point = 123456789
                 warnings.warn(f"x_axis_metric {self.x_axis_metric}"
-                                  " not in available_metrics "
-                                  f"{available_metrics.keys()}")
+                              " not in available_metrics "
+                              f"{available_metrics.keys()}")
             if self.y_axis_metric in available_metrics.keys():
-                y_point = available_metrics[self.y_axis_metric][self.metric_mode]
+                y_point = available_metrics[self.y_axis_metric][
+                    self.metric_mode]
             else:
                 y_point = 123456789
                 warnings.warn(f"y_axis_metric {self.y_axis_metric}"
-                                  " not in available_metrics "
-                                  f"{available_metrics.keys()}")
+                              " not in available_metrics "
+                              f"{available_metrics.keys()}")
             x.append(x_point)
             y.append(y_point)
         return x, y
 
     def _format_as_df(self, x, y):
-        group_df_dict = {"": [(one_x_point, one_y_point) for one_x_point, one_y_point in zip(x, y)]}
+        group_df_dict = {
+            "": [(one_x_point, one_y_point) for one_x_point, one_y_point in
+                 zip(x, y)]}
         group_df = pd.DataFrame(group_df_dict)
         return group_df
 
@@ -505,6 +586,7 @@ class SelfAndCrossPlayPlotter:
         plot_helper = PlotHelper(plot_config)
         plot_helper.plot_cfg.save_dir_path = exp_parent_dir
         return plot_helper.plot_dots(self.data_groups_per_mode)
+
 
 class StatisticSummary:
 
@@ -562,4 +644,3 @@ class StatisticSummary:
                 self.matrix_label[step_i],
                 self.x_raw[step_i],
                 self.y_raw[step_i])
-

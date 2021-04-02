@@ -24,9 +24,10 @@
 This toolbox contains algorithms, environments, evaluation tools, and 
 helper functions to conduct research on bargaining in MARL.
 
-**Additional features of using the `Ray/Tune/RLLib` research framework:**  
 This toolbox relies on the [`Ray/Tune/RLLib` framework](https://docs.ray.io/en/master/rllib.html) 
-to provide the basic RL components and research functionalities.   
+to provide the basic RL components and research functionalities.  
+
+**Additional features of using the `Ray/Tune/RLLib` research framework:**   
 - using components from `RLLib` with extensive configuration available
   (e.g. using a PPO policy or a priority replay buffer)
 - track your experiments, log easily in TensorBoard, run hyperparameter search

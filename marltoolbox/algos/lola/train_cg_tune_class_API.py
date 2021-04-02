@@ -19,6 +19,7 @@ from marltoolbox.algos.lola.corrections import corrections_func, simple_actor_tr
 from marltoolbox.algos.lola.networks import Pnetwork, DQNAgent
 from marltoolbox.algos.lola.utils import get_monte_carlo, make_cube
 from marltoolbox.envs.vectorized_coin_game import VectorizedCoinGame, AsymVectorizedCoinGame
+from marltoolbox.utils.full_epi_logger import FullEpisodeLogger
 
 PLOT_KEYS = [
     "player_1_loss",
@@ -194,6 +195,10 @@ class LOLAPGCG(tune.Trainable):
         self.last_term_to_use = 0.0
 
         self.obs_batch = deque(maxlen=self.batch_size)
+        self.full_episode_logger = FullEpisodeLogger(
+            logdir=self._logdir,
+            log_interval=100,
+            log_ful_epi_one_hot_obs=True)
 
         # Setting the training parameters
         self.y = gamma
@@ -317,6 +322,7 @@ class LOLAPGCG(tune.Trainable):
 
     def step(self):
         self.timestep += 1
+        self.full_episode_logger.on_episode_start()
         to_report = {"episodes_total": self.timestep}
 
         episodeBuffer = []
@@ -383,6 +389,7 @@ class LOLAPGCG(tune.Trainable):
             actions = {"player_red": a_all[0],
                        "player_blue": a_all[1]}
             obs, r, d, info = self.env.step(actions)
+            self._log_one_step_in_full_episode(s, r, actions, obs, info)
             d = np.array([d["__all__"] for _ in range(self.batch_size)])
             # TODO this prevents us to use
             #  _obs_invariant_to_the_player_trained
@@ -393,6 +400,7 @@ class LOLAPGCG(tune.Trainable):
                 last_info.update({f"player_blue_{k}": v for k, v in info['player_blue'].items()})
             r = [r['player_red'], r['player_blue']]
             use_actions_from_exploiter = False
+
 
             if self.use_PG_exploiter:
                 expl_trainBatch1[0].append(s)
@@ -743,6 +751,7 @@ class LOLAPGCG(tune.Trainable):
             }
             to_report.update(expl_training_info)
 
+        self.full_episode_logger.on_episode_end()
         return to_report
 
     def compute_centered_discounted_r(self, rewards, discount):
@@ -759,6 +768,32 @@ class LOLAPGCG(tune.Trainable):
         sample_reward_bis = discount * np.reshape(
             rewards, [-1, self.trace_length])
         return sample_return, sample_reward, sample_reward_bis
+
+    def _log_one_step_in_full_episode(self, s, r, actions, obs, info):
+        self.full_episode_logger.on_episode_step(
+            step_data={
+                "player_red":  {
+                    "obs_before_act": s[0,...],
+                    "obs_after_act": obs["player_red"][0,...],
+                    "action": actions["player_red"][0],
+                    "reward": r["player_red"][0],
+                    "info": info["player_red"]
+                    if 'player_red' in info.keys()
+                    else None,
+                    "epi": self.timestep
+                },
+                "player_blue": {
+                    "obs_before_act": s[0,...],
+                    "obs_after_act": obs["player_blue"][0,...],
+                    "action": actions["player_blue"][0],
+                    "reward": r["player_blue"][0],
+                    "info": info["player_blue"]
+                    if 'player_blue' in info.keys()
+                    else None,
+                    "epi": self.timestep
+                },
+           }
+        )
 
     def save_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint.json")

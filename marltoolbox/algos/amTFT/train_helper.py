@@ -1,3 +1,4 @@
+import copy
 import os
 
 import ray
@@ -78,6 +79,8 @@ def train_amtft(stop,
 
 def _train_selfish_policies_inside_amtft(stop, config, name, trainer_class,
                                          **kwargs):
+    config = copy.deepcopy(config)
+    stop = copy.deepcopy(stop)
     for policy_id in config["multiagent"]["policies"].keys():
         config["multiagent"]["policies"][policy_id][3][
             "working_state"] = "train_selfish"
@@ -128,6 +131,8 @@ def _modify_config_to_load_selfish_policies_in_amtft(config, do_not_load,
 
 def _train_cooperative_policies_inside_amtft(stop, config, name, trainer_class,
                                              **kwargs):
+    config = copy.deepcopy(config)
+    stop = copy.deepcopy(stop)
     for policy_id in config["multiagent"]["policies"].keys():
         policy_config_dict = config["multiagent"]["policies"][policy_id][3]
         policy_config_dict["working_state"] = "train_coop"

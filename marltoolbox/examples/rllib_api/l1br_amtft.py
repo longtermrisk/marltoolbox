@@ -100,10 +100,13 @@ def train_lvl1_agents(hp_lvl1, tune_analysis_lvl0):
     checkpoints_lvl0 = miscellaneous.extract_checkpoints(tune_analysis_lvl0)
     rllib_config = modify_conf_for_lvl1_training(hp_lvl1, env_config, rllib_config, checkpoints_lvl0)
 
-    tune_analysis_lvl1 = ray.tune.run(dqn.DQNTrainer, config=rllib_config,
-                                      stop=stop, name=hp_lvl1["exp_name"],
+    tune_analysis_lvl1 = ray.tune.run(dqn.DQNTrainer,
+                                      config=rllib_config,
+                                      stop=stop,
+                                      name=hp_lvl1["exp_name"],
                                       checkpoint_at_end=True,
-                                      metric="episode_reward_mean", mode="max")
+                                      metric="episode_reward_mean",
+                                      mode="max")
     return tune_analysis_lvl1
 
 
@@ -122,10 +125,14 @@ def modify_conf_for_lvl1_training(hp_lvl1, env_config, rllib_config_lvl1, lvl0_c
         {}
     )
 
-    rllib_config_lvl1["callbacks"] = amTFT.get_amTFTCallBacks(
-        additionnal_callbacks=[log.get_logging_callbacks_class(),
-                               postprocessing.OverwriteRewardWtWelfareCallback,
-                               population.PopulationOfIdenticalAlgoCallBacks])
+    rllib_config_lvl1["callbacks"] = miscellaneous.merge_callbacks(
+        amTFT.AmTFTCallbacks,
+        log.get_logging_callbacks_class(
+            log_full_epi = False,
+            log_full_epi_interval = 100),
+        postprocessing.OverwriteRewardWtWelfareCallback,
+        population.PopulationOfIdenticalAlgoCallBacks
+    )
 
     l1br_configuration_helper = lvl1_best_response.L1BRConfigurationHelper(rllib_config_lvl1, lvl0_policy_id, lvl1_policy_id)
     l1br_configuration_helper.define_exp(

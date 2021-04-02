@@ -47,3 +47,5 @@ rllib_bugs/
 .ipynb_checkpoints/
 .coverage
 marltoolbox/examples/Tutorial_*.py
+api_key_wandb
+wandb/

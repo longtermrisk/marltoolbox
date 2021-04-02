@@ -33,3 +33,5 @@ def test__add_entropy_to_log():
 def assert_close(a,b,threshold):
     abs_diff = np.abs(a - b)
     assert abs_diff < threshold
+
+

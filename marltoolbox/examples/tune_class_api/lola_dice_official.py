@@ -27,6 +27,7 @@ def main(debug):
     exp_name, _ = log.log_in_current_day_dir("LOLA_DICE")
 
     hparams = {
+        "debug": debug,
 
         "load_plot_data": None,
         # IPD
@@ -94,8 +95,8 @@ def get_tune_config(hp: dict) -> dict:
         config["make_policy"] = ("make_simple_policy", {})
         config["base_lr"] = 1.0
 
-        config["trace_length"] = 150 if config["trace_length"] is None else \
-            config["trace_length"]
+        config["trace_length"] = \
+            150 if config["trace_length"] is None else config["trace_length"]
         config["make_optimizer"] = ("make_sgd_optimizer", {})
 
         # BE CAREFUL CHANGES TO env_config WILL NOT

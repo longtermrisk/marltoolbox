@@ -1,11 +1,14 @@
-import argparse
 import os
+import os
+
 import ray
 from ray import tune
 from ray.rllib.agents.pg import PGTrainer
 
-from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedPrisonersDilemma
+from marltoolbox.envs.matrix_sequential_social_dilemma import \
+    IteratedPrisonersDilemma
 from marltoolbox.utils import log, miscellaneous
+
 
 def main(debug, stop_iters=300, tf=False):
     train_n_replicates = 1 if debug else 1
@@ -15,8 +18,12 @@ def main(debug, stop_iters=300, tf=False):
     ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
 
     rllib_config, stop_config = get_rllib_config(seeds, debug, stop_iters, tf)
-    tune_analysis = tune.run(PGTrainer, config=rllib_config, stop=stop_config,
-                             checkpoint_freq=0, checkpoint_at_end=True, name=exp_name)
+    tune_analysis = tune.run(PGTrainer,
+                             config=rllib_config,
+                             stop=stop_config,
+                             checkpoint_at_end=True,
+                             name=exp_name,
+                             log_to_file=True)
     ray.shutdown()
     return tune_analysis
 
@@ -54,7 +61,7 @@ def get_rllib_config(seeds, debug=False, stop_iters=300, tf=False):
         },
 
         "seed": tune.grid_search(seeds),
-        "callbacks": log.get_logging_callbacks_class(),
+        "callbacks": log.get_logging_callbacks_class(log_full_epi=True),
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": "tf" if tf else "torch",
     }

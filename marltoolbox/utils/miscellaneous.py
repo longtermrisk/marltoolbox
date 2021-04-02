@@ -4,16 +4,11 @@ import inspect
 import logging
 import os
 import time
-from typing import Dict
 from typing import TYPE_CHECKING
 
 import numpy as np
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.env import BaseEnv
-from ray.rllib.evaluation import MultiAgentEpisode
-from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import AgentID, PolicyID
 from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
 from ray.tune.trial import Trial
 from ray.tune.checkpoint_manager import Checkpoint
@@ -126,23 +121,28 @@ def extract_config_values_from_tune_analysis(tune_experiment_analysis, key):
     return values
 
 
-def merge_callbacks(*callbacks_list):
+def merge_callbacks(*callbacks_class):
     """
     Merge several callback class together. Executing them in the order provided.
-    :param callbacks_list:
+    :param callbacks_class:
     :return: a class which calls all provided callbacks in order
     """
-
-    callbacks_list = [callback() if inspect.isclass(callback) else callback for
-                      callback in callbacks_list]
+    logger.info("start merge_callbacks", callbacks_class)
 
     class MergedCallBacks(DefaultCallbacks):
+
+        def __init__(self):
+            super().__init__()
+            self.callbacks = [
+                callback() if inspect.isclass(callback) else callback for
+                callback in callbacks_class]
+
         def __getattribute__(self, name):
             super_attr = super().__getattribute__(name)
             # Replace every callable by a callable calling the sequence of callbacks
             if callable(super_attr):
                 def newfunc(*args, **kwargs):
-                    for callbacks in callbacks_list:
+                    for callbacks in self.callbacks:
                         function = callbacks.__getattribute__(name)
                         function(*args, **kwargs)
 
@@ -150,6 +150,7 @@ def merge_callbacks(*callbacks_list):
             else:
                 return super_attr
 
+    logger.info("end merge_callbacks")
     return MergedCallBacks
 
 
@@ -250,37 +251,6 @@ def get_random_seeds(n_seeds):
     seeds = [seed + timestamp for seed in list(range(n_seeds))]
     return seeds
 
-
-class PolicyCallbacks(DefaultCallbacks):
-
-    def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
-                         policies: Dict[PolicyID, Policy],
-                         episode: MultiAgentEpisode, env_index: int, **kwargs):
-        self._call_method_from_policies(worker, "on_episode_start")
-
-    def on_episode_step(self, *, worker, base_env,
-                        episode, env_index, **kwargs):
-        self._call_method_from_policies(worker, "on_episode_step")
-
-    def on_episode_end(self, *, worker, base_env,
-                       policies, episode, env_index, **kwargs):
-        self._call_method_from_policies(worker, "on_episode_end")
-
-    def on_postprocess_trajectory(
-            self, *, worker: "RolloutWorker", episode: MultiAgentEpisode,
-            agent_id: AgentID, policy_id: PolicyID,
-            policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
-            original_batches: Dict[AgentID, SampleBatch], **kwargs):
-        self._call_method_from_policies(worker, "on_postprocess_trajectory")
-
-    def on_sample_end(self, *, worker: "RolloutWorker", samples: SampleBatch,
-                      **kwargs):
-        self._call_method_from_policies(worker, "on_sample_end")
-
-    def _call_method_from_policies(self, worker, method: str):
-        for policy in worker.policy_map.values():
-            if hasattr(policy, method) and callable(getattr(policy, method)):
-                getattr(policy, method)()
 
 
 def list_all_files_in_one_dir_tree(path):

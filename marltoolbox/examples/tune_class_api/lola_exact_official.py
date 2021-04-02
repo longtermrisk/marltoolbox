@@ -25,6 +25,7 @@ def main(debug):
     exp_name, _ = log.log_in_current_day_dir("LOLA_Exact")
 
     hparams = {
+        "debug": debug,
 
         "load_plot_data": None,
         # Example "load_plot_data": ".../SelfAndCrossPlay_save.p",
@@ -72,9 +73,13 @@ def main(debug):
 def train(hp):
     tune_config, stop, _ = get_tune_config(hp)
     # Train with the Tune Class API (not an RLLib Trainer)
-    tune_analysis = tune.run(LOLAExact, name=hp["exp_name"], config=tune_config,
+    tune_analysis = tune.run(LOLAExact,
+                             name=hp["exp_name"],
+                             config=tune_config,
                              checkpoint_at_end=True,
-                             stop=stop, metric=hp["metric"], mode="max")
+                             stop=stop,
+                             metric=hp["metric"],
+                             mode="max")
     tune_analysis_per_exp = {"": tune_analysis}
     return tune_analysis_per_exp
 

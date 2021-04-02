@@ -9,6 +9,8 @@ from ray.rllib.agents.dqn.dqn_torch_policy import \
     postprocess_nstep_and_prio
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.schedules import PiecewiseSchedule, ExponentialSchedule
+from ray.tune.integration.wandb import WandbLogger
+from ray.tune.logger import DEFAULT_LOGGERS
 
 from marltoolbox.algos import amTFT
 from marltoolbox.envs import \
@@ -56,7 +58,7 @@ def get_hyperparameters(debug, train_n_replicates=None,
     if debug:
         train_n_replicates = 2
     elif train_n_replicates is None:
-        train_n_replicates = 3
+        train_n_replicates = 4
 
     n_times_more_utilitarians_seeds = 4
     n_seeds_to_prepare = \
@@ -228,14 +230,13 @@ def modify_hyperparams_for_the_selected_env(hp):
 
         hp["temperature_schedule"] = PiecewiseSchedule(
             endpoints=[
-                (0, 2.0*mul_temp),
+                (0, 2.0 * mul_temp),
                 (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.20),
-                 0.5*mul_temp),
+                 0.5 * mul_temp),
                 (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.60),
                  hp["last_exploration_temp_value"])],
             outside_value=hp["last_exploration_temp_value"],
             framework="torch")
-
 
         if "AsymCoinGame" in hp["env_name"]:
             hp["x_limits"] = (-0.5, 3.0)
@@ -254,7 +255,6 @@ def modify_hyperparams_for_the_selected_env(hp):
             # hp["env_class"] = coin_game.CoinGame
             hp["env_class"] = vectorized_coin_game.VectorizedCoinGame
     else:
-
 
         hp["plot_keys"] += \
             matrix_sequential_social_dilemma.PLOT_KEYS
@@ -277,15 +277,14 @@ def modify_hyperparams_for_the_selected_env(hp):
 
         hp["temperature_schedule"] = PiecewiseSchedule(
             endpoints=[
-                (0, 2.0*mul_temp),
+                (0, 2.0 * mul_temp),
                 (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.33),
-                 0.5*mul_temp),
+                 0.5 * mul_temp),
                 (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.66),
                  hp["last_exploration_temp_value"])],
             outside_value=hp["last_exploration_temp_value"],
             framework="torch"
         )
-
 
         if "IteratedPrisonersDilemma" in hp["env_name"]:
             hp["x_limits"] = (-3.5, 0.5)
@@ -345,9 +344,10 @@ def train_for_each_welfare_function(hp):
             name=exp_name,
             TrainerClass=dqn.DQNTrainer,
             plot_keys=hp["plot_keys"],
-            plot_assemblage_tags=
-            hp["plot_assemblage_tags"],
-            debug=hp["debug"]
+            plot_assemblage_tags=hp["plot_assemblage_tags"],
+            debug=hp["debug"],
+            log_to_file=not hp["debug"],
+            loggers=None if hp["debug"] else DEFAULT_LOGGERS + (WandbLogger,),
         )
         if welfare_fn == postprocessing.WELFARE_UTILITARIAN:
             results, hp = postprocess_utilitarian_results(results, env_config,
@@ -389,6 +389,7 @@ def get_rllib_config(hp, welfare_fn, eval=False):
             # When replay_mode=independent,
             # transitions are replayed independently per policy.
             "replay_mode": "lockstep",
+            "observation_fn": amTFT.observation_fn,
         },
 
         "gamma": hp["gamma"],
@@ -433,12 +434,31 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         # `DefaultCallbacks` class and
         # `examples/custom_metrics_and_callbacks.py` for more usage
         # information.
-        "callbacks": amTFT.get_amTFTCallBacks(
-            additionnal_callbacks=[
-                log.get_logging_callbacks_class(),
-                # This only overwrite the reward that is used for training
-                # not the one in the metrics
-                postprocessing.OverwriteRewardWtWelfareCallback]),
+        "callbacks":
+            miscellaneous.merge_callbacks(
+                amTFT.AmTFTCallbacks,
+                log.get_logging_callbacks_class(log_full_epi=True,
+                                                log_full_epi_interval=100),
+                postprocessing.OverwriteRewardWtWelfareCallback),
+
+            # amTFT.get_amTFTCallBacks(
+            # additionnal_callbacks=[
+            #     log.get_logging_callbacks_class(log_full_epi=True,
+            #                                     log_full_epi_interval=100),
+            #     This only overwrite the reward that is used for training
+            #     not the one in the metrics
+                # postprocessing.OverwriteRewardWtWelfareCallback]),
+
+        "logger_config": {
+            "wandb": {
+                "project": "amTFT",
+                "group": hp["exp_name"],
+                "api_key_file":
+                    os.path.join(os.path.dirname(__file__),
+                                 "../../../api_key_wandb"),
+                "log_config": True
+            },
+        },
 
         # === DQN Models ===
         # Update the target network every `target_network_update_freq` steps.
@@ -447,7 +467,7 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         # Size of the replay buffer. Note that if async_updates is set, then
         # each worker will have a replay buffer of this size.
         "buffer_size": max(int(hp["n_steps_per_epi"] * hp["n_epi"]
-                           * hp["buf_frac"]), 5),
+                               * hp["buf_frac"]), 5),
         # Whether to use dueling dqn
         "dueling": True,
         # Dense-layer setup for each the advantage branch and the value branch
@@ -627,7 +647,10 @@ def evaluate_self_and_cross_perf(tune_analysis_per_welfare, hp):
     print("config_eval[exploration_config]", config_eval["exploration_config"])
     exp_name = os.path.join(hp_eval["exp_name"], "eval")
     evaluator = self_and_cross_perf.SelfAndCrossPlayEvaluator(
-        exp_name=exp_name)
+        exp_name=exp_name,
+        local_mode=hp["debug"],
+        use_wandb=not hp["debug"],
+    )
     analysis_metrics_per_mode = evaluator.perform_evaluation_or_load_data(
         evaluation_config=config_eval,
         stop_config=stop,
@@ -721,9 +744,9 @@ def modify_config_for_evaluation(config_eval, hp, env_config):
             # "clustering_distance": hp["clustering_distance_eval"],
             "temperature_schedule": PiecewiseSchedule(
                 endpoints=[
-                    (0, tmp_mul*hp["last_exploration_temp_value"]),
-                    (0, tmp_mul*hp["last_exploration_temp_value"])],
-                outside_value=tmp_mul*hp["last_exploration_temp_value"],
+                    (0, tmp_mul * hp["last_exploration_temp_value"]),
+                    (0, tmp_mul * hp["last_exploration_temp_value"])],
+                outside_value=tmp_mul * hp["last_exploration_temp_value"],
                 framework="torch"),
         }
 

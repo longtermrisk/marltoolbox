@@ -12,22 +12,20 @@ from typing import List, Union, Optional, Dict, Tuple, TYPE_CHECKING
 
 import numpy as np
 import torch
-from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import AgentID, PolicyID
-from ray.rllib.utils.typing import TensorType
-
-from marltoolbox.algos import hierarchical
-from marltoolbox.utils import postprocessing
-from marltoolbox.utils.miscellaneous import filter_sample_batch
+from ray.rllib.utils.typing import AgentID, PolicyID, TensorType
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
+
+from marltoolbox.algos import hierarchical
+from marltoolbox.utils.miscellaneous import filter_sample_batch
+from marltoolbox.utils import callbacks, postprocessing
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +97,11 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
 
         self.n_steps_since_start = 0
         self.last_computed_w = None
+        # self._episode_starting = True
+        self.opp_previous_obs = None
+        self.opp_new_obs = None
+        self._first_fake_step_played = False
+        self.observed_n_step_in_current_epi = 0
 
         self.data_queue = deque(maxlen=self.length_of_history)
 
@@ -110,7 +113,7 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         self.defection_carac_queue = deque(
             maxlen=self.average_defection_value_len)
         self.remaining_punishing_time = 0
-        self.being_punished_by_LE = False
+        self.being_punished_by_opp = False
 
         # Logging
         log_len_in_steps = 100
@@ -239,19 +242,54 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
 
         return samples_copy
 
-    def on_episode_step(self, opp_obs, opp_a, being_punished_by_LE):
-        self.being_punished_by_LE = being_punished_by_LE
-        if not self.being_punished_by_LE:
-            self.n_steps_since_start += 1
-            self._put_log_likelihood_in_data_buffer(opp_obs, opp_a,
-                                                    self.data_queue)
+    def on_episode_step(self, episode, policy_id, policy_ids, *args, **kwargs):
+        if self._first_fake_step_played:
+            opp_previous_obs, opp_a, being_punished_by_opp = \
+                self._get_information_from_opponent(
+                    episode, policy_id, policy_ids)
 
-        if self.remaining_punishing_time > 0:
-            self.n_punishment_steps_in_current_epi += 1
+            self.being_punished_by_opp = being_punished_by_opp
+            if not self.being_punished_by_opp:
+                self.n_steps_since_start += 1
+                self._put_log_likelihood_in_data_buffer(opp_previous_obs,
+                                                        opp_a,
+                                                        self.data_queue)
+
+            if self.remaining_punishing_time > 0:
+                self.n_punishment_steps_in_current_epi += 1
+            else:
+                self.n_cooperation_steps_in_current_epi += 1
+
+            self.observed_n_step_in_current_epi += 1
         else:
-            self.n_cooperation_steps_in_current_epi += 1
+            self._first_fake_step_played = True
 
-    def on_episode_end(self):
+    def _get_information_from_opponent(self, episode, agent_id, agent_ids):
+        opp_agent_id = [one_id
+                        for one_id in agent_ids
+                        if one_id != agent_id][0]
+        opp_a = episode.last_action_for(opp_agent_id)
+        being_punished_by_opp = episode.last_pi_info_for(
+            opp_agent_id).get("punishing", False)
+        return self.opp_previous_obs, opp_a, being_punished_by_opp
+
+    def on_observation_fn(self, opp_new_obs):
+        # Episode provide the last action with the given last
+        # observation produced by this action. But we need the
+        # observation that cause the agent to play this action
+        # thus the observation n-1
+        if self._first_fake_step_played:
+            self.opp_previous_obs = self.opp_new_obs
+        self.opp_new_obs = opp_new_obs
+
+    def on_episode_end(self, base_env, *args, **kwargs):
+        assert self.observed_n_step_in_current_epi == \
+               base_env.get_unwrapped()[0].max_steps, \
+            "Each epi, LTFT must observe the opponent each step. " \
+            f"Observed {self.observed_n_step_in_current_epi} times for " \
+            f"{base_env.get_unwrapped()[0].max_steps} steps per episodes."
+        self.observed_n_step_in_current_epi = 0
+
         if self.n_steps_since_start >= \
                 self.length_of_history + self.WARMUP_LENGTH:
             delta_log_likelihood_coop_at_chosen_percentile = \
@@ -278,7 +316,7 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
             self.remaining_punishing_time -= 1
 
         # Switch from coop to punishment only at the start of epi
-        if self.detected_defection and not self.being_punished_by_LE:
+        if self.detected_defection and not self.being_punished_by_opp:
             self.active_algo_idx = self.PUNITIVE_POLICY_IDX
             self.remaining_punishing_time = self.punishment_time
             print("DEFECTION DETECTED")
@@ -291,7 +329,7 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
             "remaining_punishing_time"] = self.remaining_punishing_time
         self._to_log["active_algo_idx"] = self.active_algo_idx
         self._to_log["detected_defection"] = self.detected_defection
-        self._to_log["being_punished_by_LE"] = self.being_punished_by_LE
+        self._to_log["being_punished_by_LE"] = self.being_punished_by_opp
         self.detected_defection = False
 
     @override(Policy)
@@ -386,6 +424,29 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         self._to_log["defection_metric"] = round(float(
             self.defection_metric), 4)
 
+    def on_postprocess_trajectory(
+            self,
+            policy_id: PolicyID,
+            postprocessed_batch: SampleBatch,
+            original_batches: Dict[AgentID, SampleBatch],
+            *args,
+            **kwargs):
+
+        all_agent_keys = list(original_batches.keys())
+        all_agent_keys.remove(policy_id)
+        assert len(all_agent_keys) == 1, "LTFT only works for 2 agents"
+        opp_policy_id = all_agent_keys[0]
+
+        opp_is_broadcast_punishment_state = \
+            "punishing" in original_batches[opp_policy_id][1].data.keys()
+        if opp_is_broadcast_punishment_state:
+            postprocessed_batch.data['being_punished'] = \
+                copy.deepcopy(
+                    original_batches[all_agent_keys[0]][1].data["punishing"])
+        else:
+            postprocessed_batch.data['being_punished'] = \
+                [False] * len(postprocessed_batch[postprocessed_batch.OBS])
+
 
 # Modified from torch_policy_template
 def compute_log_likelihoods_wt_exploration(
@@ -445,85 +506,26 @@ def compute_log_likelihoods_wt_exploration(
         return log_likelihoods
 
 
-class LTFTCallbacks(DefaultCallbacks):
-
-    def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
-                         policies: Dict[PolicyID, Policy],
-                         episode: MultiAgentEpisode, env_index: int, **kwargs):
-        self._LTFT_episode_starting = True
-        self._LTFT_temp_data = {}
-
-    def on_episode_step(self, *, worker, base_env,
-                        episode, env_index, **kwargs):
-
-        agent_ids = list(worker.policy_map.keys())
-        assert len(agent_ids) == 2, "Implemented for 2 players"
-
-        for agent_id, policy in worker.policy_map.items():
-            self._inform_agent_being_punished_or_not(
-                episode, agent_id, policy, agent_ids)
-
-        self._LTFT_episode_starting = False
-
-    def _inform_agent_being_punished_or_not(
-            self, episode, agent_id, policy, agent_ids):
-
-        opp_agent_id = [one_id
-                        for one_id in agent_ids
-                        if one_id != agent_id][0]
-        if self._is_callback_implemented_in_policy(policy, 'on_episode_step'):
-
-            if not self._LTFT_episode_starting:
-                opp_a = episode.last_action_for(opp_agent_id)
-                # Episode provide the last action with the given last
-                # observation produced by this action. But we need the
-                # observation that cause the agent to play this action
-                # thus the observation n-1
-                opp_obs = self._LTFT_temp_data[opp_agent_id]
-                being_punished_by_LE = episode.last_pi_info_for(
-                    opp_agent_id).get("punishing", False)
-                policy.on_episode_step(opp_obs, opp_a, being_punished_by_LE)
-            opp_new_obs = episode.last_observation_for(opp_agent_id)
-            self._LTFT_temp_data[opp_agent_id] = opp_new_obs
-
-    def _is_callback_implemented_in_policy(self, policy, callback_method):
-        return hasattr(policy, callback_method) and \
-               callable(getattr(policy, callback_method))
-
-    def on_episode_end(
-            self, *, worker, base_env, policies, episode, env_index, **kwargs):
-        for polidy_ID, policy in policies.items():
-            if self._is_callback_implemented_in_policy(
-                    policy, 'on_episode_end'):
-                policy.on_episode_end()
-
-    def on_postprocess_trajectory(
-            self, *,
-            worker: "RolloutWorker",
-            episode: MultiAgentEpisode,
-            agent_id: AgentID,
-            policy_id: PolicyID,
-            policies: Dict[PolicyID, Policy],
-            postprocessed_batch: SampleBatch,
-            original_batches: Dict[AgentID, SampleBatch],
-            **kwargs):
-
-        all_agent_keys = list(original_batches.keys())
-        all_agent_keys.remove(agent_id)
-        assert len(all_agent_keys) == 1, "LE only works for 2 agents"
-        opp_policy_id = all_agent_keys[0]
-
-        opp_is_broadcast_punishment_state = \
-            "punishing" in original_batches[opp_policy_id][1].data.keys()
-        if opp_is_broadcast_punishment_state:
-            postprocessed_batch.data['being_punished'] = \
-                copy.deepcopy(
-                    original_batches[all_agent_keys[0]][1].data["punishing"])
-        else:
-            postprocessed_batch.data['being_punished'] = \
-                [False] * len(postprocessed_batch[postprocessed_batch.OBS])
+LTFTCallbacks = callbacks.PolicyCallbacks
 
 
-# def _init_weights_fn(policy):
-#     return [torch.nn.init.normal_(p, mean=0.0, std=0.1)
-#             for p in policy.model.parameters()]
+def observation_fn(agent_obs,
+                   worker: "RolloutWorker",
+                   base_env: BaseEnv,
+                   policies: Dict[PolicyID, Policy],
+                   episode: MultiAgentEpisode, ):
+    agent_ids = list(policies.keys())
+    assert len(agent_ids) == 2, "LTFT Implemented for 2 players"
+
+    for agent_id, policy in policies.items():
+        if isinstance(policy, LTFTTorchPolicy):
+            opp_agent_id = [one_id
+                            for one_id in agent_ids
+                            if one_id != agent_id][0]
+            opp_raw_obs = agent_obs[opp_agent_id]
+            filtered_obs = postprocessing.apply_preprocessors(
+                worker, opp_raw_obs, opp_agent_id)
+
+            policy.on_observation_fn(copy.deepcopy(filtered_obs))
+
+    return agent_obs

@@ -79,10 +79,10 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
                 raise ValueError("self.n_steps_to_punish_opp "
                                  "can't be below zero")
 
-    def on_episode_step(self, opp_obs, last_obs, opp_action, worker,
+    def _on_episode_step(self, opp_obs, last_obs, opp_action, worker,
                         base_env, episode, env_index):
         if not self.performing_rollouts:
-            super().on_episode_step(opp_obs, last_obs, opp_action, worker,
+            super()._on_episode_step(opp_obs, last_obs, opp_action, worker,
                                     base_env, episode, env_index)
 
     def _compute_debit(self, last_obs, opp_action, worker, base_env, episode,
@@ -237,8 +237,6 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
 
         all_k_explored = self.k_opp_loss.keys()
         all_k_to_explore = list(range(self.rollout_length + 1))
-        # print("all_k_explored", all_k_explored)
-        # print("all_k_to_explore", all_k_to_explore)
         for k_explored in all_k_explored:
             all_k_to_explore.remove(k_explored)
 
@@ -406,7 +404,7 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
         opp_mean_total_reward = sum(opp_total_rewards) / len(opp_total_rewards)
         return opp_mean_total_reward, n_steps_played
 
-    def on_episode_end(self):
+    def on_episode_end(self, *args, **kwargs):
         if self.working_state == WORKING_STATES[2]:
             self.total_debit = 0
             self.n_steps_to_punish = 0

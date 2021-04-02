@@ -17,6 +17,8 @@ import time
 import ray
 from ray import tune
 from ray.rllib.agents.dqn import DQNTorchPolicy
+from ray.tune.integration.wandb import WandbLogger
+from ray.tune.logger import DEFAULT_LOGGERS
 
 from marltoolbox.algos.lola import train_cg_tune_class_API
 from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
@@ -46,6 +48,15 @@ def main(debug, env=None):
         "debug": debug,
         "exp_name": exp_name,
         "train_n_replicates": train_n_replicates,
+        # wandb configuration
+        "wandb": None if debug else {
+            "project": "LOLA_PG",
+            "group": exp_name,
+            "api_key_file":
+                os.path.join(os.path.dirname(__file__),
+                             "../../../api_key_wandb"),
+            "log_config": True
+        },
 
         # Print metrics
         "load_plot_data": None,
@@ -145,11 +156,15 @@ def train(tune_hp):
         trainable_class = LOLAPGMatrice
 
     # Train with the Tune Class API (not RLLib Class)
-    tune_analysis = tune.run(trainable_class, name=tune_hp["exp_name"],
+    tune_analysis = tune.run(trainable_class,
+                             name=tune_hp["exp_name"],
                              config=tune_config,
                              checkpoint_at_end=True,
-                             stop=stop, metric=tune_config["metric"],
-                             mode="max")
+                             stop=stop,
+                             metric=tune_config["metric"],
+                             mode="max",
+                             log_to_file=not tune_hp["debug"],
+                             loggers=DEFAULT_LOGGERS + (WandbLogger, ))
     tune_analysis_per_exp = {"": tune_analysis}
 
     # if not tune_hp["debug"]:
@@ -321,6 +336,10 @@ def generate_eval_config(tune_hp, debug):
         },
         "seed": rllib_hp["seed"],
         "min_iter_time_s": 3.0,
+
+        "callbacks": log.get_logging_callbacks_class(
+            log_full_epi=True,
+            log_full_epi_interval=100),
     }
 
     policies_to_load = copy.deepcopy(env_config["players_ids"])
@@ -349,7 +368,10 @@ def evaluate_self_and_cross_perf(
         rllib_hp, rllib_config_eval, policies_to_load, trainable_class,
         stop, env_config, tune_analysis_per_exp):
     evaluator = self_and_cross_perf.SelfAndCrossPlayEvaluator(
-        exp_name=rllib_hp["exp_name"])
+        exp_name=rllib_hp["exp_name"],
+        local_mode=rllib_hp["debug"],
+        use_wandb=not rllib_hp["debug"],
+    )
     analysis_metrics_per_mode = evaluator.perform_evaluation_or_load_data(
         evaluation_config=rllib_config_eval, stop_config=stop,
         policies_to_load_from_checkpoint=policies_to_load,

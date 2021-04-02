@@ -4,19 +4,21 @@ import os
 import ray
 from ray import tune
 from ray.rllib.agents.dqn.dqn_torch_policy import postprocess_nstep_and_prio
-from ray.rllib.utils.schedules import PiecewiseSchedule, ExponentialSchedule
+from ray.rllib.utils.schedules import PiecewiseSchedule
+from ray.tune.integration.wandb import WandbLogger
+from ray.tune.logger import DEFAULT_LOGGERS
 
 from marltoolbox.algos import ltft, augmented_dqn
-from marltoolbox.utils import log, miscellaneous, exploration, postprocessing
-from marltoolbox.envs.utils.wrappers import \
-    add_RewardUncertaintyEnvClassWrapper
 from marltoolbox.algos.exploiters.influence_evader import \
     InfluenceEvaderTorchPolicy
 from marltoolbox.envs import \
     matrix_sequential_social_dilemma, vectorized_coin_game, \
     mixed_motive_coin_game
+from marltoolbox.envs.utils.wrappers import \
+    add_RewardUncertaintyEnvClassWrapper
 from marltoolbox.scripts import \
     aggregate_and_plot_tensorboard_data
+from marltoolbox.utils import log, miscellaneous, exploration, postprocessing
 
 
 def main(debug, env=None, train_n_replicates=None, against_naive_opp=False):
@@ -44,7 +46,7 @@ def _get_hyparameters(debug, env=None, train_n_replicates=None,
     if debug:
         train_n_replicates = 1
     elif train_n_replicates is None:
-        train_n_replicates = 1
+        train_n_replicates = 4
 
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("LTFT")
@@ -52,6 +54,7 @@ def _get_hyparameters(debug, env=None, train_n_replicates=None,
     hparameters = {
         "seeds": seeds,
         "debug": debug,
+        "exp_name": exp_name,
         "hiddens": [64],
         "log_n_points": 260,
         "clustering_distance": 0.2,
@@ -80,7 +83,6 @@ def _modify_hyperparams_for_the_selected_env(hp):
     hp["plot_assemblage_tags"] = \
         ltft.PLOT_ASSEMBLAGE_TAGS + \
         aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS
-    hp["last_exploration_temp_value"] = 0.1
     hp["training_intensity"] = None
 
     if "CoinGame" in hp["env_name"]:
@@ -90,10 +92,11 @@ def _modify_hyperparams_for_the_selected_env(hp):
         hp["n_steps_per_epi"] = 100
         hp["spl_lr_mul"] = 3
         hp["bs_epi_mul"] = 4
-        hp["bs_epi_mul_spl"] = 1 # hp["bs_epi_mul"]
+        hp["bs_epi_mul_spl"] = 1  # hp["bs_epi_mul"]
         hp["base_lr"] = 0.4
         hp["n_epi"] = 10 if hp["debug"] else 4000
         hp["training_intensity"] = 4
+        hp["last_exploration_temp_value"] = 0.01
 
         hp["temperature_schedule"] = PiecewiseSchedule(
             endpoints=[
@@ -132,6 +135,7 @@ def _modify_hyperparams_for_the_selected_env(hp):
         hp["buf_frac"] = 0.5
         hp["n_epi"] = 10 if hp["debug"] else 800
         hp["sgd_momentum"] = 0.0
+        hp["last_exploration_temp_value"] = 0.1
 
         hp["temperature_schedule"] = PiecewiseSchedule(
             endpoints=[
@@ -220,17 +224,18 @@ def _get_rllib_config(hp: dict):
             # replay_mode=independent,
             # transitions are replayed independently per policy.
             "replay_mode": "lockstep",
+            "observation_fn": ltft.observation_fn,
         },
 
         # === DQN Models ===
 
         # Update the target network every `target_network_update_freq` steps.
-        "target_network_update_freq": 30 * hp["n_steps_per_epi"],
+        "target_network_update_freq": 300 * hp["n_steps_per_epi"],
         # === Replay buffer ===
         # Size of the replay buffer. Note that if async_updates is set, then
         # each worker will have a replay buffer of this size.
         "buffer_size": max(int(hp["n_steps_per_epi"] * hp["n_epi"]
-                           * hp["buf_frac"]), 5),
+                               * hp["buf_frac"]), 5),
         # Whether to use dueling dqn
         "dueling": False,
         # Dense-layer setup for each the advantage branch and the value branch
@@ -311,6 +316,16 @@ def _get_rllib_config(hp: dict):
         # time
         "num_envs_per_worker": 1,
         "batch_mode": "complete_episodes",
+        "logger_config": {
+            "wandb": {
+                "project": "LTFT",
+                "group": hp["exp_name"],
+                "api_key_file":
+                    os.path.join(os.path.dirname(__file__),
+                                 "../../../api_key_wandb"),
+                "log_config": True
+            },
+        },
 
         # === Debug Settings ===
         "log_level": "INFO",
@@ -320,7 +335,8 @@ def _get_rllib_config(hp: dict):
         # for more usage information.
         "callbacks": miscellaneous.merge_callbacks(
             ltft.LTFTCallbacks,
-            log.get_logging_callbacks_class()),
+            log.get_logging_callbacks_class(log_full_epi=True,
+                                            log_full_epi_interval=100)),
     })
 
     hp, rllib_config, env_config, stop = \
@@ -373,16 +389,21 @@ def _train_in_self_play(rllib_config, stop, exp_name, hp):
     full_exp_name = os.path.join(exp_name, selfplay_sub_dir)
 
     tune_analysis_self_play = ray.tune.run(
-        ltft.LTFTTrainer, config=rllib_config,
-        verbose=1, stop=stop,
-        checkpoint_at_end=True, name=full_exp_name)
+        ltft.LTFTTrainer,
+        config=rllib_config,
+        verbose=1,
+        stop=stop,
+        checkpoint_at_end=True,
+        name=full_exp_name,
+        log_to_file=not hp["debug"],
+        loggers=None if hp["debug"] else DEFAULT_LOGGERS + (WandbLogger,),
+    )
 
     if not hp["debug"]:
         aggregate_and_plot_tensorboard_data.add_summary_plots(
             main_path=os.path.join("~/ray_results/", full_exp_name),
             plot_keys=hp["plot_keys"],
-            plot_assemble_tags_in_one_plot=
-            hp["plot_assemblage_tags"],
+            plot_assemble_tags_in_one_plot=hp["plot_assemblage_tags"],
         )
 
     return tune_analysis_self_play
@@ -398,8 +419,13 @@ def _train_against_opponent(hp, rllib_config, stop, exp_name, env_config):
     tune_analysis_naive_opponent = ray.tune.run(
         ltft.LTFTTrainer,
         config=rllib_config,
-        verbose=1, stop=stop,
-        checkpoint_at_end=True, name=full_exp_name)
+        verbose=1,
+        stop=stop,
+        checkpoint_at_end=True,
+        name=full_exp_name,
+        log_to_file=not hp["debug"],
+        loggers=None if hp["debug"] else DEFAULT_LOGGERS + (WandbLogger,),
+    )
 
     if not hp["debug"]:
         aggregate_and_plot_tensorboard_data.add_summary_plots(

@@ -8,6 +8,7 @@ from ray.rllib.evaluation.postprocessing import discount
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AgentID, PolicyID
+from ray.rllib.evaluation.sampler import _get_or_raise
 
 from marltoolbox.utils.miscellaneous import \
     assert_if_key_in_dict_then_args_are_none, read_from_dict_default_to_args
@@ -360,3 +361,9 @@ class OverwriteRewardWtWelfareCallback(DefaultCallbacks):
                 break
 
         return postprocessed_batch
+
+def apply_preprocessors(worker, raw_observation, policy_id):
+    prep_obs = _get_or_raise(
+        worker.preprocessors, policy_id).transform(raw_observation)
+    filtered_obs = _get_or_raise(worker.filters, policy_id)(prep_obs)
+    return filtered_obs

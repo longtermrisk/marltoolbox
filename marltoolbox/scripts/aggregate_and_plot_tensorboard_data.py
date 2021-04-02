@@ -140,6 +140,8 @@ class TensorBoardDataExtractor():
 
         event_readers = \
             self._create_event_reader_for_each_log_files(file_list)
+        if len(event_readers) == 0:
+            return None
         all_scalar_events_per_key, keys = \
             self._get_and_validate_all_scalar_keys(event_readers)
         steps_per_key, all_scalar_events_per_key = \
@@ -269,6 +271,8 @@ class TensorBoardDataExtractor():
     def _aggregate_to_csv(self, main_path, aggregation_ops,
                           extracts_per_group):
         for group_key, all_per_key in extracts_per_group.items():
+            if all_per_key is None:
+                continue
             for key, (steps, values) in all_per_key.items():
                 aggregations = {key: aggregation_operation(values, axis=0)
                                 for key, aggregation_operation in
