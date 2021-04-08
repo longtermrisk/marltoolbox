@@ -12,7 +12,7 @@ torch, nn = try_import_torch()
 from marltoolbox.envs import matrix_sequential_social_dilemma
 from marltoolbox.algos import amTFT, population
 from marltoolbox.utils import log, \
-    postprocessing, lvl1_best_response, miscellaneous
+    postprocessing, lvl1_best_response, miscellaneous, callbacks
 from marltoolbox.experiments.rllib_api import amtft_various_env
 
 
@@ -125,7 +125,7 @@ def modify_conf_for_lvl1_training(hp_lvl1, env_config, rllib_config_lvl1, lvl0_c
         {}
     )
 
-    rllib_config_lvl1["callbacks"] = miscellaneous.merge_callbacks(
+    rllib_config_lvl1["callbacks"] = callbacks.merge_callbacks(
         amTFT.AmTFTCallbacks,
         log.get_logging_callbacks_class(
             log_full_epi = False,

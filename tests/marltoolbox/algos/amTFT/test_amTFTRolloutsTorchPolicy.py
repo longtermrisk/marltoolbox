@@ -10,7 +10,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 
 from marltoolbox.algos import amTFT
 from marltoolbox.algos.amTFT import base_policy
-from marltoolbox.algos.amTFT.base_policy import DEFAULT_NESTED_POLICY_COOP, \
+from marltoolbox.algos.amTFT.base import DEFAULT_NESTED_POLICY_COOP, \
     DEFAULT_NESTED_POLICY_SELFISH, WORKING_STATES
 from marltoolbox.envs.matrix_sequential_social_dilemma import \
     IteratedPrisonersDilemma
@@ -59,22 +59,22 @@ def test__select_algo_to_use_in_eval():
     am_tft_policy.use_opponent_policies = False
     am_tft_policy.n_steps_to_punish = 0
     assert_(working_state_idx=2,
-            active_algo_idx=base_policy.OWN_COOP_POLICY_IDX)
+            active_algo_idx=amTFT.OWN_COOP_POLICY_IDX)
     am_tft_policy.use_opponent_policies = False
     am_tft_policy.n_steps_to_punish = 1
     assert_(working_state_idx=2,
-            active_algo_idx=base_policy.OWN_SELFISH_POLICY_IDX)
+            active_algo_idx=amTFT.OWN_SELFISH_POLICY_IDX)
 
     am_tft_policy.use_opponent_policies = True
     am_tft_policy.performing_rollouts = True
     am_tft_policy.n_steps_to_punish_opponent = 0
     assert_(working_state_idx=2,
-            active_algo_idx=base_policy.OPP_COOP_POLICY_IDX)
+            active_algo_idx=amTFT.OPP_COOP_POLICY_IDX)
     am_tft_policy.use_opponent_policies = True
     am_tft_policy.performing_rollouts = True
     am_tft_policy.n_steps_to_punish_opponent = 1
     assert_(working_state_idx=2,
-            active_algo_idx=base_policy.OPP_SELFISH_POLICY_IDX)
+            active_algo_idx=amTFT.OPP_SELFISH_POLICY_IDX)
 
 
 def test__duration_found_or_continue_search():

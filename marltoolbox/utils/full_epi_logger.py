@@ -62,11 +62,16 @@ class FullEpisodeLogger:
                     else:
                         obs_before_act = None
                     action = episode.last_action_for(agent_id).tolist()
-                    info = episode.last_info_for(agent_id)
                     epi = episode.episode_id
                     rewards = episode._agent_reward_history[agent_id]
-                    reward = rewards[-1].tolist() if len(rewards) > 0 else None
-
+                    reward = rewards[-1] if len(rewards) > 0 else None
+                    info = episode.last_info_for(agent_id)
+                    if hasattr(policy, "to_log"):
+                        info.update(policy.to_log)
+                    else:
+                        logger.info(f"policy {policy} doesn't have attrib "
+                                    "to_log. hasattr(policy, 'to_log'): "
+                                    f"{hasattr(policy, 'to_log')}")
                 # Episode provide the last action with the given last
                 # observation produced by this action. But we need the
                 # observation that cause the agent to play this action

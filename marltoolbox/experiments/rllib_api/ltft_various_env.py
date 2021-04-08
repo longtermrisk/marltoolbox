@@ -18,7 +18,8 @@ from marltoolbox.envs.utils.wrappers import \
     add_RewardUncertaintyEnvClassWrapper
 from marltoolbox.scripts import \
     aggregate_and_plot_tensorboard_data
-from marltoolbox.utils import log, miscellaneous, exploration, postprocessing
+from marltoolbox.utils import log, miscellaneous, exploration, \
+    postprocessing, callbacks
 
 
 def main(debug, env=None, train_n_replicates=None, against_naive_opp=False):
@@ -92,7 +93,7 @@ def _modify_hyperparams_for_the_selected_env(hp):
         hp["n_steps_per_epi"] = 100
         hp["spl_lr_mul"] = 3
         hp["bs_epi_mul"] = 4
-        hp["bs_epi_mul_spl"] = 1  # hp["bs_epi_mul"]
+        hp["bs_epi_mul_spl"] = 1
         hp["base_lr"] = 0.4
         hp["n_epi"] = 10 if hp["debug"] else 4000
         hp["training_intensity"] = 4
@@ -166,18 +167,10 @@ def _modify_hyperparams_for_the_selected_env(hp):
         else:
             raise NotImplementedError(f'hp["env_name"]: {hp["env_name"]}')
 
-    # hp["lr_schedule"] = ExponentialSchedule(
-    #     schedule_timesteps=int(hp["n_steps_per_epi"] * hp["n_epi"]),
-    #     initial_p=hp["base_lr"],
-    #     decay_rate=1 / 20,
-    #     framework="torch"
-    # )
     hp["lr_schedule"] = [
         (0, 0.0),
         (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.05),
          hp["base_lr"]),
-        # (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.5),
-        #  hp["base_lr"]/10),
         (int(hp["n_steps_per_epi"] * hp["n_epi"]), hp["base_lr"] / 1e9)
     ]
 
@@ -230,7 +223,7 @@ def _get_rllib_config(hp: dict):
         # === DQN Models ===
 
         # Update the target network every `target_network_update_freq` steps.
-        "target_network_update_freq": 300 * hp["n_steps_per_epi"],
+        "target_network_update_freq": 30 * hp["n_steps_per_epi"],
         # === Replay buffer ===
         # Size of the replay buffer. Note that if async_updates is set, then
         # each worker will have a replay buffer of this size.
@@ -266,7 +259,6 @@ def _get_rllib_config(hp: dict):
             # You can also provide the python class directly or
             # the full location of your class (e.g.
             # "ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy").
-            # "type": exploration.SoftQSchedule,
             "type": exploration.SoftQScheduleWtClustering,
             # Add constructor kwargs here (if any).
             "temperature_schedule": hp["temperature_schedule"],
@@ -333,7 +325,7 @@ def _get_rllib_config(hp: dict):
         # `DefaultCallbacks` class and
         # `examples/custom_metrics_and_callbacks.py`
         # for more usage information.
-        "callbacks": miscellaneous.merge_callbacks(
+        "callbacks": callbacks.merge_callbacks(
             ltft.LTFTCallbacks,
             log.get_logging_callbacks_class(log_full_epi=True,
                                             log_full_epi_interval=100)),
@@ -344,7 +336,6 @@ def _get_rllib_config(hp: dict):
 
     nested_policies_config = rllib_config["nested_policies"]
     nested_spl_policy_config = nested_policies_config[3]["config_update"]
-    # nested_spl_policy_config["lr_schedule"] = None
     nested_spl_policy_config["train_batch_size"] = int(hp["n_steps_per_epi"]
                                                        * hp["bs_epi_mul_spl"]),
     rllib_config["nested_policies"] = nested_policies_config
@@ -373,7 +364,6 @@ def _get_env_config(hp):
 def _modify_config_for_coin_game(hp, rllib_config, env_config, stop):
     if "CoinGame" in hp["env_name"]:
         rllib_config.update({
-            "target_network_update_freq": 30 * hp["n_steps_per_epi"],
             "model": {
                 "dim": env_config["grid_size"],
                 # [Channel, [Kernel, Kernel], Stride]]

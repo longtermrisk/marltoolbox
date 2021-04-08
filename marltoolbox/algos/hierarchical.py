@@ -2,13 +2,10 @@ import copy
 from typing import List, Union, Optional, Dict, Tuple, Iterable
 
 import torch
-import numpy as np
-
 from ray import rllib
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 
 from marltoolbox.utils import log
@@ -76,7 +73,6 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         to_log = {"meta_policy": self._to_log,
                   "nested_policy": {
                       f"policy_{algo_idx}": algo.to_log
-                      # f"policy_0": algo.to_log
                       for algo_idx, algo in enumerate(self.algorithms)
                       if hasattr(algo, "to_log")
                   }
@@ -87,7 +83,9 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
     def to_log(self, value):
         if value == {}:
             for algo in self.algorithms:
-                setattr(algo, "to_log", {})
+                if hasattr(algo, "to_log"):
+                    algo.to_log = {}
+                # setattr(algo, "to_log", {})
 
         self._to_log = value
 
@@ -159,9 +157,18 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         return actions, state_out, extra_fetches
 
     def learn_on_batch(self, samples: SampleBatch):
+        self._update_lr_in_all_optimizers()
+        stats = self._learn_on_batch(samples)
+        self._log_learning_rates()
+        return stats
+
+    def _learn_on_batch(self, samples: SampleBatch):
         raise NotImplementedError()
 
-    def _init_log_learn_on_batch(self, algo_idx:Iterable = None):
+    def _update_lr_in_all_optimizers(self):
+        self.optimizer()
+
+    def _init_log_learn_on_batch(self, algo_idx: Iterable = None):
         if algo_idx is not None:
             for policy_n in algo_idx:
                 self._to_log[f"learn_on_batch_algo{policy_n}"] = 0.0
@@ -188,8 +195,9 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
                         p["lr"] = algo.cur_lr
 
         all_optimizers = []
-        for algo in self.algorithms:
-            all_optimizers.extend(algo.optimizer())
+        for algo_n, algo in enumerate(self.algorithms):
+            opt = algo.optimizer()
+            all_optimizers.extend(opt)
         return all_optimizers
 
     # TODO Move this in helper functions
@@ -207,3 +215,15 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         for algo_idx, algo in enumerate(self.algorithms):
             self.to_log[f"algo{algo_idx}"] = log._log_learning_rate(self)
 
+    def set_state(self, state: object) -> None:
+        state = state.copy()  # shallow copy
+        # Set optimizer vars first.
+        optimizer_vars = state.pop("_optimizer_variables", None)
+        if optimizer_vars:
+            print("self", self)
+            assert len(optimizer_vars) == len(self._optimizers), \
+                f"{len(optimizer_vars)} {len(self._optimizers)}"
+            for o, s in zip(self._optimizers, optimizer_vars):
+                o.load_state_dict(s)
+        # Then the Policy's (NN) weights.
+        super().set_state(state)

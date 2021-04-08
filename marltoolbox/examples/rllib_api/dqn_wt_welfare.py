@@ -1,8 +1,8 @@
 from ray.rllib.agents.dqn.dqn_torch_policy import postprocess_nstep_and_prio
 
 from marltoolbox.algos import augmented_dqn
-from examples.rllib_api import dqn_coin_game
-from marltoolbox.utils import log, miscellaneous, postprocessing
+from marltoolbox.examples.rllib_api import dqn_coin_game
+from marltoolbox.utils import log, miscellaneous, postprocessing, callbacks
 
 
 def main(debug, welfare=postprocessing.WELFARE_UTILITARIAN):
@@ -24,7 +24,7 @@ def _modify_policy_to_use_welfare(rllib_config, welfare):
     MyCoopDQNTorchPolicy = augmented_dqn.MyDQNTorchPolicy.with_updates(
         postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
             postprocessing.welfares_postprocessing_fn(),
-            postprocess_nstep_and_prio
+            postprocess_nstep_and_prio,
         )
     )
 
@@ -55,6 +55,10 @@ def _modify_policy_to_use_welfare(rllib_config, welfare):
                      inequity_aversion_parameters}
             )
     rllib_config["multiagent"]["policies"] = new_policies
+    rllib_config["callbacks"] = callbacks.merge_callbacks(
+        log.get_logging_callbacks_class(),
+        postprocessing.OverwriteRewardWtWelfareCallback,
+    )
 
     return rllib_config
 

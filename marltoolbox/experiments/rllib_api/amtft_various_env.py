@@ -15,10 +15,10 @@ from ray.tune.logger import DEFAULT_LOGGERS
 from marltoolbox.algos import amTFT
 from marltoolbox.envs import \
     matrix_sequential_social_dilemma, vectorized_coin_game, \
-    vectorized_mixed_motive_coin_game
+    vectorized_mixed_motive_coin_game, ssd_mixed_motive_coin_game
 from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
 from marltoolbox.utils import exploration, log, \
-    postprocessing, miscellaneous, plot, self_and_cross_perf
+    postprocessing, miscellaneous, plot, self_and_cross_perf, callbacks
 
 logger = logging.getLogger(__name__)
 
@@ -41,26 +41,30 @@ def main(debug, train_n_replicates=None, filter_utilitarian=None, env=None):
                 load_tune_analysis(hparams["load_policy_data"])
         # Eval & Plot
         analysis_metrics_per_mode = \
-            evaluate_self_and_cross_perf(tune_analysis_per_welfare, hparams)
+            config_and_evaluate_cross_play(tune_analysis_per_welfare, hparams)
 
         ray.shutdown()
     else:
         tune_analysis_per_welfare = None
         # Plot
         analysis_metrics_per_mode = \
-            evaluate_self_and_cross_perf(tune_analysis_per_welfare, hparams)
+            config_and_evaluate_cross_play(tune_analysis_per_welfare, hparams)
 
     return tune_analysis_per_welfare, analysis_metrics_per_mode
 
 
 def get_hyperparameters(debug, train_n_replicates=None,
                         filter_utilitarian=None, env=None):
+
     if debug:
         train_n_replicates = 2
+        n_times_more_utilitarians_seeds = 1
     elif train_n_replicates is None:
+        n_times_more_utilitarians_seeds = 4
         train_n_replicates = 4
+    else:
+        n_times_more_utilitarians_seeds = 4
 
-    n_times_more_utilitarians_seeds = 4
     n_seeds_to_prepare = \
         train_n_replicates * (1 + n_times_more_utilitarians_seeds)
     pool_of_seeds = miscellaneous.get_random_seeds(n_seeds_to_prepare)
@@ -158,11 +162,12 @@ def get_hyperparameters(debug, train_n_replicates=None,
         "self_play": True,
         # "self_play": False, # Not tested
 
-        # "env_name": "IteratedPrisonersDilemma" if env is None else env,
+        "env_name": "IteratedPrisonersDilemma" if env is None else env,
         # "env_name": "IteratedAsymBoS" if env is None else env,
         # "env_name": "CoinGame" if env is None else env,
         # "env_name": "AsymCoinGame" if env is None else env,
-        "env_name": "MixedMotiveCoinGame" if env is None else env,
+        # "env_name": "MixedMotiveCoinGame" if env is None else env,
+        # "env_name": "SSDMixedMotiveCoinGame" if env is None else env,
 
         "overwrite_reward": True,
         "explore_during_evaluation": True,
@@ -226,7 +231,7 @@ def modify_hyperparams_for_the_selected_env(hp):
         hp["filter_utilitarian"] = False
 
         hp["target_network_update_freq"] = 100 * hp["n_steps_per_epi"]
-        hp["last_exploration_temp_value"] = 0.5 * mul_temp
+        hp["last_exploration_temp_value"] = 0.1 * mul_temp
 
         hp["temperature_schedule"] = PiecewiseSchedule(
             endpoints=[
@@ -246,8 +251,12 @@ def modify_hyperparams_for_the_selected_env(hp):
         elif "MixedMotiveCoinGame" in hp["env_name"]:
             hp["x_limits"] = (-2.0, 2.0)
             hp["y_limits"] = (-0.5, 3.0)
-            hp["env_class"] = \
-                vectorized_mixed_motive_coin_game.VectMixedMotiveCG
+            if "SSDMixedMotiveCoinGame" in hp["env_name"]:
+                hp["env_class"] = \
+                    ssd_mixed_motive_coin_game.SSDMixedMotiveCoinGame
+            else:
+                hp["env_class"] = \
+                    vectorized_mixed_motive_coin_game.VectMixedMotiveCG
             hp["both_players_can_pick_the_same_coin"] = True
         else:
             hp["x_limits"] = (-0.5, 0.6)
@@ -334,13 +343,13 @@ def train_for_each_welfare_function(hp):
               welfare_fn)
         if welfare_fn == postprocessing.WELFARE_UTILITARIAN:
             hp = preprocess_utilitarian_config(hp)
-        stop, env_config, trainer_config_update = \
+        stop, env_config, rllib_config = \
             get_rllib_config(hp, welfare_fn)
 
         exp_name = os.path.join(hp["exp_name"], welfare_fn)
         results = amTFT.train_amtft(
-            stop=stop,
-            config=trainer_config_update,
+            stop_config=stop,
+            rllib_config=rllib_config,
             name=exp_name,
             TrainerClass=dqn.DQNTrainer,
             plot_keys=hp["plot_keys"],
@@ -376,7 +385,7 @@ def get_rllib_config(hp, welfare_fn, eval=False):
     selected_seeds = hp["seeds"][:hp["train_n_replicates"]]
     hp["seeds"] = hp["seeds"][hp["train_n_replicates"]:]
 
-    trainer_config_update = {
+    rllib_config = {
         "env": hp["env_class"],
         "env_config": env_config,
         "multiagent": {
@@ -435,19 +444,11 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         # `examples/custom_metrics_and_callbacks.py` for more usage
         # information.
         "callbacks":
-            miscellaneous.merge_callbacks(
+            callbacks.merge_callbacks(
                 amTFT.AmTFTCallbacks,
                 log.get_logging_callbacks_class(log_full_epi=True,
                                                 log_full_epi_interval=100),
                 postprocessing.OverwriteRewardWtWelfareCallback),
-
-            # amTFT.get_amTFTCallBacks(
-            # additionnal_callbacks=[
-            #     log.get_logging_callbacks_class(log_full_epi=True,
-            #                                     log_full_epi_interval=100),
-            #     This only overwrite the reward that is used for training
-            #     not the one in the metrics
-                # postprocessing.OverwriteRewardWtWelfareCallback]),
 
         "logger_config": {
             "wandb": {
@@ -511,13 +512,13 @@ def get_rllib_config(hp, welfare_fn, eval=False):
     }
 
     if "CoinGame" in hp["env_name"]:
-        trainer_config_update["model"] = {
+        rllib_config["model"] = {
             "dim": env_config["grid_size"],
             "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],
             # [Channel, [Kernel, Kernel], Stride]]
         }
 
-    return stop, env_config, trainer_config_update
+    return stop, env_config, rllib_config
 
 
 def get_env_config(hp):
@@ -641,15 +642,20 @@ def postprocess_utilitarian_results(results, env_config, hp):
     return results, hp_cp
 
 
-def evaluate_self_and_cross_perf(tune_analysis_per_welfare, hp):
+def config_and_evaluate_cross_play(tune_analysis_per_welfare, hp):
     config_eval, env_config, stop, hp_eval = generate_eval_config(hp)
     print("config_eval[explore]", config_eval["explore"])
     print("config_eval[exploration_config]", config_eval["exploration_config"])
+    evaluate_self_play_cross_play(tune_analysis_per_welfare, config_eval,
+                                  env_config, stop, hp_eval)
+
+def evaluate_self_play_cross_play(tune_analysis_per_welfare, config_eval,
+                                  env_config, stop, hp_eval):
     exp_name = os.path.join(hp_eval["exp_name"], "eval")
     evaluator = self_and_cross_perf.SelfAndCrossPlayEvaluator(
         exp_name=exp_name,
-        local_mode=hp["debug"],
-        use_wandb=not hp["debug"],
+        local_mode=hp_eval["debug"],
+        use_wandb=not hp_eval["debug"],
     )
     analysis_metrics_per_mode = evaluator.perform_evaluation_or_load_data(
         evaluation_config=config_eval,
@@ -658,19 +664,14 @@ def evaluate_self_and_cross_perf(tune_analysis_per_welfare, hp):
             env_config["players_ids"]),
         tune_analysis_per_exp=tune_analysis_per_welfare,
         TrainerClass=dqn.DQNTrainer,
-        # n_self_play_per_checkpoint=0,
-        # n_cross_play_per_checkpoint=1,
-        n_cross_play_per_checkpoint=
-        min(5,
-            (hp_eval["train_n_replicates"] *
-             len(hp_eval["welfare_functions"])) - 1
-            ),
+        n_self_play_per_checkpoint=hp_eval["n_self_play_per_checkpoint"],
+        n_cross_play_per_checkpoint=hp_eval["n_cross_play_per_checkpoint"],
         to_load_path=hp_eval["load_plot_data"])
 
-    if "CoinGame" in hp["env_name"]:
+    if "CoinGame" in hp_eval["env_name"]:
         background_area_coord = None
     else:
-        background_area_coord = hp['env_class'].PAYOUT_MATRIX
+        background_area_coord = hp_eval['env_class'].PAYOUT_MATRIX
     plot_config = plot.PlotConfig(
         xlim=hp_eval["x_limits"],
         ylim=hp_eval["y_limits"],
@@ -680,7 +681,6 @@ def evaluate_self_and_cross_perf(tune_analysis_per_welfare, hp):
         xlabel="player 1 payoffs",
         ylabel="player 2 payoffs",
         plot_max_n_points=hp_eval["train_n_replicates"],
-        # title="cross and same-play performances: " + hp_eval['env'].NAME,
         x_scale_multiplier=hp_eval["plot_axis_scale_multipliers"][0],
         y_scale_multiplier=hp_eval["plot_axis_scale_multipliers"][1],
         background_area_coord=background_area_coord
@@ -699,12 +699,12 @@ def evaluate_self_and_cross_perf(tune_analysis_per_welfare, hp):
 def generate_eval_config(hp):
     hp_eval = modify_hp_for_evaluation(hp)
     fake_welfare_function = postprocessing.WELFARE_INEQUITY_AVERSION
-    stop, env_config, trainer_config_update = get_rllib_config(
+    stop, env_config, rllib_config = get_rllib_config(
         hp_eval,
         fake_welfare_function,
         eval=True)
     config_eval = modify_config_for_evaluation(
-        trainer_config_update, hp_eval, env_config)
+        rllib_config, hp_eval, env_config)
     return config_eval, env_config, stop, hp_eval
 
 
@@ -720,6 +720,13 @@ def modify_hp_for_evaluation(hp):
         # for y axis
         (1 / hp_eval["n_steps_per_epi"])
     )
+    hp_eval["n_self_play_per_checkpoint"] = 1
+    hp_eval["n_cross_play_per_checkpoint"] = \
+        min(5,
+            ((hp_eval["train_n_replicates"] *
+              len(hp_eval["welfare_functions"]))
+             - 1)
+            )
     return hp_eval
 
 

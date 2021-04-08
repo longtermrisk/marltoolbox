@@ -68,6 +68,13 @@ class PlotHelper:
         self.plot_cfg = plot_config
 
     def plot_lines(self, data_groups: dict):
+        """
+
+        :param data_groups: dictionary containing pandas.DataFrame where
+        each column is a line to plot (exeption of the columns used for the
+        lower and upper bound of the envelop of another line).
+        :return:
+        """
         fig = self._init_plot()
 
         all_label_plotted = []
@@ -142,6 +149,8 @@ class PlotHelper:
             file_path = os.path.join(self.plot_cfg.save_dir_path, file_name)
             print("save fig to", file_path)
             fig.savefig(file_path, dpi=fig.dpi)
+        else:
+            file_path = None
         plt.close(fig)
         return file_path
 

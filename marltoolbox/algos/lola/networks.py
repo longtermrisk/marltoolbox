@@ -18,9 +18,10 @@ class Pnetwork:
     Recurrent policy network used in Coin Game experiments.
     """
     def __init__(self, myScope, h_size, agent, env, trace_length, batch_size,
-                 reuse=None, step=False, changed_config= False, ac_lr=1.0, use_MAE=False,
-                 use_toolbox_env=False, clip_loss_norm=False, sess=None, entropy_coeff=1.0,
-                 weigth_decay=0.01, use_critic=False, use_destabilizer_in_policy=False):
+                 reuse=None, step=False, changed_config= False, ac_lr=1.0,
+                 use_MAE=False, use_toolbox_env=False, clip_loss_norm=False,
+                 sess=None, entropy_coeff=1.0, weigth_decay=0.01,
+                 use_critic=False, use_destabilizer_in_policy=False):
         self.sess = sess
 
         # if use_toolbox_env:
@@ -99,6 +100,18 @@ class Pnetwork:
                     #     # uniform=True,
                     #     uniform=False,
                     # )
+                    # weights_initializer=tf.contrib.layers.variance_scaling_initializer(
+                    #     factor=1.0,
+                    #     mode='FAN_AVG',
+                    #     uniform=True,
+                    #     # uniform=False,
+                    # ),
+                    # biases_initializer=tf.contrib.layers.variance_scaling_initializer(
+                    #     factor=1.0,
+                    #     mode='FAN_AVG',
+                    #     uniform=True,
+                    #     # uniform=False,
+                    # ),
                 )
                 output = layers.convolution2d(output,
                     stride=1, kernel_size=3, num_outputs=20,
@@ -111,6 +124,18 @@ class Pnetwork:
                     #     # uniform=True,
                     #     uniform=False,
                     # )
+                    # weights_initializer=tf.contrib.layers.variance_scaling_initializer(
+                    #     factor=1.0,
+                    #     mode='FAN_AVG',
+                    #     uniform=True,
+                    #     # uniform=False,
+                    # ),
+                    # biases_initializer=tf.contrib.layers.variance_scaling_initializer(
+                    #     factor=1.0,
+                    #     mode='FAN_AVG',
+                    #     uniform=True,
+                    #     # uniform=False,
+                    # ),
                   )
 
                 output = layers.flatten(output)
@@ -142,6 +167,18 @@ class Pnetwork:
                 #     # uniform=True,
                 #     uniform=False,
                 # )
+                # weights_initializer=tf.contrib.layers.variance_scaling_initializer(
+                #     factor=1.0,
+                #     mode='FAN_AVG',
+                #     uniform=True,
+                #     # uniform=False,
+                # ),
+                # biases_initializer=tf.contrib.layers.variance_scaling_initializer(
+                #     factor=1.0,
+                #     mode='FAN_AVG',
+                #     uniform=True,
+                #     # uniform=False,
+                # ),
             )
             self.log_pi = tf.nn.log_softmax(output)
             self.lstm_state_output = state_output

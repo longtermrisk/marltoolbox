@@ -19,6 +19,8 @@ from ray import tune
 from ray.rllib.agents.dqn import DQNTorchPolicy
 from ray.tune.integration.wandb import WandbLogger
 from ray.tune.logger import DEFAULT_LOGGERS
+from ray.tune.suggest.hyperopt import HyperOptSearch
+import hyperopt as hp
 
 from marltoolbox.algos.lola import train_cg_tune_class_API
 from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
@@ -31,7 +33,7 @@ from marltoolbox.utils.plot import PlotConfig
 
 
 def main(debug, env=None):
-    train_n_replicates = 2 if debug else 40
+    train_n_replicates = 2 if debug else 1
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
 
@@ -57,6 +59,9 @@ def main(debug, env=None):
                              "../../../api_key_wandb"),
             "log_config": True
         },
+        "use_hp_search": True,
+        "hp_search_num_samples": 90,
+        "hp_search_objective": "hp_search_objective",
 
         # Print metrics
         "load_plot_data": None,
@@ -65,10 +70,12 @@ def main(debug, env=None):
         # Dynamically set
         "num_episodes": 3 if debug else 4000 if high_coop_speed_hp else 2000,
         "trace_length": 4 if debug else 20,
-        "lr": None,
-        "gamma": 0.5,
-        # "lr": 0.005,
-        # "gamma": 0.96,
+        # "lr": None,
+        # "gamma": 0.5,
+        "lr": 0.005/8,
+        # "gamma": 0.875,
+        "gamma": 0.9375,
+        # "lr": tune.loguniform(0.005/4 / 100, 0.005/4 * 100),
 
         "batch_size": 8 if debug else 512,
 
@@ -94,7 +101,8 @@ def main(debug, env=None):
 
         "warmup": 1,
 
-        "seed": tune.grid_search(seeds),
+        # "seed": tune.grid_search(seeds),
+        "seed": 0,
 
         "changed_config": False,
         "ac_lr": 1.0,
@@ -106,13 +114,18 @@ def main(debug, env=None):
         "clip_loss_norm": False,
         "clip_lola_update_norm": False,
         "clip_lola_correction_norm": 3.0,
+        # "clip_lola_correction_norm": tune.loguniform(3.0 / 100, 3.0 * 100),
         "clip_lola_actor_norm": 10.0,
+        # "clip_lola_actor_norm": tune.loguniform(10.0 / 100, 10.0 * 100),
 
-        "entropy_coeff": 0.001,
+        # "entropy_coeff": 0.001,
+        "entropy_coeff": tune.loguniform(0.001 / 100, 0.001 * 100),
 
-        "weigth_decay": 0.03,
+        # "weigth_decay": 0.03,
+        "weigth_decay": tune.loguniform(0.03/8 /100, 0.03/8 *100),
 
-        "lola_correction_multiplier": 1,
+        # "lola_correction_multiplier": 1,
+        "lola_correction_multiplier": tune.loguniform(1*4 / 100, 1*4 *100),
 
         "lr_decay": True,
 
@@ -155,6 +168,10 @@ def train(tune_hp):
     else:
         trainable_class = LOLAPGMatrice
 
+    # Specify the search space and maximize score
+    hyperopt = HyperOptSearch(metric=tune_hp["hp_search_objective"],
+                              mode="max")
+
     # Train with the Tune Class API (not RLLib Class)
     tune_analysis = tune.run(trainable_class,
                              name=tune_hp["exp_name"],
@@ -163,6 +180,9 @@ def train(tune_hp):
                              stop=stop,
                              metric=tune_config["metric"],
                              mode="max",
+                             search_alg=
+                             hyperopt if tune_hp["use_hp_search"] else None,
+                             num_samples=tune_hp["hp_search_num_samples"],
                              log_to_file=not tune_hp["debug"],
                              loggers=DEFAULT_LOGGERS + (WandbLogger, ))
     tune_analysis_per_exp = {"": tune_analysis}

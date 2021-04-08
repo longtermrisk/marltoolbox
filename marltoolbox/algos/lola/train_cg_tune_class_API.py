@@ -752,6 +752,13 @@ class LOLAPGCG(tune.Trainable):
             to_report.update(expl_training_info)
 
         self.full_episode_logger.on_episode_end()
+
+        to_report["hp_search_objective"] = \
+            to_report.get("player_blue_pick_speed", 0.0) + \
+            to_report.get("player_red_pick_speed", 0.0) + \
+            to_report.get("player_blue_pick_own_color", 0.0) + \
+            to_report.get("player_red_pick_own_color", 0.0)
+
         return to_report
 
     def compute_centered_discounted_r(self, rewards, discount):

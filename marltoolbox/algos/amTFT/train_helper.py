@@ -11,8 +11,8 @@ from marltoolbox.scripts.aggregate_and_plot_tensorboard_data import \
 from marltoolbox.utils import miscellaneous, restore
 
 
-def train_amtft(stop,
-                config,
+def train_amtft(stop_config,
+                rllib_config,
                 name,
                 do_not_load=[],
                 TrainerClass=DQNTrainer,
@@ -34,8 +34,8 @@ def train_amtft(stop,
     At the end, each amTFT policies contains 4 trained policies
     (own cooperative, own selfish, opponent cooperative, opponent selfish).
 
-    :param stop: arg for ray.tune.run
-    :param config: arg for ray.tune.run
+    :param stop_config: arg for ray.tune.run
+    :param rllib_config: arg for ray.tune.run
     :param name: arg for ray.tune.run
     :param do_not_load: useless?
     :param TrainerClass: arg for ray.tune.run
@@ -48,7 +48,7 @@ def train_amtft(stop,
     """
     selfish_name = os.path.join(name, "selfish")
     tune_analysis_selfish_policies = _train_selfish_policies_inside_amtft(
-        stop, config, selfish_name, TrainerClass, **kwargs)
+        stop_config, rllib_config, selfish_name, TrainerClass, **kwargs)
     plot_keys, plot_assemblage_tags = \
         _get_plot_keys(plot_keys, plot_assemblage_tags)
     if not debug:
@@ -60,14 +60,14 @@ def train_amtft(stop,
 
     seed_to_selfish_checkpoints = _extract_selfish_policies_checkpoints(
         tune_analysis_selfish_policies)
-    config = _modify_config_to_load_selfish_policies_in_amtft(
-        config,
+    rllib_config = _modify_config_to_load_selfish_policies_in_amtft(
+        rllib_config,
         do_not_load,
         seed_to_selfish_checkpoints)
 
     coop_name = os.path.join(name, "coop")
     tune_analysis_amTFT_policies = _train_cooperative_policies_inside_amtft(
-        stop, config, coop_name, TrainerClass, **kwargs)
+        stop_config, rllib_config, coop_name, TrainerClass, **kwargs)
     if not debug:
         add_summary_plots(
             main_path=os.path.join("~/ray_results/", coop_name),
@@ -77,19 +77,21 @@ def train_amtft(stop,
     return tune_analysis_amTFT_policies
 
 
-def _train_selfish_policies_inside_amtft(stop, config, name, trainer_class,
-                                         **kwargs):
-    config = copy.deepcopy(config)
-    stop = copy.deepcopy(stop)
-    for policy_id in config["multiagent"]["policies"].keys():
-        config["multiagent"]["policies"][policy_id][3][
+def _train_selfish_policies_inside_amtft(
+        stop_config, rllib_config, name, trainer_class, **kwargs):
+
+    rllib_config = copy.deepcopy(rllib_config)
+    stop_config = copy.deepcopy(stop_config)
+
+    for policy_id in rllib_config["multiagent"]["policies"].keys():
+        rllib_config["multiagent"]["policies"][policy_id][3][
             "working_state"] = "train_selfish"
     print("==============================================")
     print("amTFT starting to train the selfish policy")
     tune_analysis_selfish_policies = ray.tune.run(
         trainer_class,
-        config=config,
-        stop=stop,
+        config=rllib_config,
+        stop=stop_config,
         name=name,
         checkpoint_at_end=True,
         metric="episode_reward_mean",
@@ -117,32 +119,33 @@ def _extract_selfish_policies_checkpoints(tune_analysis_selfish_policies):
     return seed_to_checkpoint
 
 
-def _modify_config_to_load_selfish_policies_in_amtft(config, do_not_load,
-                                                     seed_to_checkpoint):
-    for policy_id in config["multiagent"]["policies"].keys():
+def _modify_config_to_load_selfish_policies_in_amtft(
+        rllib_config, do_not_load, seed_to_checkpoint):
+    for policy_id in rllib_config["multiagent"]["policies"].keys():
         if policy_id not in do_not_load:
-            policy_config_dict = config["multiagent"]["policies"][policy_id][3]
+            policy_config_dict = \
+                rllib_config["multiagent"]["policies"][policy_id][3]
             policy_config_dict[restore.LOAD_FROM_CONFIG_KEY] = (
                 miscellaneous.seed_to_checkpoint(seed_to_checkpoint),
                 policy_id
             )
-    return config
+    return rllib_config
 
 
-def _train_cooperative_policies_inside_amtft(stop, config, name, trainer_class,
-                                             **kwargs):
-    config = copy.deepcopy(config)
-    stop = copy.deepcopy(stop)
-    for policy_id in config["multiagent"]["policies"].keys():
-        policy_config_dict = config["multiagent"]["policies"][policy_id][3]
+def _train_cooperative_policies_inside_amtft(
+        stop_config, rllib_config, name, trainer_class, **kwargs):
+    rllib_config = copy.deepcopy(rllib_config)
+    stop_config = copy.deepcopy(stop_config)
+    for policy_id in rllib_config["multiagent"]["policies"].keys():
+        policy_config_dict = rllib_config["multiagent"]["policies"][policy_id][3]
         policy_config_dict["working_state"] = "train_coop"
 
     print("==============================================")
     print("amTFT starting to train the cooperative policy")
     tune_analysis_amTFT_policies = ray.tune.run(
         trainer_class,
-        config=config,
-        stop=stop,
+        config=rllib_config,
+        stop=stop_config,
         name=name,
         checkpoint_at_end=True,
         metric="episode_reward_mean",

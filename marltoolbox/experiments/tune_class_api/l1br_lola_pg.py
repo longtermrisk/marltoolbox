@@ -25,7 +25,8 @@ from marltoolbox.envs.vectorized_coin_game import \
 from marltoolbox.envs.matrix_sequential_social_dilemma import \
     IteratedPrisonersDilemma, IteratedBoS, IteratedAsymChicken, IteratedAsymBoS
 from marltoolbox.utils import \
-    policy, log, miscellaneous, lvl1_best_response, exploration, restore
+    policy, log, miscellaneous, lvl1_best_response, exploration, restore, \
+    callbacks
 
 
 # TODO make it work for all env (not only ACG and CG)? or only for them
@@ -480,7 +481,7 @@ def get_rllib_config(hp: dict, lvl1_idx: list, lvl1_training: bool):
         # `DefaultCallbacks` class and
         # `examples/custom_metrics_and_callbacks.py`
         # for more usage information.
-        "callbacks": miscellaneous.merge_callbacks(
+        "callbacks": callbacks.merge_callbacks(
             log.get_logging_callbacks_class(),
             population.PopulationOfIdenticalAlgoCallBacks),
 

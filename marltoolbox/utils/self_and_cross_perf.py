@@ -243,7 +243,7 @@ class SelfAndCrossPlayEvaluator:
             stop=self.stop_config,
             name=os.path.join(self.exp_name, "self_and_cross_play_eval"),
             log_to_file=not self.running_in_local_mode,
-            loggers=None if self.use_wandb
+            loggers=None if not self.use_wandb
                 else DEFAULT_LOGGERS + (WandbLogger,),
         )
 

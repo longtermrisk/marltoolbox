@@ -2,18 +2,18 @@ import ray
 
 
 def test_pg_ipd():
-    from examples.rllib_api.pg_ipd import main
+    from marltoolbox.examples.rllib_api.pg_ipd import main
     ray.shutdown()  # Restart Ray defensively in case the ray connection is lost.
     main(stop_iters=10, tf=False, debug=True)
 
 
 def test_ppo_asym_coin_game():
-    from examples.rllib_api.ppo_coin_game import main
+    from marltoolbox.examples.rllib_api.ppo_coin_game import main
     ray.shutdown()
     main(debug=True, stop_iters=3, tf=False)
 
 def test_ppo_asym_coin_game():
-    from examples.rllib_api.dqn_coin_game import main
+    from marltoolbox.examples.rllib_api.dqn_coin_game import main
     ray.shutdown()
     main(debug=True)
 
@@ -60,7 +60,7 @@ def test_amtft_mixed_motive_coin_game():
 
 
 def test_inequity_aversion():
-    from examples.rllib_api.inequity_aversion import main
+    from marltoolbox.examples.rllib_api.inequity_aversion import main
     ray.shutdown()
     main(debug=True)
 

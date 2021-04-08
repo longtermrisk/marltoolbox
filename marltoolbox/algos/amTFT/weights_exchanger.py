@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
 
-from marltoolbox.algos.amTFT.base_policy import OPP_SELFISH_POLICY_IDX, \
+from marltoolbox.algos.amTFT.base import OPP_SELFISH_POLICY_IDX, \
     OPP_COOP_POLICY_IDX, OWN_SELFISH_POLICY_IDX, OWN_COOP_POLICY_IDX, \
     AmTFTReferenceClass, WORKING_STATES_IN_EVALUATION
 from marltoolbox.algos.amTFT.level_1_exploiter import \

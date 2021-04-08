@@ -1,13 +1,11 @@
 import copy
 import difflib
-import inspect
 import logging
 import os
 import time
 from typing import TYPE_CHECKING
 
 import numpy as np
-from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
 from ray.tune.trial import Trial
@@ -16,7 +14,7 @@ from ray.tune import register_trainable
 from ray.tune import Trainable
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation import RolloutWorker
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -119,39 +117,6 @@ def extract_config_values_from_tune_analysis(tune_experiment_analysis, key):
         else:
             values.append(None)
     return values
-
-
-def merge_callbacks(*callbacks_class):
-    """
-    Merge several callback class together. Executing them in the order provided.
-    :param callbacks_class:
-    :return: a class which calls all provided callbacks in order
-    """
-    logger.info("start merge_callbacks", callbacks_class)
-
-    class MergedCallBacks(DefaultCallbacks):
-
-        def __init__(self):
-            super().__init__()
-            self.callbacks = [
-                callback() if inspect.isclass(callback) else callback for
-                callback in callbacks_class]
-
-        def __getattribute__(self, name):
-            super_attr = super().__getattribute__(name)
-            # Replace every callable by a callable calling the sequence of callbacks
-            if callable(super_attr):
-                def newfunc(*args, **kwargs):
-                    for callbacks in self.callbacks:
-                        function = callbacks.__getattribute__(name)
-                        function(*args, **kwargs)
-
-                return newfunc
-            else:
-                return super_attr
-
-    logger.info("end merge_callbacks")
-    return MergedCallBacks
 
 
 def merge_policy_postprocessing_fn(*postprocessing_fn_list):

@@ -24,7 +24,7 @@ from torch.nn import CrossEntropyLoss
 from marltoolbox.algos import augmented_dqn, supervised_learning, hierarchical
 from marltoolbox.algos.ltft.ltft_torch_policy import \
     LTFTCallbacks, LTFTTorchPolicy
-from marltoolbox.utils import log, miscellaneous, exploration
+from marltoolbox.utils import log, miscellaneous, exploration, callbacks
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ DEFAULT_CONFIG.update({
     # Number of replicates of the simulation of the opponent behavior
     "n_bootstrap_replicates": 50,
 
-    "callbacks": miscellaneous.merge_callbacks(
+    "callbacks": callbacks.merge_callbacks(
         LTFTCallbacks,
         log.get_logging_callbacks_class()),
 

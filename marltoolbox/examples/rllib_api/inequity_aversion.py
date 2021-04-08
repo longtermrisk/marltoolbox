@@ -5,7 +5,7 @@ from ray import tune
 from ray.rllib.agents.pg import PGTrainer, PGTorchPolicy, pg_torch_policy
 
 from marltoolbox.envs.matrix_sequential_social_dilemma import IteratedBoSAndPD
-from marltoolbox.utils import miscellaneous, log, postprocessing
+from marltoolbox.utils import miscellaneous, log, postprocessing, callbacks
 
 
 def main(debug):
@@ -50,7 +50,7 @@ def main(debug):
         "framework": "torch",
         "gamma": 0.5,
 
-        "callbacks": miscellaneous.merge_callbacks(
+        "callbacks": callbacks.merge_callbacks(
             log.get_logging_callbacks_class(),
             postprocessing.OverwriteRewardWtWelfareCallback),
 

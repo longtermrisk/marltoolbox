@@ -27,12 +27,12 @@ def after_init_load_policy_checkpoint(policy, observation_space=None,
     (when doing a grid_search over random seeds and with a multistage training)
     """
     checkpoint_path, policy_id = policy.config.pop(LOAD_FROM_CONFIG_KEY,
-                                                   (False, False))
+                                                   (None, None))
 
     if callable(checkpoint_path):
         checkpoint_path = checkpoint_path(policy.config)
 
-    if checkpoint_path:
+    if checkpoint_path is not None:
         load_one_policy_checkpoint(policy_id, policy, checkpoint_path)
         msg = f"marltoolbox restore: checkpoint found for policy_id: " \
               f"{policy_id}"

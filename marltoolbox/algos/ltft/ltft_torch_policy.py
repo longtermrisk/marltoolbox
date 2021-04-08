@@ -115,6 +115,9 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         self.remaining_punishing_time = 0
         self.being_punished_by_opp = False
 
+
+        self._reset_learner_stats()
+
         # Logging
         log_len_in_steps = 100
         # for 0) the cooperative policy
@@ -128,13 +131,15 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         self.n_cooperation_steps_in_current_epi = 0
         self.n_punishment_steps_in_current_epi = 0
 
-        self.learner_stats = {"learner_stats": {}}
 
         self.add_welfare_fn = \
             postprocessing.welfares_postprocessing_fn(
                 add_utilitarian_welfare=True,
                 add_opponent_action=True,
                 add_opponent_neg_reward=True)
+
+    def _reset_learner_stats(self):
+        self.learner_stats = {"learner_stats": {}}
 
     @override(hierarchical.HierarchicalTorchPolicy)
     def compute_actions(
@@ -164,19 +169,16 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
         return self.active_algo_idx == self.PUNITIVE_POLICY_IDX
 
     @override(hierarchical.HierarchicalTorchPolicy)
-    def learn_on_batch(self, samples: SampleBatch):
+    def _learn_on_batch(self, samples: SampleBatch):
 
-        nested_policies, policy_to_train = \
+        policies_idx_to_train, policies_to_train = \
             self._get_policies_idx_to_train_with_current_batch()
-        if len(nested_policies) == 0:
+        if len(policies_idx_to_train) == 0:
             return self.learner_stats
-        logging.debug(f"nested_policies {nested_policies}")
-        self._init_log_learn_on_batch(nested_policies)
+        logging.debug(f"policies_idx_to_train {policies_idx_to_train}")
+        self._init_log_learn_on_batch(policies_idx_to_train)
 
-        # Update LR used in optimizer
-        self.optimizer()
-
-        for policy_n, algo in zip(nested_policies, policy_to_train):
+        for policy_n, algo in zip(policies_idx_to_train, policies_to_train):
             samples_copy = samples.copy()
             samples_copy = self._modify_batch_for_policy(
                 policy_n, samples_copy)
@@ -190,9 +192,10 @@ class LTFTTorchPolicy(hierarchical.HierarchicalTorchPolicy):
             else:
                 self.learner_stats["learner_stats"][f"algo{policy_n}"] = {}
 
-        self._log_learning_rates()
-
         return self.learner_stats
+
+    def on_train_result(self, *args, **kwargs):
+        self._reset_learner_stats()
 
     def _get_policies_idx_to_train_with_current_batch(self):
         nested_policies_to_train = []

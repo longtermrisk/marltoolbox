@@ -4,9 +4,10 @@ import numpy as np
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.utils.typing import TensorType
 
-from marltoolbox.algos.amTFT.base_policy import \
-    AmTFTPolicyBase, OWN_COOP_POLICY_IDX, OWN_SELFISH_POLICY_IDX, \
+from marltoolbox.algos.amTFT.base import \
+    OWN_COOP_POLICY_IDX, OWN_SELFISH_POLICY_IDX, \
     OPP_SELFISH_POLICY_IDX, OPP_COOP_POLICY_IDX, WORKING_STATES
+from marltoolbox.algos.amTFT.base_policy import AmTFTPolicyBase
 from marltoolbox.utils import rollout
 
 
@@ -397,7 +398,10 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
                    max(0, k_to_explore - n_steps_played)
             assert self.n_steps_to_punish_opponent == \
                    max(0, k_to_explore - n_steps_played)
-            assert len(self.overwrite_action) == 0
+            if n_steps_played > 0:
+                if len(self.overwrite_action) > 0:
+                    i= 0
+                assert len(self.overwrite_action) == 0
 
         self.n_steps_to_punish = 0
         self.n_steps_to_punish_opponent = 0
