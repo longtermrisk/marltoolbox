@@ -10,11 +10,12 @@ from ray.rllib.utils.typing import TensorType
 
 from marltoolbox.utils import log
 
+
 DEFAULT_CONFIG = {
-    'nested_policies': [
+    "nested_policies": [
         # You need to provide the policy class for every nested Policies
         {"Policy_class": None, "config_update": {}},
-        {"Policy_class": None, "config_update": {}}
+        {"Policy_class": None, "config_update": {}},
     ],
 }
 
@@ -22,8 +23,14 @@ DEFAULT_CONFIG = {
 class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
     INITIALLY_ACTIVE_ALGO = 0
 
-    def __init__(self, observation_space, action_space, config,
-                 after_init_nested=None, **kwargs):
+    def __init__(
+        self,
+        observation_space,
+        action_space,
+        config,
+        after_init_nested=None,
+        **kwargs,
+    ):
         self.algorithms = []
         self.config = config
         # TODO clean this
@@ -32,23 +39,29 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
             updated_config.update(nested_config["config_update"])
             if nested_config["Policy_class"] is None:
                 raise ValueError(
-                    f'You must specify the classes for the nested Policies '
+                    f"You must specify the classes for the nested Policies "
                     f'in config["nested_config"]["Policy_class"] '
-                    f'current value is {nested_config["Policy_class"]}')
+                    f'current value is {nested_config["Policy_class"]}'
+                )
             Policy = nested_config["Policy_class"]
-            policy = Policy(observation_space, action_space, updated_config,
-                            **kwargs)
+            policy = Policy(
+                observation_space, action_space, updated_config, **kwargs
+            )
             if after_init_nested is not None:
                 after_init_nested(policy)
             self.algorithms.append(policy)
 
         self.active_algo_idx = self.INITIALLY_ACTIVE_ALGO
 
-        super().__init__(observation_space, action_space, config,
-                         model=self.model,
-                         loss=None,
-                         action_distribution_class=self.dist_class,
-                         **kwargs)
+        super().__init__(
+            observation_space,
+            action_space,
+            config,
+            model=self.model,
+            loss=None,
+            action_distribution_class=self.dist_class,
+            **kwargs,
+        )
 
         for algo in self.algorithms:
             algo.model = algo.model.to(self.device)
@@ -64,19 +77,21 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         except AttributeError as initial:
             try:
                 return object.__getattribute__(
-                    self.algorithms[self.active_algo_idx], attr)
+                    self.algorithms[self.active_algo_idx], attr
+                )
             except AttributeError as secondary:
-                raise type(initial)(f'{initial.args} and {secondary.args}')
+                raise type(initial)(f"{initial.args} and {secondary.args}")
 
     @property
     def to_log(self):
-        to_log = {"meta_policy": self._to_log,
-                  "nested_policy": {
-                      f"policy_{algo_idx}": algo.to_log
-                      for algo_idx, algo in enumerate(self.algorithms)
-                      if hasattr(algo, "to_log")
-                  }
-                  }
+        to_log = {
+            "meta_policy": self._to_log,
+            "nested_policy": {
+                f"policy_{algo_idx}": algo.to_log
+                for algo_idx, algo in enumerate(self.algorithms)
+                if hasattr(algo, "to_log")
+            },
+        }
         return to_log
 
     @to_log.setter
@@ -128,8 +143,10 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         return nested_update_target
 
     def get_weights(self):
-        return {self.nested_key(i): algo.get_weights()
-                for i, algo in enumerate(self.algorithms)}
+        return {
+            self.nested_key(i): algo.get_weights()
+            for i, algo in enumerate(self.algorithms)
+        }
 
     def set_weights(self, weights):
         for i, algo in enumerate(self.algorithms):
@@ -139,20 +156,21 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         return f"nested_{i}"
 
     def compute_actions(
-            self,
-            obs_batch: Union[List[TensorType], TensorType],
-            state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Union[List[TensorType], TensorType] = None,
-            prev_reward_batch: Union[List[TensorType], TensorType] = None,
-            info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
-            explore: Optional[bool] = None,
-            timestep: Optional[int] = None,
-            **kwargs) -> \
-            Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+        self,
+        obs_batch: Union[List[TensorType], TensorType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Union[List[TensorType], TensorType] = None,
+        prev_reward_batch: Union[List[TensorType], TensorType] = None,
+        info_batch: Optional[Dict[str, list]] = None,
+        episodes: Optional[List["MultiAgentEpisode"]] = None,
+        explore: Optional[bool] = None,
+        timestep: Optional[int] = None,
+        **kwargs,
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
-        actions, state_out, extra_fetches = \
-            self.algorithms[self.active_algo_idx].compute_actions(obs_batch)
+        actions, state_out, extra_fetches = self.algorithms[
+            self.active_algo_idx
+        ].compute_actions(obs_batch)
 
         return actions, state_out, extra_fetches
 
@@ -176,9 +194,9 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
             for policy_n, _ in enumerate(self.algorithms):
                 self._to_log[f"learn_on_batch_algo{policy_n}"] = 0.0
 
-    def optimizer(self
-                  ) -> Union[
-        List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
+    def optimizer(
+        self,
+    ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
         """Custom the local PyTorch optimizer(s) to use.
 
         Returns:
@@ -202,18 +220,19 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
 
     # TODO Move this in helper functions
 
-    def postprocess_trajectory(self, sample_batch,
-                               other_agent_batches=None,
-                               episode=None):
+    def postprocess_trajectory(
+        self, sample_batch, other_agent_batches=None, episode=None
+    ):
         return self.algorithms[self.active_algo_idx].postprocess_trajectory(
-            sample_batch, other_agent_batches, episode)
+            sample_batch, other_agent_batches, episode
+        )
 
     def _log_learning_rates(self):
         """
         Use to log LR to check that they are really updated as configured.
         """
         for algo_idx, algo in enumerate(self.algorithms):
-            self.to_log[f"algo{algo_idx}"] = log._log_learning_rate(self)
+            self.to_log[f"algo{algo_idx}"] = log._log_learning_rate(algo)
 
     def set_state(self, state: object) -> None:
         state = state.copy()  # shallow copy
@@ -221,8 +240,9 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         optimizer_vars = state.pop("_optimizer_variables", None)
         if optimizer_vars:
             print("self", self)
-            assert len(optimizer_vars) == len(self._optimizers), \
-                f"{len(optimizer_vars)} {len(self._optimizers)}"
+            assert len(optimizer_vars) == len(
+                self._optimizers
+            ), f"{len(optimizer_vars)} {len(self._optimizers)}"
             for o, s in zip(self._optimizers, optimizer_vars):
                 o.load_state_dict(s)
         # Then the Policy's (NN) weights.

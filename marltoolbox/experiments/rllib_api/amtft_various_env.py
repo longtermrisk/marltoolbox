@@ -231,7 +231,7 @@ def modify_hyperparams_for_the_selected_env(hp):
         hp["filter_utilitarian"] = False
 
         hp["target_network_update_freq"] = 100 * hp["n_steps_per_epi"]
-        hp["last_exploration_temp_value"] = 0.1 * mul_temp
+        hp["last_exploration_temp_value"] = 0.03 * mul_temp
 
         hp["temperature_schedule"] = PiecewiseSchedule(
             endpoints=[
@@ -249,12 +249,15 @@ def modify_hyperparams_for_the_selected_env(hp):
             # hp["env_class"] = coin_game.AsymCoinGame
             hp["env_class"] = vectorized_coin_game.AsymVectorizedCoinGame
         elif "MixedMotiveCoinGame" in hp["env_name"]:
-            hp["x_limits"] = (-2.0, 2.0)
-            hp["y_limits"] = (-0.5, 3.0)
             if "SSDMixedMotiveCoinGame" in hp["env_name"]:
+                hp["debit_threshold"] = 3.0
+                hp["x_limits"] = (-0.25, 1.0)
+                hp["y_limits"] = (-0.25, 1.5)
                 hp["env_class"] = \
                     ssd_mixed_motive_coin_game.SSDMixedMotiveCoinGame
             else:
+                hp["x_limits"] = (-2.0, 2.0)
+                hp["y_limits"] = (-0.5, 3.0)
                 hp["env_class"] = \
                     vectorized_mixed_motive_coin_game.VectMixedMotiveCG
             hp["both_players_can_pick_the_same_coin"] = True
@@ -296,6 +299,7 @@ def modify_hyperparams_for_the_selected_env(hp):
         )
 
         if "IteratedPrisonersDilemma" in hp["env_name"]:
+            hp["filter_utilitarian"] = False
             hp["x_limits"] = (-3.5, 0.5)
             hp["y_limits"] = (-3.5, 0.5)
             hp["utilitarian_filtering_threshold"] = -2.5
@@ -309,24 +313,12 @@ def modify_hyperparams_for_the_selected_env(hp):
         else:
             raise NotImplementedError(f'hp["env_name"]: {hp["env_name"]}')
 
-    # if hp["gamma"] == 0.5:
     hp["lr_schedule"] = [
         (0, 0.0),
         (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.05),
          hp["base_lr"]),
-        # (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.5),
-        #  hp["base_lr"]/10),
         (int(hp["n_steps_per_epi"] * hp["n_epi"]), hp["base_lr"] / 1e9)
     ]
-    # elif hp["gamma"] == 0.96:
-    #     hp["lr_schedule"] = ExponentialSchedule(
-    #         schedule_timesteps=int(hp["n_steps_per_epi"] * hp["n_epi"]),
-    #         initial_p=hp["base_lr"],
-    #         decay_rate=1 / 20,
-    #         framework="torch"
-    #     )
-    # else:
-    #     raise ValueError()
 
     hp["plot_axis_scale_multipliers"] = (
         (1 / hp["n_steps_per_epi"]),  # for x axis
@@ -447,8 +439,7 @@ def get_rllib_config(hp, welfare_fn, eval=False):
             callbacks.merge_callbacks(
                 amTFT.AmTFTCallbacks,
                 log.get_logging_callbacks_class(log_full_epi=True,
-                                                log_full_epi_interval=100),
-                postprocessing.OverwriteRewardWtWelfareCallback),
+                                                log_full_epi_interval=100),),
 
         "logger_config": {
             "wandb": {
@@ -470,7 +461,7 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         "buffer_size": max(int(hp["n_steps_per_epi"] * hp["n_epi"]
                                * hp["buf_frac"]), 5),
         # Whether to use dueling dqn
-        "dueling": True,
+        "dueling": False,
         # Dense-layer setup for each the advantage branch and the value branch
         # in a dueling architecture.
         "hiddens": hp["hiddens"],
@@ -503,9 +494,7 @@ def get_rllib_config(hp, welfare_fn, eval=False):
             # "ray.rllib.utils.exploration.epsilon_greedy.
             # EpsilonGreedy").
             "type": exploration.SoftQSchedule,
-            # "type": exploration.SoftQScheduleWtClustering,
             # Add constructor kwargs here (if any).
-            # "clustering_distance": hp["clustering_distance"],
             "temperature_schedule": hp["temperature_schedule"],
         },
 
@@ -556,9 +545,9 @@ def get_policies(hp, env_config, welfare_fn, eval=False):
         {
             # Set to True to train the nested policies and to False to use them
             "working_state": "train_coop",
-            "welfare": welfare_fn,
+            "welfare_key": welfare_fn,
             "verbose": 1 if hp["debug"] else 0,
-            # "verbose": 1 if hp["debug"] else 1,
+            # "verbose": 1 if hp["debug"] else 2,
             "punishment_multiplier": hp["punishment_multiplier"],
             "debit_threshold": hp["debit_threshold"],
             "rollout_length": min(hp["n_steps_per_epi"], 40),
@@ -710,6 +699,7 @@ def generate_eval_config(hp):
 
 def modify_hp_for_evaluation(hp):
     hp_eval = copy.deepcopy(hp)
+    # TODO is the overwrite_reward hp useless?
     hp_eval["overwrite_reward"] = False
     hp_eval["n_epi"] = 1
     hp_eval["n_steps_per_epi"] = 5 if hp_eval["debug"] else 100
@@ -747,8 +737,6 @@ def modify_config_for_evaluation(config_eval, hp, env_config):
         config_eval["explore"] = (miscellaneous.OVERWRITE_KEY, True)
         config_eval["exploration_config"] = {
             "type": config_eval["exploration_config"]["type"],
-            # "type": exploration.SoftQScheduleWtClustering,
-            # "clustering_distance": hp["clustering_distance_eval"],
             "temperature_schedule": PiecewiseSchedule(
                 endpoints=[
                     (0, tmp_mul * hp["last_exploration_temp_value"]),
@@ -757,7 +745,7 @@ def modify_config_for_evaluation(config_eval, hp, env_config):
                 framework="torch"),
         }
 
-    if hp["debug"]:
+    if hp["debug"] and hp.get("debit_threshold_debug_override", True):
         for policy_id in policies.keys():
             policies[policy_id][3]["debit_threshold"] = 0.5
             policies[policy_id][3]["last_k"] = hp["n_steps_per_epi"] - 1

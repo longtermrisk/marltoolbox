@@ -230,7 +230,9 @@ class SelfAndCrossPlayEvaluator:
         assert n_self_play_per_checkpoint >= 0
         assert n_cross_play_per_checkpoint >= 0
         if n_cross_play_per_checkpoint > 0:
-            assert n_cross_play_per_checkpoint <= self.n_checkpoints - 1
+            assert n_cross_play_per_checkpoint <= self.n_checkpoints - 1, \
+            f"n_cross_play_per_checkpoint {n_cross_play_per_checkpoint} " \
+            f"and self.n_checkpoints {self.n_checkpoints}"
 
     def _evaluate_performances_in_parallel(
             self, n_self_play_per_checkpoint, n_cross_play_per_checkpoint):

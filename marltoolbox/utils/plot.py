@@ -1,4 +1,5 @@
 import os
+from typing import Union
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
@@ -30,6 +31,8 @@ class PlotConfig:
                  filename_prefix: str = "plot",
                  x_scale_multiplier: float = 1.0,
                  y_scale_multiplier: float = 1.0,
+                 x_use_log_scale: Union[bool, int] = False,
+                 y_use_log_scale: Union[bool, int] = False,
                  empty_markers=True,
                  background_area_coord=None,
                  markers=None):
@@ -60,6 +63,8 @@ class PlotConfig:
         self.empty_markers = empty_markers
         self.background_area_coord = background_area_coord
         self.markers = MARKERS if markers is None else markers
+        self.x_use_log_scale = x_use_log_scale
+        self.y_use_log_scale = y_use_log_scale
 
 
 class PlotHelper:
@@ -89,7 +94,22 @@ class PlotHelper:
 
     def _init_plot(self):
         fig = plt.figure(figsize=self.plot_cfg.figsize)
+        self._set_plot_axis_mode()
         return fig
+
+    def _set_plot_axis_mode(self):
+        if self.plot_cfg.x_use_log_scale:
+            if isinstance(self.plot_cfg.x_use_log_scale, int) and \
+                    not isinstance(self.plot_cfg.x_use_log_scale, bool):
+                plt.xscale('log', base=self.plot_cfg.x_use_log_scale)
+            else:
+                plt.xscale('log', base=2)
+        if self.plot_cfg.y_use_log_scale:
+            if isinstance(self.plot_cfg.y_use_log_scale, int) and \
+                    not isinstance(self.plot_cfg.y_use_log_scale, bool):
+                plt.yscale('log', base=self.plot_cfg.y_use_log_scale)
+            else:
+                plt.yscale('log', base=2)
 
     def _plot_lines_for_one_group(self, group_color, group_id, group_df):
         label_plotted = []

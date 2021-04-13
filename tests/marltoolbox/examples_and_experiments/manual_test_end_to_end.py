@@ -251,10 +251,8 @@ def test_amtft_coin_game():
         print("welfare_name", welfare_name)
         print_metrics_available(tune_analysis)
         check_learning_achieved(
-            tune_results=tune_analysis, min_=25)
-        check_learning_achieved(
             tune_results=tune_analysis,
-            max_=20)
+            min_=40)
         check_learning_achieved(
             tune_results=tune_analysis,
             min_=0.25,

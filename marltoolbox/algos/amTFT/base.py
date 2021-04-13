@@ -46,13 +46,14 @@ DEFAULT_CONFIG = merge_dicts(
         "last_k": 1,
         # TODO use log level of RLLib instead of mine
         "verbose": 1,
+        "auto_load_checkpoint": True,
 
         # To configure
         "own_policy_id": None,
         "opp_policy_id": None,
         "callbacks": None,
         # One from marltoolbox.utils.postprocessing.WELFARES
-        "welfare": postprocessing.WELFARE_UTILITARIAN,
+        "welfare_key": postprocessing.WELFARE_UTILITARIAN,
 
         'nested_policies': [
             # Here the trainer need to be a DQNTrainer

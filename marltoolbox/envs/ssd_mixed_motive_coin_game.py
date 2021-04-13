@@ -146,7 +146,7 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
                     self._same_pos(self.red_pos, self.blue_coin_pos):
                 # Blue coin is a coop coin
                 generate_new_coin = True
-                reward_blue += 1.4
+                reward_blue += 2.0
                 red_pick_any = True
                 blue_pick_any = True
                 blue_pick_blue = True

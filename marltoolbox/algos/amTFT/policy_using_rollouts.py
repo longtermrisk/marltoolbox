@@ -27,6 +27,7 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
         self.own_policy_id = config["own_policy_id"]
         self.opp_policy_id = config["opp_policy_id"]
         self.n_steps_to_punish_opponent = 0
+        self.ag_id_rollout_reward_to_read = self.opp_policy_id
 
         # Don't support LSTM (at least because of action
         # overwriting needed in the rollouts)
@@ -387,7 +388,9 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
                 f"coop_rollout._num_episodes {coop_rollout._num_episodes}"
 
             epi = coop_rollout._current_rollout
-            opp_rewards = [step[3][self.opp_policy_id] for step in epi]
+            opp_rewards = [step[3][self.ag_id_rollout_reward_to_read] for step
+                           in
+                           epi]
             # print("rewards", rewards)
             opp_total_reward = sum(opp_rewards)
 
@@ -399,8 +402,6 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
             assert self.n_steps_to_punish_opponent == \
                    max(0, k_to_explore - n_steps_played)
             if n_steps_played > 0:
-                if len(self.overwrite_action) > 0:
-                    i= 0
                 assert len(self.overwrite_action) == 0
 
         self.n_steps_to_punish = 0

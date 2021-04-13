@@ -11,14 +11,18 @@ from collections import Iterable
 from typing import Dict, Callable, TYPE_CHECKING
 
 import gym
-from marltoolbox.utils.full_epi_logger import FullEpisodeLogger
+import torch
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.typing import PolicyID, TensorType
 from scipy.special import softmax
+from torch.nn import Module
+
+from marltoolbox.utils.full_epi_logger import FullEpisodeLogger
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
@@ -26,14 +30,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def get_logging_callbacks_class(log_env_step=True,
-                                log_from_policy=True,
-                                log_full_epi=False,
-                                log_full_epi_interval=100,
-                                log_ful_epi_one_hot_obs=True,
-                                log_weights=False,
-                                log_weigths_interval=100,
-                                add_worker_idx_to_key=False):
+def get_logging_callbacks_class(log_env_step: bool = True,
+                                log_from_policy: bool = True,
+                                log_full_epi: bool = False,
+                                log_full_epi_interval: int = 100,
+                                log_ful_epi_one_hot_obs: bool = True,
+                                log_weights: bool = False,
+                                log_weigths_interval: int = 100,
+                                add_worker_idx_to_key=False,
+                                log_model_sumamry: bool = True):
     class LoggingCallbacks(DefaultCallbacks):
 
         def on_episode_start(self,
@@ -49,6 +54,9 @@ def get_logging_callbacks_class(log_env_step=True,
                     self._init_full_episode_logging(worker)
                 self._full_episode_logger.on_episode_start()
 
+            if log_model_sumamry:
+                self._log_model_sumamry(worker)
+
         def _is_full_episode_logging_initialized(self):
             return hasattr(self, "_full_episode_logger")
 
@@ -59,6 +67,84 @@ def get_logging_callbacks_class(log_env_step=True,
                 log_ful_epi_one_hot_obs=log_ful_epi_one_hot_obs,
             )
             logger.info("_full_episode_logger init done")
+
+        def _log_model_sumamry(self, worker):
+            if not hasattr(self, "_log_model_sumamry_done"):
+                self._log_model_sumamry_done = True
+                self._for_every_policy_print_model_stats(worker)
+
+        def _for_every_policy_print_model_stats(self, worker):
+            for policy_id, policy in worker.policy_map.items():
+                msg = f"===== Models summaries policy_id {policy_id} ====="
+                print(msg)
+                logger.info(msg)
+                self._print_model_summary(policy)
+                self._count_parameters_in_every_modules(policy)
+
+        @staticmethod
+        def _print_model_summary(policy):
+            if isinstance(policy, TorchPolicy):
+                for k, v in policy.__dict__.items():
+                    if isinstance(v, Module):
+                        msg = f"{k}, {v}"
+                        print(msg)
+                        logger.info(msg)
+
+        def _count_parameters_in_every_modules(self, policy):
+            if isinstance(policy, TorchPolicy):
+                for k, v in policy.__dict__.items():
+                    if isinstance(v, Module):
+                        self._count_and_log_for_one_module(policy, k, v)
+
+        def _count_and_log_for_one_module(self, policy, module_name, module):
+            n_param = self._count_parameters(module, module_name)
+            n_param_shared_counted_once = self._count_parameters(
+                module, module_name, count_shared_once=True)
+            n_param_trainable = self._count_parameters(
+                module, module_name, only_trainable=True)
+            self._log_values_in_to_log(
+                policy,
+                {
+                    f"module_{module_name}_n_param":
+                        n_param,
+                    f"module_{module_name}_n_param_shared_counted_once":
+                        n_param_shared_counted_once,
+                    f"module_{module_name}_n_param_trainable":
+                        n_param_trainable,
+                }
+            )
+
+        @staticmethod
+        def _log_values_in_to_log(policy, dictionary):
+            if hasattr(policy, "to_log"):
+                policy.to_log.update(dictionary)
+
+        @staticmethod
+        def _count_parameters(
+                m: torch.nn.Module,
+                module_name:str,
+                count_shared_once: bool = False,
+                only_trainable: bool = False):
+            """
+            returns the total number of parameters used by `m` (only counting
+            shared parameters once); if `only_trainable` is True, then only
+            includes parameters with `requires_grad = True`
+            """
+            parameters = m.parameters()
+            if only_trainable:
+                parameters = list(p for p in parameters if p.requires_grad)
+            if count_shared_once:
+                parameters = dict(
+                    (p.data_ptr(), p) for p in parameters).values()
+            number_of_parameters = sum(p.numel() for p in parameters)
+
+            msg = f"{module_name}: " \
+                  f"number_of_parameters: {number_of_parameters} " \
+                  f"(only_trainable: {only_trainable}, " \
+                  f"count_shared_once: {count_shared_once})"
+            print(msg)
+            logger.info(msg)
+            return number_of_parameters
 
         def on_episode_step(self,
                             *,
@@ -121,12 +207,12 @@ def get_logging_callbacks_class(log_env_step=True,
         @staticmethod
         def _add_env_info_to_custom_metrics(worker, episode):
 
-            for agent_id in worker.policy_map.keys():
-                info = episode.last_info_for(agent_id)
+            for policy_id in worker.policy_map.keys():
+                info = episode.last_info_for(policy_id)
                 for k, v in info.items():
                     if isinstance(v, numbers.Number):
                         # TODO this add the logs as metrics (with mean, min, max) => this does produce too much logs
-                        episode.custom_metrics[f"{k}/{agent_id}"] = v
+                        episode.custom_metrics[f"{k}/{policy_id}"] = v
 
         def _update_train_result_wt_to_log(self, trainer, result: dict,
                                            function_to_exec):

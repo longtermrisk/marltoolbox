@@ -19,8 +19,6 @@ from ray import tune
 from ray.rllib.agents.dqn import DQNTorchPolicy
 from ray.tune.integration.wandb import WandbLogger
 from ray.tune.logger import DEFAULT_LOGGERS
-from ray.tune.suggest.hyperopt import HyperOptSearch
-import hyperopt as hp
 
 from marltoolbox.algos.lola import train_cg_tune_class_API
 from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
@@ -59,23 +57,28 @@ def main(debug, env=None):
                              "../../../api_key_wandb"),
             "log_config": True
         },
-        "use_hp_search": True,
-        "hp_search_num_samples": 90,
-        "hp_search_objective": "hp_search_objective",
+        # "use_hp_search": True,
+        # "hp_search_num_samples": 90,
+        # "hp_search_objective": "hp_search_objective",
 
         # Print metrics
         "load_plot_data": None,
         # Example: "load_plot_data": ".../SelfAndCrossPlay_save.p",
 
-        # Dynamically set
-        "num_episodes": 3 if debug else 4000 if high_coop_speed_hp else 2000,
-        "trace_length": 4 if debug else 20,
-        # "lr": None,
         # "gamma": 0.5,
-        "lr": 0.005/8,
+        # "num_episodes": 3 if debug else 4000 if high_coop_speed_hp else 2000,
+        # "trace_length": 4 if debug else 20,
+        # "lr": None,
+
         # "gamma": 0.875,
+        # "lr": 0.005 / 4,
+        # "num_episodes": 3 if debug else 4000,
+        # "trace_length": 4 if debug else 20,
+
         "gamma": 0.9375,
-        # "lr": tune.loguniform(0.005/4 / 100, 0.005/4 * 100),
+        "lr": tune.grid_search([0.005 / 4, 0.005 / 4 / 2, 0.005 / 4 / 2 / 2]),
+        "num_episodes": 3 if debug else tune.grid_search([4000, 8000]),
+        "trace_length": 4 if debug else tune.grid_search([40, 80]),
 
         "batch_size": 8 if debug else 512,
 
@@ -101,8 +104,7 @@ def main(debug, env=None):
 
         "warmup": 1,
 
-        # "seed": tune.grid_search(seeds),
-        "seed": 0,
+        "seed": tune.grid_search(seeds),
 
         "changed_config": False,
         "ac_lr": 1.0,
@@ -113,19 +115,26 @@ def main(debug, env=None):
 
         "clip_loss_norm": False,
         "clip_lola_update_norm": False,
-        "clip_lola_correction_norm": 3.0,
-        # "clip_lola_correction_norm": tune.loguniform(3.0 / 100, 3.0 * 100),
-        "clip_lola_actor_norm": 10.0,
-        # "clip_lola_actor_norm": tune.loguniform(10.0 / 100, 10.0 * 100),
 
-        # "entropy_coeff": 0.001,
-        "entropy_coeff": tune.loguniform(0.001 / 100, 0.001 * 100),
+        "clip_lola_correction_norm": 3.0,
+        # "clip_lola_correction_norm":
+        # tune.grid_search([3.0 / 2, 3.0, 3.0 * 2]),
+
+        "clip_lola_actor_norm": 10.0,
+        # "clip_lola_actor_norm": tune.grid_search([10.0 / 2, 10.0, 10.0 * 2]),
+
+        "entropy_coeff": 0.001,
+        # "entropy_coeff": tune.grid_search([0.001/2/2, 0.001/2, 0.001]),
 
         # "weigth_decay": 0.03,
-        "weigth_decay": tune.loguniform(0.03/8 /100, 0.03/8 *100),
+        "weigth_decay": tune.grid_search([0.03 / 8 / 2 / 2,
+                                          0.03 / 8 / 2,
+                                          0.03 / 8]),
 
         # "lola_correction_multiplier": 1,
-        "lola_correction_multiplier": tune.loguniform(1*4 / 100, 1*4 *100),
+        "lola_correction_multiplier": tune.grid_search([1 * 4,
+                                                        1 * 4 * 2,
+                                                        1 * 4 * 2 * 2]),
 
         "lr_decay": True,
 
@@ -169,8 +178,8 @@ def train(tune_hp):
         trainable_class = LOLAPGMatrice
 
     # Specify the search space and maximize score
-    hyperopt = HyperOptSearch(metric=tune_hp["hp_search_objective"],
-                              mode="max")
+    # hyperopt = HyperOptSearch(metric=tune_hp["hp_search_objective"],
+    #                           mode="max")
 
     # Train with the Tune Class API (not RLLib Class)
     tune_analysis = tune.run(trainable_class,
@@ -180,11 +189,11 @@ def train(tune_hp):
                              stop=stop,
                              metric=tune_config["metric"],
                              mode="max",
-                             search_alg=
-                             hyperopt if tune_hp["use_hp_search"] else None,
-                             num_samples=tune_hp["hp_search_num_samples"],
+                             # search_alg=
+                             # hyperopt if tune_hp["use_hp_search"] else None,
+                             # num_samples=tune_hp["hp_search_num_samples"],
                              log_to_file=not tune_hp["debug"],
-                             loggers=DEFAULT_LOGGERS + (WandbLogger, ))
+                             loggers=DEFAULT_LOGGERS + (WandbLogger,))
     tune_analysis_per_exp = {"": tune_analysis}
 
     # if not tune_hp["debug"]:
@@ -297,8 +306,10 @@ def get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
         }
         tune_config['metric'] = "player_row_CC_freq"
 
-    tune_hp["scale_multipliers"] = (
-        1 / tune_config['trace_length'], 1 / tune_config['trace_length'])
+    tune_hp["scale_multipliers"] = tune.sample_from(
+        lambda spec:
+        (1 / spec.config['trace_length'],
+         1 / spec.config['trace_length']))
     tune_config["env_config"] = env_config
 
     if stop_on_epi_number:
