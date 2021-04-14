@@ -46,8 +46,6 @@ def get_hyperparameters(debug, env):
         "train_n_replicates": train_n_replicates,
         "seeds": pool_of_seeds,
         "exp_name": exp_name,
-        "n_steps_per_epi": 20,
-        "bs_epi_mul": 4,
         "welfare_functions": [
             (postprocessing.WELFARE_UTILITARIAN, "utilitarian")
         ],
@@ -55,25 +53,17 @@ def get_hyperparameters(debug, env):
         "explore_during_evaluation": True,
         "n_seeds_lvl0": train_n_replicates,
         "n_seeds_lvl1": train_n_replicates // 2,
-        "gamma": 0.5,
-        "lambda": 0.9,
-        "alpha": 0.0,
-        "beta": 1.0,
+        "gamma": 0.96,
         "temperature_schedule": False,
-        "clustering_distance": 0.2,
-        "debit_threshold": 4.0,
         "jitter": 0.05,
         "hiddens": [64],
-        "base_lr": 0.01,
         "env_name": "IteratedPrisonersDilemma",
         # "env_name": "IteratedAsymBoS",
         # "env_name": "IteratedAsymChicken",
         # "env_name": "CoinGame",
         # "env_name": "AsymCoinGame",
-        # For training speed
-        "min_iter_time_s": 0.0 if debug else 3.0,
         "overwrite_reward": True,
-        "use_adam": False,
+        "reward_uncertainty": 0.0,
     }
 
     if env is not None:
@@ -145,8 +135,6 @@ def modify_conf_for_lvl1_training(
         log.get_logging_callbacks_class(
             log_full_epi=False, log_full_epi_interval=100
         ),
-        # postprocessing.OverwriteRewardWtWelfareCallback,
-        # population.PopulationOfIdenticalAlgoCallBacks
     )
 
     l1br_configuration_helper = lvl1_best_response.L1BRConfigurationHelper(
