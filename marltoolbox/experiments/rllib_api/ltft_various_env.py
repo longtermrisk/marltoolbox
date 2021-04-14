@@ -341,7 +341,7 @@ def _get_rllib_config(hp: dict):
             "callbacks": callbacks.merge_callbacks(
                 ltft.LTFTCallbacks,
                 log.get_logging_callbacks_class(
-                    log_full_epi=True, log_full_epi_interval=100
+                    log_full_epi=True,
                 ),
             ),
         }
