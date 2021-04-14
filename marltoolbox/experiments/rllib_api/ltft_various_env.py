@@ -9,41 +9,53 @@ from ray.tune.integration.wandb import WandbLogger
 from ray.tune.logger import DEFAULT_LOGGERS
 
 from marltoolbox.algos import ltft, augmented_dqn
-from marltoolbox.algos.exploiters.influence_evader import \
-    InfluenceEvaderTorchPolicy
-from marltoolbox.envs import \
-    matrix_sequential_social_dilemma, vectorized_coin_game, \
-    mixed_motive_coin_game
-from marltoolbox.envs.utils.wrappers import \
-    add_RewardUncertaintyEnvClassWrapper
-from marltoolbox.scripts import \
-    aggregate_and_plot_tensorboard_data
-from marltoolbox.utils import log, miscellaneous, exploration, \
-    postprocessing, callbacks
+from marltoolbox.algos.exploiters.influence_evader import (
+    InfluenceEvaderTorchPolicy,
+)
+from marltoolbox.envs import (
+    matrix_sequential_social_dilemma,
+    vectorized_coin_game,
+    mixed_motive_coin_game,
+)
+from marltoolbox.envs.utils.wrappers import (
+    add_RewardUncertaintyEnvClassWrapper,
+)
+from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
+from marltoolbox.utils import (
+    log,
+    miscellaneous,
+    exploration,
+    postprocessing,
+    callbacks,
+)
 
 
 def main(debug, env=None, train_n_replicates=None, against_naive_opp=False):
     """Train 2 agents in self play and then against an exploiter"""
-    hparameters, exp_name = _get_hyparameters(debug, env, train_n_replicates,
-                                              against_naive_opp)
+    hparameters, exp_name = _get_hyparameters(
+        debug, env, train_n_replicates, against_naive_opp
+    )
     rllib_config, env_config, stop = _get_rllib_config(hparameters)
 
     ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
 
     # tune_analysis_self_play = None
     tune_analysis_self_play = _train_in_self_play(
-        rllib_config, stop, exp_name, hparameters)
+        rllib_config, stop, exp_name, hparameters
+    )
 
     # tune_analysis_naive_opponent = None
     tune_analysis_against_opponent = _train_against_opponent(
-        hparameters, rllib_config, stop, exp_name, env_config)
+        hparameters, rllib_config, stop, exp_name, env_config
+    )
 
     ray.shutdown()
     return tune_analysis_self_play, tune_analysis_against_opponent
 
 
-def _get_hyparameters(debug, env=None, train_n_replicates=None,
-                      against_naive_opp=False):
+def _get_hyparameters(
+    debug, env=None, train_n_replicates=None, against_naive_opp=False
+):
     if debug:
         train_n_replicates = 1
     elif train_n_replicates is None:
@@ -60,17 +72,16 @@ def _get_hyparameters(debug, env=None, train_n_replicates=None,
         "log_n_points": 260,
         "clustering_distance": 0.2,
         "gamma": 0.96,
-
         "env_name": "IteratedPrisonersDilemma" if env is None else env,
         # "env_name": "CoinGame" if env is None else env,
         "reward_uncertainty_std": 0.1,
-
         # "against_evader_exploiter": None,
         "against_evader_exploiter": {
             "start_exploit": 0.75,
             "copy_weights_delay": 0.05,
-        } if not against_naive_opp else None,
-
+        }
+        if not against_naive_opp
+        else None,
     }
 
     hparameters = _modify_hyperparams_for_the_selected_env(hparameters)
@@ -79,11 +90,13 @@ def _get_hyparameters(debug, env=None, train_n_replicates=None,
 
 
 def _modify_hyperparams_for_the_selected_env(hp):
-    hp["plot_keys"] = ltft.PLOT_KEYS + \
-                      aggregate_and_plot_tensorboard_data.PLOT_KEYS
-    hp["plot_assemblage_tags"] = \
-        ltft.PLOT_ASSEMBLAGE_TAGS + \
-        aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS
+    hp["plot_keys"] = (
+        ltft.PLOT_KEYS + aggregate_and_plot_tensorboard_data.PLOT_KEYS
+    )
+    hp["plot_assemblage_tags"] = (
+        ltft.PLOT_ASSEMBLAGE_TAGS
+        + aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS
+    )
     hp["training_intensity"] = None
 
     if "CoinGame" in hp["env_name"]:
@@ -102,17 +115,18 @@ def _modify_hyperparams_for_the_selected_env(hp):
         hp["temperature_schedule"] = PiecewiseSchedule(
             endpoints=[
                 (0, 2.0),
-                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.20),
-                 0.5),
-                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.60),
-                 hp["last_exploration_temp_value"])],
+                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.20), 0.5),
+                (
+                    int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.60),
+                    hp["last_exploration_temp_value"],
+                ),
+            ],
             outside_value=hp["last_exploration_temp_value"],
-            framework="torch")
+            framework="torch",
+        )
 
-        hp["plot_keys"] += \
-            vectorized_coin_game.PLOT_KEYS
-        hp["plot_assemblage_tags"] += \
-            vectorized_coin_game.PLOT_ASSEMBLAGE_TAGS
+        hp["plot_keys"] += vectorized_coin_game.PLOT_KEYS
+        hp["plot_assemblage_tags"] += vectorized_coin_game.PLOT_ASSEMBLAGE_TAGS
 
         if "AsymCoinGame" in hp["env_name"]:
             hp["x_limits"] = (-0.5, 3.0)
@@ -141,24 +155,28 @@ def _modify_hyperparams_for_the_selected_env(hp):
         hp["temperature_schedule"] = PiecewiseSchedule(
             endpoints=[
                 (0, 2.0),
-                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.50),
-                 0.5),
-                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.75),
-                 hp["last_exploration_temp_value"])],
+                (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.50), 0.5),
+                (
+                    int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.75),
+                    hp["last_exploration_temp_value"],
+                ),
+            ],
             outside_value=hp["last_exploration_temp_value"],
-            framework="torch")
+            framework="torch",
+        )
 
-        hp["plot_keys"] += \
-            matrix_sequential_social_dilemma.PLOT_KEYS
-        hp["plot_assemblage_tags"] += \
-            matrix_sequential_social_dilemma.PLOT_ASSEMBLAGE_TAGS
+        hp["plot_keys"] += matrix_sequential_social_dilemma.PLOT_KEYS
+        hp[
+            "plot_assemblage_tags"
+        ] += matrix_sequential_social_dilemma.PLOT_ASSEMBLAGE_TAGS
 
         if "IteratedPrisonersDilemma" in hp["env_name"]:
             hp["x_limits"] = (-3.5, 0.5)
             hp["y_limits"] = (-3.5, 0.5)
             hp["utilitarian_filtering_threshold"] = -2.5
-            hp["env_class"] = \
-                matrix_sequential_social_dilemma.IteratedPrisonersDilemma
+            hp[
+                "env_class"
+            ] = matrix_sequential_social_dilemma.IteratedPrisonersDilemma
         elif "IteratedAsymBoS" in hp["env_name"]:
             hp["x_limits"] = (-0.1, 4.1)
             hp["y_limits"] = (-0.1, 4.1)
@@ -169,14 +187,14 @@ def _modify_hyperparams_for_the_selected_env(hp):
 
     hp["lr_schedule"] = [
         (0, 0.0),
-        (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.05),
-         hp["base_lr"]),
-        (int(hp["n_steps_per_epi"] * hp["n_epi"]), hp["base_lr"] / 1e9)
+        (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.05), hp["base_lr"]),
+        (int(hp["n_steps_per_epi"] * hp["n_epi"]), hp["base_lr"] / 1e9),
     ]
 
     hp["plot_axis_scale_multipliers"] = (
         (1 / hp["n_steps_per_epi"]),  # for x axis
-        (1 / hp["n_steps_per_epi"]))  # for y axis
+        (1 / hp["n_steps_per_epi"]),
+    )  # for y axis
 
     return hp
 
@@ -189,155 +207,155 @@ def _get_rllib_config(hp: dict):
     env_config = _get_env_config(hp)
 
     my_uncertain_env_class = add_RewardUncertaintyEnvClassWrapper(
-        hp["env_class"],
-        reward_uncertainty_std=hp["reward_uncertainty_std"])
+        hp["env_class"], reward_uncertainty_std=hp["reward_uncertainty_std"]
+    )
 
     rllib_config = copy.deepcopy(ltft.DEFAULT_CONFIG)
-    rllib_config.update({
-        "env": my_uncertain_env_class,
-        "env_config": env_config,
-        "multiagent": {
-            "policies": {
-                env_config["players_ids"][0]: (
-                    None,
-                    hp["env_class"]({}).OBSERVATION_SPACE,
-                    hp["env_class"].ACTION_SPACE,
-                    {}),
-                env_config["players_ids"][1]: (
-                    None,
-                    hp["env_class"]({}).OBSERVATION_SPACE,
-                    hp["env_class"].ACTION_SPACE,
-                    {}),
+    rllib_config.update(
+        {
+            "env": my_uncertain_env_class,
+            "env_config": env_config,
+            "multiagent": {
+                "policies": {
+                    env_config["players_ids"][0]: (
+                        None,
+                        hp["env_class"]({}).OBSERVATION_SPACE,
+                        hp["env_class"].ACTION_SPACE,
+                        {},
+                    ),
+                    env_config["players_ids"][1]: (
+                        None,
+                        hp["env_class"]({}).OBSERVATION_SPACE,
+                        hp["env_class"].ACTION_SPACE,
+                        {},
+                    ),
+                },
+                "policy_mapping_fn": lambda agent_id: agent_id,
+                # When replay_mode=lockstep, RLlib will replay all the agent
+                # transitions at a particular timestep together in a batch.
+                # This allows the policy to implement differentiable shared
+                # computations between agents it controls at that timestep. When
+                # replay_mode=independent,
+                # transitions are replayed independently per policy.
+                # "replay_mode": "lockstep",
+                "observation_fn": ltft.observation_fn,
             },
-            "policy_mapping_fn": lambda agent_id: agent_id,
-            # When replay_mode=lockstep, RLlib will replay all the agent
-            # transitions at a particular timestep together in a batch.
-            # This allows the policy to implement differentiable shared
-            # computations between agents it controls at that timestep. When
-            # replay_mode=independent,
-            # transitions are replayed independently per policy.
-            "replay_mode": "lockstep",
-            "observation_fn": ltft.observation_fn,
-        },
-
-        # === DQN Models ===
-
-        # Update the target network every `target_network_update_freq` steps.
-        "target_network_update_freq": 30 * hp["n_steps_per_epi"],
-        # === Replay buffer ===
-        # Size of the replay buffer. Note that if async_updates is set, then
-        # each worker will have a replay buffer of this size.
-        "buffer_size": max(int(hp["n_steps_per_epi"] * hp["n_epi"]
-                               * hp["buf_frac"]), 5),
-        # Whether to use dueling dqn
-        "dueling": False,
-        # Dense-layer setup for each the advantage branch and the value branch
-        # in a dueling architecture.
-        "hiddens": hp["hiddens"],
-        # Whether to use double dqn
-        "double_q": True,
-        # If True prioritized replay buffer will be used.
-        "prioritized_replay": False,
-
-        "model": {
-            # Number of hidden layers for fully connected net
-            "fcnet_hiddens": hp["hiddens"],
-            # Nonlinearity for fully connected net (tanh, relu)
-            "fcnet_activation": "relu",
-        },
-
-        # === Exploration Settings ===
-        # Default exploration behavior, iff `explore`=None is passed into
-        # compute_action(s).
-        # Set to False for no exploration behavior (e.g., for evaluation).
-        "explore": True,
-        # Provide a dict specifying the Exploration object's config.
-        "exploration_config": {
-            # The Exploration class to use. In the simplest case,
-            # this is the name (str) of any class present in the
-            # `rllib.utils.exploration` package.
-            # You can also provide the python class directly or
-            # the full location of your class (e.g.
-            # "ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy").
-            "type": exploration.SoftQScheduleWtClustering,
-            # Add constructor kwargs here (if any).
-            "temperature_schedule": hp["temperature_schedule"],
-            "clustering_distance": hp["clustering_distance"],
-        },
-        "gamma": hp["gamma"],
-
-        # Minimum env steps to optimize for per train call. This value does
-        # not affect learning, only the length of iterations.
-        "timesteps_per_iteration":
-            hp["n_steps_per_epi"]
-            if hp["debug"] else
-            int(hp["n_steps_per_epi"] * hp["n_epi"] / hp["log_n_points"]),
-
-        "min_iter_time_s": 0.0,
-
-        "seed": tune.grid_search(hp["seeds"]),
-
-        # === Optimization ===
-        "optimizer": {"sgd_momentum": hp["sgd_momentum"], },
-        # Learning rate for adam optimizer
-        "lr": hp["base_lr"],
-        # Learning rate schedule
-        "lr_schedule": hp["lr_schedule"],
-        # If not None, clip gradients during optimization at this value
-        "grad_clip": 1,
-        # How many steps of the model to sample before learning starts.
-        "learning_starts": int(hp["n_steps_per_epi"] * hp["bs_epi_mul"]),
-        # Update the replay buffer with this many samples at once. Note that
-        # this setting applies per-worker if num_workers > 1.
-        "rollout_fragment_length": hp["n_steps_per_epi"],
-        "training_intensity": hp["training_intensity"],
-        # Size of a batch sampled from replay buffer for training. Note that
-        # if async_updates is set, then each worker returns gradients for a
-        # batch of this size.
-        "train_batch_size": int(hp["n_steps_per_epi"] * hp["bs_epi_mul"]),
-
-        # General config
-        "framework": "torch",
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        # LTFTTorchPolicy supports only 1 worker only otherwise
-        # it would be mixing several opponents trajectories
-        "num_workers": 0,
-        # LTFTTorchPolicy supports only 1 env per worker only
-        # otherwise several episodes would be played at the same
-        # time
-        "num_envs_per_worker": 1,
-        "batch_mode": "complete_episodes",
-        "logger_config": {
-            "wandb": {
-                "project": "LTFT",
-                "group": hp["exp_name"],
-                "api_key_file":
-                    os.path.join(os.path.dirname(__file__),
-                                 "../../../api_key_wandb"),
-                "log_config": True
+            # === DQN Models ===
+            # Update the target network every `target_network_update_freq` steps.
+            "target_network_update_freq": 30 * hp["n_steps_per_epi"],
+            # === Replay buffer ===
+            # Size of the replay buffer. Note that if async_updates is set, then
+            # each worker will have a replay buffer of this size.
+            "buffer_size": max(
+                int(hp["n_steps_per_epi"] * hp["n_epi"] * hp["buf_frac"]), 5
+            ),
+            # Whether to use dueling dqn
+            "dueling": False,
+            # Dense-layer setup for each the advantage branch and the value branch
+            # in a dueling architecture.
+            "hiddens": hp["hiddens"],
+            # Whether to use double dqn
+            "double_q": True,
+            # If True prioritized replay buffer will be used.
+            "prioritized_replay": False,
+            "model": {
+                # Number of hidden layers for fully connected net
+                "fcnet_hiddens": hp["hiddens"],
+                # Nonlinearity for fully connected net (tanh, relu)
+                "fcnet_activation": "relu",
             },
-        },
+            # === Exploration Settings ===
+            # Default exploration behavior, iff `explore`=None is passed into
+            # compute_action(s).
+            # Set to False for no exploration behavior (e.g., for evaluation).
+            "explore": True,
+            # Provide a dict specifying the Exploration object's config.
+            "exploration_config": {
+                # The Exploration class to use. In the simplest case,
+                # this is the name (str) of any class present in the
+                # `rllib.utils.exploration` package.
+                # You can also provide the python class directly or
+                # the full location of your class (e.g.
+                # "ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy").
+                "type": exploration.SoftQScheduleWtClustering,
+                # Add constructor kwargs here (if any).
+                "temperature_schedule": hp["temperature_schedule"],
+                "clustering_distance": hp["clustering_distance"],
+            },
+            "gamma": hp["gamma"],
+            # Minimum env steps to optimize for per train call. This value does
+            # not affect learning, only the length of iterations.
+            "timesteps_per_iteration": hp["n_steps_per_epi"]
+            if hp["debug"]
+            else int(hp["n_steps_per_epi"] * hp["n_epi"] / hp["log_n_points"]),
+            "min_iter_time_s": 0.0,
+            "seed": tune.grid_search(hp["seeds"]),
+            # === Optimization ===
+            "optimizer": {
+                "sgd_momentum": hp["sgd_momentum"],
+            },
+            # Learning rate for adam optimizer
+            "lr": hp["base_lr"],
+            # Learning rate schedule
+            "lr_schedule": hp["lr_schedule"],
+            # If not None, clip gradients during optimization at this value
+            "grad_clip": 1,
+            # How many steps of the model to sample before learning starts.
+            "learning_starts": int(hp["n_steps_per_epi"] * hp["bs_epi_mul"]),
+            # Update the replay buffer with this many samples at once. Note that
+            # this setting applies per-worker if num_workers > 1.
+            "rollout_fragment_length": hp["n_steps_per_epi"],
+            "training_intensity": hp["training_intensity"],
+            # Size of a batch sampled from replay buffer for training. Note that
+            # if async_updates is set, then each worker returns gradients for a
+            # batch of this size.
+            "train_batch_size": int(hp["n_steps_per_epi"] * hp["bs_epi_mul"]),
+            # General config
+            "framework": "torch",
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            # LTFTTorchPolicy supports only 1 worker only otherwise
+            # it would be mixing several opponents trajectories
+            "num_workers": 0,
+            # LTFTTorchPolicy supports only 1 env per worker only
+            # otherwise several episodes would be played at the same
+            # time
+            "num_envs_per_worker": 1,
+            "batch_mode": "complete_episodes",
+            "logger_config": {
+                "wandb": {
+                    "project": "LTFT",
+                    "group": hp["exp_name"],
+                    "api_key_file": os.path.join(
+                        os.path.dirname(__file__), "../../../api_key_wandb"
+                    ),
+                    "log_config": True,
+                },
+            },
+            # === Debug Settings ===
+            "log_level": "INFO",
+            # Callbacks that will be run during various phases of training. See the
+            # `DefaultCallbacks` class and
+            # `examples/custom_metrics_and_callbacks.py`
+            # for more usage information.
+            "callbacks": callbacks.merge_callbacks(
+                ltft.LTFTCallbacks,
+                log.get_logging_callbacks_class(
+                    log_full_epi=True, log_full_epi_interval=100
+                ),
+            ),
+        }
+    )
 
-        # === Debug Settings ===
-        "log_level": "INFO",
-        # Callbacks that will be run during various phases of training. See the
-        # `DefaultCallbacks` class and
-        # `examples/custom_metrics_and_callbacks.py`
-        # for more usage information.
-        "callbacks": callbacks.merge_callbacks(
-            ltft.LTFTCallbacks,
-            log.get_logging_callbacks_class(log_full_epi=True,
-                                            log_full_epi_interval=100)),
-    })
-
-    hp, rllib_config, env_config, stop = \
-        _modify_config_for_coin_game(hp, rllib_config, env_config, stop)
+    hp, rllib_config, env_config, stop = _modify_config_for_coin_game(
+        hp, rllib_config, env_config, stop
+    )
 
     nested_policies_config = rllib_config["nested_policies"]
     nested_spl_policy_config = nested_policies_config[3]["config_update"]
-    nested_spl_policy_config["train_batch_size"] = int(hp["n_steps_per_epi"]
-                                                       * hp["bs_epi_mul_spl"]),
+    nested_spl_policy_config["train_batch_size"] = (
+        int(hp["n_steps_per_epi"] * hp["bs_epi_mul_spl"]),
+    )
     rllib_config["nested_policies"] = nested_policies_config
 
     return rllib_config, env_config, stop
@@ -363,13 +381,15 @@ def _get_env_config(hp):
 
 def _modify_config_for_coin_game(hp, rllib_config, env_config, stop):
     if "CoinGame" in hp["env_name"]:
-        rllib_config.update({
-            "model": {
-                "dim": env_config["grid_size"],
-                # [Channel, [Kernel, Kernel], Stride]]
-                "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],
+        rllib_config.update(
+            {
+                "model": {
+                    "dim": env_config["grid_size"],
+                    # [Channel, [Kernel, Kernel], Stride]]
+                    "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],
+                }
             }
-        })
+        )
 
     return hp, rllib_config, env_config, stop
 
@@ -401,7 +421,8 @@ def _train_in_self_play(rllib_config, stop, exp_name, hp):
 
 def _train_against_opponent(hp, rllib_config, stop, exp_name, env_config):
     rllib_config = _modify_config_for_play_agaisnt_opponent(
-        rllib_config, env_config, hp)
+        rllib_config, env_config, hp
+    )
 
     against_opp_sub_dir = "against_opp"
     full_exp_name = os.path.join(exp_name, against_opp_sub_dir)
@@ -420,10 +441,9 @@ def _train_against_opponent(hp, rllib_config, stop, exp_name, env_config):
     if not hp["debug"]:
         aggregate_and_plot_tensorboard_data.add_summary_plots(
             main_path=os.path.join("~/ray_results/", full_exp_name),
-            plot_keys=
-            ltft.PLOT_KEYS + hp["plot_keys"],
-            plot_assemble_tags_in_one_plot=
-            ltft.PLOT_ASSEMBLAGE_TAGS + hp["plot_assemblage_tags"],
+            plot_keys=ltft.PLOT_KEYS + hp["plot_keys"],
+            plot_assemble_tags_in_one_plot=ltft.PLOT_ASSEMBLAGE_TAGS
+            + hp["plot_assemblage_tags"],
         )
 
     return tune_analysis_naive_opponent
@@ -432,10 +452,12 @@ def _train_against_opponent(hp, rllib_config, stop, exp_name, env_config):
 def _modify_config_for_play_agaisnt_opponent(rllib_config, env_config, hp):
     if hp["against_evader_exploiter"] is not None:
         rllib_config = _set_config_to_use_exploiter(
-            rllib_config, env_config, hp)
+            rllib_config, env_config, hp
+        )
     else:
         rllib_config = _set_config_to_use_naive_opponent(
-            rllib_config, env_config, hp)
+            rllib_config, env_config, hp
+        )
 
     return rllib_config
 
@@ -447,21 +469,27 @@ def _set_config_to_use_exploiter(rllib_config, env_config, hp):
     MyCoopDQNTorchPolicy = augmented_dqn.MyDQNTorchPolicy.with_updates(
         postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
             postprocessing.welfares_postprocessing_fn(),
-            postprocess_nstep_and_prio
+            postprocess_nstep_and_prio,
         )
     )
     exploiter_policy_config = {
-        "copy_weights_every_n_steps":
-            exploiter_hp["copy_weights_delay"] * n_steps_during_training,
-        "start_exploit_at_step_n":
-            exploiter_hp["start_exploit"] * n_steps_during_training,
+        "copy_weights_every_n_steps": exploiter_hp["copy_weights_delay"]
+        * n_steps_during_training,
+        "start_exploit_at_step_n": exploiter_hp["start_exploit"]
+        * n_steps_during_training,
         "welfare_key": postprocessing.WELFARE_UTILITARIAN,
-        'nested_policies': [
+        "nested_policies": [
             # You need to provide the policy class for every nested Policies
-            {"Policy_class": MyCoopDQNTorchPolicy,
-             "config_update": {postprocessing.ADD_UTILITARIAN_WELFARE: True}},
-            {"Policy_class": augmented_dqn.MyDQNTorchPolicy,
-             "config_update": {}}
+            {
+                "Policy_class": MyCoopDQNTorchPolicy,
+                "config_update": {
+                    postprocessing.ADD_UTILITARIAN_WELFARE: True
+                },
+            },
+            {
+                "Policy_class": augmented_dqn.MyDQNTorchPolicy,
+                "config_update": {},
+            },
         ],
     }
 
@@ -469,7 +497,7 @@ def _set_config_to_use_exploiter(rllib_config, env_config, hp):
         InfluenceEvaderTorchPolicy,
         hp["env_class"]().OBSERVATION_SPACE,
         hp["env_class"].ACTION_SPACE,
-        exploiter_policy_config
+        exploiter_policy_config,
     )
 
     return rllib_config
@@ -480,7 +508,7 @@ def _set_config_to_use_naive_opponent(rllib_config, env_config, hp):
         augmented_dqn.MyDQNTorchPolicy,
         hp["env_class"]().OBSERVATION_SPACE,
         hp["env_class"].ACTION_SPACE,
-        {}
+        {},
     )
     return rllib_config
 

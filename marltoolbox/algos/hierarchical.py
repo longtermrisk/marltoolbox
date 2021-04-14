@@ -1,4 +1,5 @@
 import copy
+import logging
 from typing import List, Union, Optional, Dict, Tuple, Iterable
 
 import torch
@@ -10,6 +11,7 @@ from ray.rllib.utils.typing import TensorType
 
 from marltoolbox.utils import log
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = {
     "nested_policies": [
@@ -41,7 +43,7 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
                 raise ValueError(
                     f"You must specify the classes for the nested Policies "
                     f'in config["nested_config"]["Policy_class"] '
-                    f'current value is {nested_config["Policy_class"]}'
+                    f'current value is {nested_config["Policy_class"]}.'
                 )
             Policy = nested_config["Policy_class"]
             policy = Policy(
@@ -67,6 +69,7 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
             algo.model = algo.model.to(self.device)
 
         self._to_log = {}
+        self._already_printed_warnings = []
 
     def __getattribute__(self, attr):
         """
@@ -76,6 +79,16 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
             return object.__getattribute__(self, attr)
         except AttributeError as initial:
             try:
+                msg = (
+                    f"{self} doesn't have the attribute {attr}. "
+                    f"Defaulting to the same attribute of "
+                    f"the active nested policy "
+                    f"{self.algorithms[self.active_algo_idx]}. No more "
+                    f"printing this message."
+                )
+                logger.info(msg)
+                # from warnings import warn
+                # warn(msg)
                 return object.__getattribute__(
                     self.algorithms[self.active_algo_idx], attr
                 )

@@ -12,25 +12,31 @@ PLOT_KEYS = coin_game.PLOT_KEYS + [
     "red_coop_speed",
     "blue_coop_speed",
     "red_coop_fraction",
-    "blue_coop_fraction"
+    "blue_coop_fraction",
 ]
 
 PLOT_ASSEMBLAGE_TAGS = coin_game.PLOT_ASSEMBLAGE_TAGS + [
     ("red_coop_speed", "blue_coop_speed"),
     ("red_coop_fraction", "blue_coop_fraction"),
     ("red_coop_speed_player_red_mean", "blue_coop_speed_player_blue_mean"),
-    ("red_coop_fraction_player_red_mean",
-     "blue_coop_fraction_player_blue_mean"),
-    ("pick_own_color_player_red_mean", "pick_own_color_player_blue_mean",
-     "pick_speed_player_red_mean", "pick_speed_player_blue_mean",
-     "red_coop_speed_player_red_mean", "blue_coop_speed_player_blue_mean",
-     "red_coop_fraction_player_red_mean",
-     "blue_coop_fraction_player_blue_mean"),
+    (
+        "red_coop_fraction_player_red_mean",
+        "blue_coop_fraction_player_blue_mean",
+    ),
+    (
+        "pick_own_color_player_red_mean",
+        "pick_own_color_player_blue_mean",
+        "pick_speed_player_red_mean",
+        "pick_speed_player_blue_mean",
+        "red_coop_speed_player_red_mean",
+        "blue_coop_speed_player_blue_mean",
+        "red_coop_fraction_player_red_mean",
+        "blue_coop_fraction_player_blue_mean",
+    ),
 ]
 
 
 class SSDMixedMotiveCoinGame(coin_game.CoinGame):
-
     @override(coin_game.CoinGame)
     def __init__(self, config: dict = {}):
         super().__init__(config)
@@ -39,26 +45,30 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
             low=0,
             high=1,
             shape=(self.grid_size, self.grid_size, 6),
-            dtype="uint8"
+            dtype="uint8",
         )
 
     @override(coin_game.CoinGame)
     def _load_config(self, config):
         super()._load_config(config)
-        assert self.both_players_can_pick_the_same_coin, \
-            "both_players_can_pick_the_same_coin option must be True in " \
+        assert self.both_players_can_pick_the_same_coin, (
+            "both_players_can_pick_the_same_coin option must be True in "
             "ssd mixed motive coin game."
-        assert self.same_obs_for_each_player, \
-            "same_obs_for_each_player option must be True in " \
+        )
+        assert self.same_obs_for_each_player, (
+            "same_obs_for_each_player option must be True in "
             "ssd mixed motive coin game."
+        )
 
     @override(coin_game.CoinGame)
     def _randomize_color_and_player_positions(self):
         # Reset coin color and the players and coin positions
-        self.red_pos = \
-            self.np_random.randint(low=0, high=self.grid_size, size=(2,))
-        self.blue_pos = \
-            self.np_random.randint(low=0, high=self.grid_size, size=(2,))
+        self.red_pos = self.np_random.randint(
+            low=0, high=self.grid_size, size=(2,)
+        )
+        self.blue_pos = self.np_random.randint(
+            low=0, high=self.grid_size, size=(2,)
+        )
 
         self.red_coin = self.np_random.randint(low=0, high=2)
         self.red_coin_pos = np.zeros(shape=(2,), dtype=np.int8)
@@ -75,25 +85,21 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
 
         success = 0
         while success < self.NUM_AGENTS + 1:
-            self.red_coin_pos = \
-                self.np_random.randint(self.grid_size, size=2)
-            success = 1 - self._same_pos(
-                self.red_pos, self.red_coin_pos)
+            self.red_coin_pos = self.np_random.randint(self.grid_size, size=2)
+            success = 1 - self._same_pos(self.red_pos, self.red_coin_pos)
+            success += 1 - self._same_pos(self.blue_pos, self.red_coin_pos)
             success += 1 - self._same_pos(
-                self.blue_pos, self.red_coin_pos)
-            success += 1 - self._same_pos(
-                self.blue_coin_pos, self.red_coin_pos)
+                self.blue_coin_pos, self.red_coin_pos
+            )
 
         success = 0
         while success < self.NUM_AGENTS + 1:
-            self.blue_coin_pos = \
-                self.np_random.randint(self.grid_size, size=2)
-            success = 1 - self._same_pos(
-                self.red_pos, self.blue_coin_pos)
+            self.blue_coin_pos = self.np_random.randint(self.grid_size, size=2)
+            success = 1 - self._same_pos(self.red_pos, self.blue_coin_pos)
+            success += 1 - self._same_pos(self.blue_pos, self.blue_coin_pos)
             success += 1 - self._same_pos(
-                self.blue_pos, self.blue_coin_pos)
-            success += 1 - self._same_pos(
-                self.blue_coin_pos, self.red_coin_pos)
+                self.blue_coin_pos, self.red_coin_pos
+            )
 
     @override(coin_game.CoinGame)
     def _generate_observation(self):
@@ -120,14 +126,19 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
         reward_red = 0.0
         reward_blue = 0.0
         generate_new_coin = False
-        red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue = \
-            False, False, False, False
+        red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue = (
+            False,
+            False,
+            False,
+            False,
+        )
         picked_red_coop = False
         picked_blue_coop = False
 
         if self._same_pos(self.red_pos, self.red_coin_pos):
-            if self.red_coin and \
-                    self._same_pos(self.blue_pos, self.red_coin_pos):
+            if self.red_coin and self._same_pos(
+                self.blue_pos, self.red_coin_pos
+            ):
                 # Red coin is a coop coin
                 generate_new_coin = True
                 reward_red += 1.2
@@ -142,8 +153,9 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
                 red_pick_any = True
                 red_pick_red = True
         elif self._same_pos(self.blue_pos, self.blue_coin_pos):
-            if not self.red_coin and \
-                    self._same_pos(self.red_pos, self.blue_coin_pos):
+            if not self.red_coin and self._same_pos(
+                self.red_pos, self.blue_coin_pos
+            ):
                 # Blue coin is a coop coin
                 generate_new_coin = True
                 reward_blue += 2.0
@@ -160,12 +172,14 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
 
         reward_list = [reward_red, reward_blue]
         if self.output_additional_info:
-            self._accumulate_info(red_pick_any=red_pick_any,
-                                  red_pick_red=red_pick_red,
-                                  blue_pick_any=blue_pick_any,
-                                  blue_pick_blue=blue_pick_blue,
-                                  picked_red_coop=picked_red_coop,
-                                  picked_blue_coop=picked_blue_coop)
+            self._accumulate_info(
+                red_pick_any=red_pick_any,
+                red_pick_red=red_pick_red,
+                blue_pick_any=blue_pick_any,
+                blue_pick_blue=blue_pick_blue,
+                picked_red_coop=picked_red_coop,
+                picked_blue_coop=picked_blue_coop,
+            )
 
         return reward_list, generate_new_coin
 
@@ -189,8 +203,14 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
 
     @override(coin_game.CoinGame)
     def _accumulate_info(
-            self, red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue,
-            picked_red_coop, picked_blue_coop):
+        self,
+        red_pick_any,
+        red_pick_red,
+        blue_pick_any,
+        blue_pick_blue,
+        picked_red_coop,
+        picked_blue_coop,
+    ):
 
         self.red_pick.append(red_pick_any)
         self.red_pick_own.append(red_pick_red)
@@ -217,28 +237,30 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
             red_pick = sum(self.red_pick)
             player_red_info["pick_speed"] = red_pick / n_steps_played
             if red_pick > 0:
-                player_red_info["pick_own_color"] = \
+                player_red_info["pick_own_color"] = (
                     sum(self.red_pick_own) / red_pick
+                )
 
-            player_red_info["red_coop_speed"] = \
+            player_red_info["red_coop_speed"] = (
                 sum(self.picked_red_coop) / n_steps_played
+            )
 
             if red_pick > 0:
-                player_red_info["red_coop_fraction"] = \
-                    n_coop / red_pick
+                player_red_info["red_coop_fraction"] = n_coop / red_pick
 
         if len(self.blue_pick) > 0:
             blue_pick = sum(self.blue_pick)
             player_blue_info["pick_speed"] = blue_pick / n_steps_played
             if blue_pick > 0:
-                player_blue_info["pick_own_color"] = \
+                player_blue_info["pick_own_color"] = (
                     sum(self.blue_pick_own) / blue_pick
+                )
 
-            player_blue_info["blue_coop_speed"] = \
+            player_blue_info["blue_coop_speed"] = (
                 sum(self.picked_blue_coop) / n_steps_played
+            )
 
             if blue_pick > 0:
-                player_blue_info["blue_coop_fraction"] = \
-                    n_coop / blue_pick
+                player_blue_info["blue_coop_fraction"] = n_coop / blue_pick
 
         return player_red_info, player_blue_info

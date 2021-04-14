@@ -7,7 +7,9 @@ from marltoolbox.examples.rllib_api.dqn_coin_game import (
     _get_rllib_configs,
     _train_dqn_and_plot_logs,
 )
-from marltoolbox.examples.rllib_api.dqn_wt_welfare import _modify_policy_to_use_welfare
+from marltoolbox.examples.rllib_api.dqn_wt_welfare import (
+    _modify_policy_to_use_welfare,
+)
 from marltoolbox.utils import log, miscellaneous, postprocessing, exploration
 
 
@@ -18,7 +20,7 @@ def main(debug):
 
     env = "CoinGame"
     # env = "SSDMixedMotiveCoinGame"
-    welfare_to_use = None
+    # welfare_to_use = None
     # welfare_to_use = postprocessing.WELFARE_UTILITARIAN
     welfare_to_use = postprocessing.WELFARE_INEQUITY_AVERSION
 
@@ -29,46 +31,45 @@ def main(debug):
 
     hparams = _get_hyperparameters(seeds, debug, exp_name)
 
-    rllib_config, stop_config = _get_rllib_configs(hparams, env_class=env_class)
+    rllib_config, stop_config = _get_rllib_configs(
+        hparams, env_class=env_class
+    )
 
     if welfare_to_use is not None:
-        rllib_config = _modify_policy_to_use_welfare(rllib_config, welfare_to_use)
+        rllib_config = _modify_policy_to_use_welfare(
+            rllib_config, welfare_to_use
+        )
 
     rllib_config, stop_config = _add_search_to_config(
         rllib_config, stop_config, hparams
     )
-    tune_analysis = _train_dqn_and_plot_logs(hparams, rllib_config, stop_config)
+    tune_analysis = _train_dqn_and_plot_logs(
+        hparams, rllib_config, stop_config
+    )
 
     return tune_analysis
 
 
 def _add_search_to_config(rllib_config, stop_config, hp):
-    rllib_config["lr"] = 0.1
+    rllib_config["num_envs_per_worker"] = tune.grid_search([1, 4, 8, 16, 32])
+    rllib_config["lr"] = tune.grid_search([0.1, 0.1 * 2, 0.1 * 4])
     rllib_config["model"] = {
         "dim": 3,
-        "conv_filters": tune.grid_search(
-            [
-                [[16, [3, 3], 1], [16, [3, 3], 1]],
-                [[8, [3, 3], 1], [8, [3, 3], 1]],
-                [[4, [3, 3], 1], [4, [3, 3], 1]],
-            ]
-        ),
-        "fcnet_hiddens": tune.grid_search(
-            [[8, 8], [16, 16], [32, 32], [64, 64], [128, 128], [256, 256]]
-        ),
+        "conv_filters": [[16, [3, 3], 1], [16, [3, 3], 1]],
+        "fcnet_hiddens": [256, 256],
     }
-    rllib_config["hiddens"] = tune.grid_search([[4], [8], [16], [32]])
+    rllib_config["hiddens"] = [32]
     rllib_config["env_config"] = {
         "players_ids": ["player_red", "player_blue"],
         "max_steps": 100,
         "grid_size": 3,
         "get_additional_info": True,
         "temp_mid_step": 0.6,
-        "bs_epi_mul": 4,
+        "bs_epi_mul": tune.grid_search([2, 4, 8]),
     }
     rllib_config["training_intensity"] = 10
 
-    stop_config["episodes_total"] = 2000
+    stop_config["episodes_total"] = tune.grid_search([1000, 2000])
 
     rllib_config["exploration_config"] = {
         # The Exploration class to use. In the simplest case,

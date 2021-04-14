@@ -39,28 +39,33 @@ def overwrite_config(dict_: dict, key, value):
 
     if current_value != value:
         if found:
-            if isinstance(current_value, tuple) and \
-                    current_value[0] == OVERWRITE_KEY:
+            if (
+                isinstance(current_value, tuple)
+                and current_value[0] == OVERWRITE_KEY
+            ):
                 print(
-                    f'NOT Overwriting (k: v): ({key}:{current_value}) '
-                    f'with value: {value}.',
+                    f"NOT Overwriting (k: v): ({key}:{current_value}) "
+                    f"with value: {value}.",
                     f"Instead overwriting with {current_value[1]} "
-                    f"since OVERWRITE_KEY found")
+                    f"since OVERWRITE_KEY found",
+                )
                 sub_struct[k] = current_value[1]
             else:
                 print(
-                    f'Overwriting (k: v): ({key}:{current_value}) with '
-                    f'value: {value}')
+                    f"Overwriting (k: v): ({key}:{current_value}) with "
+                    f"value: {value}"
+                )
                 sub_struct[k] = value
         else:
             print(
-                f'Adding (k: v): ({key}:{value}) in dict.keys:'
-                f' {sub_struct.keys()}')
+                f"Adding (k: v): ({key}:{value}) in dict.keys:"
+                f" {sub_struct.keys()}"
+            )
             sub_struct[k] = value
     return dict_
 
 
-def move_to_key(dict_:dict, key:str):
+def move_to_key(dict_: dict, key: str):
     """
     Get a value from nested dictionaries with '.' delimiting the keys.
 
@@ -74,7 +79,7 @@ def move_to_key(dict_:dict, key:str):
     found = True
     for k in key.split("."):
         if not found:
-            print(f'Intermediary key: {k} not found in full key: {key}')
+            print(f"Intermediary key: {k} not found in full key: {key}")
             return
         dict_ = current_value
         if k in current_value.keys():
@@ -89,15 +94,16 @@ def extract_checkpoints(tune_experiment_analysis):
 
     for trial in tune_experiment_analysis.trials:
         checkpoints = tune_experiment_analysis.get_trial_checkpoints_paths(
-            trial,
-            tune_experiment_analysis.default_metric)
+            trial, tune_experiment_analysis.default_metric
+        )
         assert len(checkpoints) > 0
 
     all_best_checkpoints_per_trial = [
         tune_experiment_analysis.get_best_checkpoint(
             trial,
             metric=tune_experiment_analysis.default_metric,
-            mode=tune_experiment_analysis.default_mode)
+            mode=tune_experiment_analysis.default_mode,
+        )
         for trial in tune_experiment_analysis.trials
     ]
 
@@ -127,11 +133,13 @@ def merge_policy_postprocessing_fn(*postprocessing_fn_list):
     :return: a function which calls all provided function in order
     """
 
-    def merged_postprocessing_fn(policy, sample_batch, other_agent_batches,
-                                 episode):
+    def merged_postprocessing_fn(
+        policy, sample_batch, other_agent_batches, episode
+    ):
         for postprocessing_fn in postprocessing_fn_list:
-            sample_batch = postprocessing_fn(policy, sample_batch,
-                                             other_agent_batches, episode)
+            sample_batch = postprocessing_fn(
+                policy, sample_batch, other_agent_batches, episode
+            )
         return sample_batch
 
     return merged_postprocessing_fn
@@ -144,8 +152,9 @@ def seed_to_checkpoint(dict_to_select_from: dict):
             return dict_to_select_from[policy_config["seed"]]
         else:
             print(
-                'WARNING! seed_to_checkpoint default to checkpoint 0. '
-                '"seed" not in policy_config.keys()')
+                "WARNING! seed_to_checkpoint default to checkpoint 0. "
+                '"seed" not in policy_config.keys()'
+            )
             return list(dict_to_select_from.values)[0]
 
     return get_value
@@ -155,13 +164,16 @@ def check_using_tune_class(config):
     return config.get("TuneTrainerClass", None) is not None
 
 
-def set_config_for_evaluation(config: dict,
-                              policies_to_train=["None"]) -> dict:
+def set_config_for_evaluation(
+    config: dict, policies_to_train=["None"]
+) -> dict:
     config_copy = copy.deepcopy(config)
 
     # Always multiagent
-    assert "multiagent" in config_copy.keys(), "Only working for config with multiagent key. " \
-                                               f"config_copy.keys(): {config_copy.keys()}"
+    assert "multiagent" in config_copy.keys(), (
+        "Only working for config with multiagent key. "
+        f"config_copy.keys(): {config_copy.keys()}"
+    )
     # Do not train
     config_copy["multiagent"]["policies_to_train"] = policies_to_train
 
@@ -180,29 +192,48 @@ def set_config_for_evaluation(config: dict,
     return config_copy
 
 
-def filter_tune_results(tune_analysis, metric, metric_threshold: float,
-                        metric_mode="last-5-avg",
-                        threshold_mode="above"):
+def filter_tune_results(
+    tune_analysis,
+    metric,
+    metric_threshold: float,
+    metric_mode="last-5-avg",
+    threshold_mode="above",
+):
     assert threshold_mode in ("above", "equal", "below")
     assert metric_mode in (
-        "avg", "min", "max", "last", "last-5-avg", "last-10-avg")
+        "avg",
+        "min",
+        "max",
+        "last",
+        "last-5-avg",
+        "last-10-avg",
+    )
     print("Before trial filtering:", len(tune_analysis.trials), "trials")
     trials_filtered = []
-    print("metric_threshold", metric_threshold,
-          "threshold_mode", threshold_mode)
+    print(
+        "metric_threshold", metric_threshold, "threshold_mode", threshold_mode
+    )
     for trial_idx, trial in enumerate(tune_analysis.trials):
         available_metrics = trial.metric_analysis
-        print(f"trial_idx {trial_idx} "
-              f"available_metrics[{metric}][{metric_mode}] "
-              f"{available_metrics[metric][metric_mode]}")
-        if threshold_mode == "above" and available_metrics[metric][
-            metric_mode] > metric_threshold:
+        print(
+            f"trial_idx {trial_idx} "
+            f"available_metrics[{metric}][{metric_mode}] "
+            f"{available_metrics[metric][metric_mode]}"
+        )
+        if (
+            threshold_mode == "above"
+            and available_metrics[metric][metric_mode] > metric_threshold
+        ):
             trials_filtered.append(trial)
-        elif threshold_mode == "equal" and available_metrics[metric][
-            metric_mode] == metric_threshold:
+        elif (
+            threshold_mode == "equal"
+            and available_metrics[metric][metric_mode] == metric_threshold
+        ):
             trials_filtered.append(trial)
-        elif threshold_mode == "below" and available_metrics[metric][
-            metric_mode] < metric_threshold:
+        elif (
+            threshold_mode == "below"
+            and available_metrics[metric][metric_mode] < metric_threshold
+        ):
             trials_filtered.append(trial)
         else:
             print(f"filter trial {trial_idx}")
@@ -215,7 +246,6 @@ def get_random_seeds(n_seeds):
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(n_seeds))]
     return seeds
-
 
 
 def list_all_files_in_one_dir_tree(path):
@@ -231,11 +261,16 @@ def list_all_files_in_one_dir_tree(path):
 
 
 def ignore_str_containing_keys(str_list, ignore_keys):
-    str_list_filtered = [file_path for file_path in str_list if
-                         all([key not in file_path for key in ignore_keys])]
-    print(len(str_list_filtered),
-          "str remaining after ignoring str containing any ignore_keys:",
-          ignore_keys)
+    str_list_filtered = [
+        file_path
+        for file_path in str_list
+        if all([key not in file_path for key in ignore_keys])
+    ]
+    print(
+        len(str_list_filtered),
+        "str remaining after ignoring str containing any ignore_keys:",
+        ignore_keys,
+    )
     return str_list_filtered
 
 
@@ -248,40 +283,47 @@ def separate_str_in_group_containing_keys(str_list, group_keys):
 
     groups_of_str_list = {}
     for group_key in group_keys:
-        str_list_filtered = [file_path for file_path in str_list if
-                             group_key in file_path]
+        str_list_filtered = [
+            file_path for file_path in str_list if group_key in file_path
+        ]
         groups_of_str_list[f"group_{group_key}"] = str_list_filtered
         print(f"group {group_key} created with {len(str_list_filtered)} str")
     return groups_of_str_list
 
 
 def keep_strs_containing_keys(str_list, plot_keys):
-    str_list_filtered = [str_ for str_ in str_list if
-                         any([key in str_ for key in plot_keys])]
-    print(len(str_list_filtered), "str found after selecting plot_keys:",
-          plot_keys)
+    str_list_filtered = [
+        str_ for str_ in str_list if any([key in str_ for key in plot_keys])
+    ]
+    print(
+        len(str_list_filtered),
+        "str found after selecting plot_keys:",
+        plot_keys,
+    )
     return str_list_filtered
 
 
 def fing_longer_substr(str_list):
-    substr = ''
+    substr = ""
     if len(str_list) > 1 and len(str_list[0]) > 0:
         for i in range(len(str_list[0])):
             for j in range(len(str_list[0]) - i + 1):
                 if j > len(substr) and all(
-                        str_list[0][i:i + j] in x for x in str_list):
-                    substr = str_list[0][i:i + j]
+                    str_list[0][i : i + j] in x for x in str_list
+                ):
+                    substr = str_list[0][i : i + j]
     elif len(str_list) == 1:
         substr = str_list[0]
     return substr
 
 
-def load_one_tune_analysis(checkpoints_paths: list,
-                           result:dict={"training_iteration":1,
-                                       "episode_reward_mean":1},
-                           default_metric:"str" = "episode_reward_mean",
-                           default_mode:str="max",
-                           n_dir_level_between_ckpt_and_exp_state=1):
+def load_one_tune_analysis(
+    checkpoints_paths: list,
+    result: dict = {"training_iteration": 1, "episode_reward_mean": 1},
+    default_metric: "str" = "episode_reward_mean",
+    default_mode: str = "max",
+    n_dir_level_between_ckpt_and_exp_state=1,
+):
     """Helper to re-create a fake tune_analysis only containing the
     checkpoints provided."""
 
@@ -291,20 +333,22 @@ def load_one_tune_analysis(checkpoints_paths: list,
     trials = []
     for one_checkpoint_path in checkpoints_paths:
         one_trial = Trial(trainable_name="fake trial")
-        ckpt = Checkpoint(Checkpoint.PERSISTENT,
-                          value=one_checkpoint_path,
-                          result=result)
+        ckpt = Checkpoint(
+            Checkpoint.PERSISTENT, value=one_checkpoint_path, result=result
+        )
         one_trial.checkpoint_manager.on_checkpoint(ckpt)
         trials.append(one_trial)
 
     json_file_path = _get_experiment_state_file_path(
         checkpoints_paths[0],
-        split_path_n_times=n_dir_level_between_ckpt_and_exp_state)
+        split_path_n_times=n_dir_level_between_ckpt_and_exp_state,
+    )
     one_tune_analysis = ExperimentAnalysis(
         experiment_checkpoint_path=json_file_path,
         trials=trials,
         default_mode=default_mode,
-        default_metric=default_metric)
+        default_metric=default_metric,
+    )
 
     for trial in one_tune_analysis.trials:
         assert len(trial.checkpoint_manager.best_checkpoints()) == 1
@@ -324,23 +368,28 @@ def _get_experiment_state_file_path(one_checkpoint_path, split_path_n_times=1):
     return json_file_path
 
 
-def check_learning_achieved(tune_results,
-                            metric="episode_reward_mean",
-                            trial_idx=0,
-                            max_: float = None,
-                            min_: float = None,
-                            equal_: float = None):
+def check_learning_achieved(
+    tune_results,
+    metric="episode_reward_mean",
+    trial_idx=0,
+    max_: float = None,
+    min_: float = None,
+    equal_: float = None,
+):
     assert max_ is not None or min_ is not None or equal_ is not None
 
     last_results = tune_results.trials[trial_idx].last_result
     _, _, value, found = move_to_key(last_results, key=metric)
-    assert found, \
-        f"metric {metric} not found inside last_results {last_results}"
+    assert (
+        found
+    ), f"metric {metric} not found inside last_results {last_results}"
 
-    msg = f"Trial {trial_idx} achieved " \
-        f"{value}" \
-        f" on metric {metric}. This is a success if the value is below" \
+    msg = (
+        f"Trial {trial_idx} achieved "
+        f"{value}"
+        f" on metric {metric}. This is a success if the value is below"
         f" {max_} or above {min_} or equal to {equal_}."
+    )
 
     logger.info(msg)
     print(msg)
@@ -349,8 +398,9 @@ def check_learning_achieved(tune_results,
     if max_ is not None:
         assert value <= max_, f"value {value} must be below max_ {max_}"
     if equal_ is not None:
-        assert value == equal_, f"value {value} must be equal to equal_ " \
-                                f"{equal_}"
+        assert value == equal_, (
+            f"value {value} must be equal to equal_ " f"{equal_}"
+        )
 
 
 def assert_if_key_in_dict_then_args_are_none(dict_, key, *args):
@@ -369,11 +419,31 @@ def read_from_dict_default_to_args(dict_, key, *args):
     return args
 
 
-def filter_sample_batch(samples: SampleBatch, filter_key,
-                        remove=True, copy_data=False) -> SampleBatch:
+def filter_sample_batch(
+    samples: SampleBatch, filter_key, remove=True, copy_data=False
+) -> SampleBatch:
     filter = samples.data[filter_key]
     if remove:
         # torch logical not
-        filter = ~ filter
-    return SampleBatch({k: np.array(v, copy=copy_data)[filter]
-                        for (k, v) in samples.data.items()})
+        filter = ~filter
+    return SampleBatch(
+        {
+            k: np.array(v, copy=copy_data)[filter]
+            for (k, v) in samples.data.items()
+        }
+    )
+
+
+def extract_metric_values_per_trials(
+    tune_analysis,
+    metric="episode_reward_mean",
+):
+    metric_values = []
+    for trial in tune_analysis.trials:
+        last_results = trial.last_result
+        _, _, value, found = move_to_key(last_results, key=metric)
+        assert (
+            found
+        ), f"metric: {metric} not found in last_results: {last_results}"
+        metric_values.append(value)
+    return metric_values

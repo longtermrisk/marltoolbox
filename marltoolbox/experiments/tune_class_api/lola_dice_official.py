@@ -13,8 +13,11 @@ from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 
 from marltoolbox.algos.lola_dice.train_tune_class_API import LOLADICE
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
-from marltoolbox.envs.matrix_sequential_social_dilemma import \
-    IteratedPrisonersDilemma, IteratedMatchingPennies, IteratedAsymBoS
+from marltoolbox.envs.matrix_sequential_social_dilemma import (
+    IteratedPrisonersDilemma,
+    IteratedMatchingPennies,
+    IteratedAsymBoS,
+)
 from marltoolbox.experiments.tune_class_api import lola_pg_official
 from marltoolbox.utils import policy, log
 
@@ -28,11 +31,9 @@ def main(debug):
 
     hparams = {
         "debug": debug,
-
         "load_plot_data": None,
         # IPD
         # Example: "load_plot_data": ".../SameAndCrossPlay_save.p",
-
         "exp_name": exp_name,
         "train_n_replicates": train_n_replicates,
         "env_name": "IPD",
@@ -40,15 +41,13 @@ def main(debug):
         # "env_name": "AsymBoS",
         # "env_name": "CoinGame",
         # "env_name": "AsymCoinGame",
-
         "gamma": None,
         "trace_length": 10 if debug else None,
-
         "epochs": 2 if debug else 200,
-        "lr_inner": .1,
-        "lr_outer": .2,
-        "lr_value": .1,
-        "lr_om": .1,
+        "lr_inner": 0.1,
+        "lr_outer": 0.2,
+        "lr_value": 0.1,
+        "lr_om": 0.1,
         "inner_asymm": True,
         "n_agents": 2,
         "n_inner_steps": 1 if debug else 2,
@@ -61,7 +60,6 @@ def main(debug):
         "use_baseline": False,
         "use_dice": True,
         "use_opp_modeling": False,
-
         "seed": tune.grid_search(seeds),
         "metric": "ag_0_returns_player_1",
     }
@@ -79,24 +77,37 @@ def main(debug):
 def train(hp):
     tune_config, stop, _ = get_tune_config(hp)
     # Train with the Tune Class API (not RLLib Class)
-    tune_analysis = tune.run(LOLADICE, name=hp["exp_name"], config=tune_config,
-                             checkpoint_at_end=True,
-                             stop=stop, metric=hp["metric"], mode="max")
+    tune_analysis = tune.run(
+        LOLADICE,
+        name=hp["exp_name"],
+        config=tune_config,
+        checkpoint_at_end=True,
+        stop=stop,
+        metric=hp["metric"],
+        mode="max",
+    )
     tune_analysis_per_exp = {"": tune_analysis}
     return tune_analysis_per_exp
 
 
 def get_tune_config(hp: dict) -> dict:
     config = copy.deepcopy(hp)
-    assert config['env_name'] in ("CoinGame", "IPD", "IMP", "AsymCoinGame",
-                                  "BoS", "AsymBoS")
+    assert config["env_name"] in (
+        "CoinGame",
+        "IPD",
+        "IMP",
+        "AsymCoinGame",
+        "BoS",
+        "AsymBoS",
+    )
 
     if config["env_name"] in ("IPD", "IMP", "BoS", "AsymBoS"):
         config["make_policy"] = ("make_simple_policy", {})
         config["base_lr"] = 1.0
 
-        config["trace_length"] = \
+        config["trace_length"] = (
             150 if config["trace_length"] is None else config["trace_length"]
+        )
         config["make_optimizer"] = ("make_sgd_optimizer", {})
 
         # BE CAREFUL CHANGES TO env_config WILL NOT
@@ -115,12 +126,14 @@ def get_tune_config(hp: dict) -> dict:
         config["gamma"] = 0.9 if config["gamma"] is None else config["gamma"]
         config["save_dir"] = "dice_results_imp"
     elif config["env_name"] in ("CoinGame", "AsymCoinGame"):
-        config["trace_length"] = 150 \
-            if config["trace_length"] is None \
-            else config["trace_length"]
+        config["trace_length"] = (
+            150 if config["trace_length"] is None else config["trace_length"]
+        )
         config["epochs"] *= 10
-        config["make_optimizer"] = ("make_adam_optimizer",
-                                    {"hidden_sizes": [16, 32]})
+        config["make_optimizer"] = (
+            "make_adam_optimizer",
+            {"hidden_sizes": [16, 32]},
+        )
         config["save_dir"] = "dice_results_coin_game"
         config["gamma"] = 0.96 if config["gamma"] is None else config["gamma"]
         config["make_policy"] = ("make_conv_policy", {})
@@ -145,18 +158,30 @@ def get_tune_config(hp: dict) -> dict:
     config["lr_om"] = config["lr_om"] * config["base_lr"]
     config["env_config"] = env_config
 
-    stop = {"episodes_total": config['epochs']}
+    stop = {"episodes_total": config["epochs"]}
 
     return config, stop, env_config
 
 
 def evaluate(tune_analysis_per_exp, hp, debug):
-    (rllib_hp, rllib_config_eval, policies_to_load,
-     trainable_class, stop, env_config) = generate_eval_config(hp, debug)
+    (
+        rllib_hp,
+        rllib_config_eval,
+        policies_to_load,
+        trainable_class,
+        stop,
+        env_config,
+    ) = generate_eval_config(hp, debug)
 
-    lola_pg_official.evaluate_self_and_cross_perf(
-        rllib_hp, rllib_config_eval, policies_to_load,
-        trainable_class, stop, env_config, tune_analysis_per_exp)
+    lola_pg_official._evaluate_self_and_cross_perf(
+        rllib_hp,
+        rllib_config_eval,
+        policies_to_load,
+        trainable_class,
+        stop,
+        env_config,
+        tune_analysis_per_exp,
+    )
 
 
 def generate_eval_config(hp, debug):
@@ -167,11 +192,13 @@ def generate_eval_config(hp, debug):
     hp_eval["batch_size"] = 1
     hp_eval["num_episodes"] = 3 if debug else 100
     tune_config, stop, env_config = get_tune_config(hp_eval)
-    tune_config['TuneTrainerClass'] = LOLADICE
+    tune_config["TuneTrainerClass"] = LOLADICE
 
     hp_eval["group_names"] = ["lola"]
-    hp_eval["scale_multipliers"] = (1 / tune_config['trace_length'],
-                                    1 / tune_config['trace_length'])
+    hp_eval["scale_multipliers"] = (
+        1 / tune_config["trace_length"],
+        1 / tune_config["trace_length"],
+    )
     hp_eval["jitter"] = 0.05
 
     if hp_eval["env_name"] == "IPD":
@@ -208,13 +235,14 @@ def generate_eval_config(hp, debug):
                     policy.get_tune_policy_class(DQNTorchPolicy),
                     hp_eval["env_class"](env_config).OBSERVATION_SPACE,
                     hp_eval["env_class"].ACTION_SPACE,
-                    {"tune_config": copy.deepcopy(tune_config)}),
-
+                    {"tune_config": copy.deepcopy(tune_config)},
+                ),
                 env_config["players_ids"][1]: (
                     policy.get_tune_policy_class(DQNTorchPolicy),
                     hp_eval["env_class"](env_config).OBSERVATION_SPACE,
                     hp_eval["env_class"].ACTION_SPACE,
-                    {"tune_config": copy.deepcopy(tune_config)}),
+                    {"tune_config": copy.deepcopy(tune_config)},
+                ),
             },
             "policy_mapping_fn": lambda agent_id: agent_id,
             "policies_to_train": ["None"],
@@ -223,10 +251,16 @@ def generate_eval_config(hp, debug):
         "min_iter_time_s": hp_eval["min_iter_time_s"],
     }
     policies_to_load = copy.deepcopy(env_config["players_ids"])
-    trainable_class = tune_config['TuneTrainerClass']
+    trainable_class = tune_config["TuneTrainerClass"]
 
-    return hp_eval, rllib_config_eval, policies_to_load, \
-           trainable_class, stop, env_config
+    return (
+        hp_eval,
+        rllib_config_eval,
+        policies_to_load,
+        trainable_class,
+        stop,
+        env_config,
+    )
 
 
 if __name__ == "__main__":
