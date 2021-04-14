@@ -5,11 +5,11 @@
 ##########
 
 import copy
-
 import functools
 import os
-import ray
 import time
+
+import ray
 import torch
 from ray import tune
 from ray.rllib.agents.dqn import DQNTrainer
@@ -22,16 +22,15 @@ from ray.rllib.utils.schedules import PiecewiseSchedule
 
 from marltoolbox.algos.lola.train_cg_tune_class_API import LOLAPGCG
 from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
-from marltoolbox.algos import population
-from marltoolbox.envs.vectorized_coin_game import (
-    VectorizedCoinGame,
-    AsymVectorizedCoinGame,
-)
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
     IteratedPrisonersDilemma,
     IteratedBoS,
     IteratedAsymChicken,
     IteratedAsymBoS,
+)
+from marltoolbox.envs.vectorized_coin_game import (
+    VectorizedCoinGame,
+    AsymVectorizedCoinGame,
 )
 from marltoolbox.utils import (
     policy,

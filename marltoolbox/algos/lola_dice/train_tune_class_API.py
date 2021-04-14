@@ -2,78 +2,125 @@
 # Code modified from: https://github.com/alshedivat/lola
 ##########
 
-import os
-import json
 import functools
+import json
+import os
+
+import numpy as np
+import tensorflow as tf
 from ray import tune
 
-import tensorflow as tf
-import numpy as np
-from marltoolbox.algos.lola_dice.rpg import build_graph, get_update, rollout, gen_trace_batches
-from marltoolbox.algos.lola_dice.policy import SimplePolicy, MLPPolicy, ConvPolicy
 import marltoolbox.algos.lola_dice.envs as lola_dice_envs
 import marltoolbox.algos.lola_dice.utils as utils
+from marltoolbox.algos.lola_dice.policy import (
+    SimplePolicy,
+    MLPPolicy,
+    ConvPolicy,
+)
+from marltoolbox.algos.lola_dice.rpg import (
+    build_graph,
+    get_update,
+    rollout,
+    gen_trace_batches,
+)
 
 
-def make_simple_policy(ob_size, num_actions, prev=None, root=None, batch_size=None):
+def make_simple_policy(
+    ob_size, num_actions, prev=None, root=None, batch_size=None
+):
     return SimplePolicy(ob_size, num_actions, prev=prev)
 
 
-def make_mlp_policy(ob_size, num_actions, hidden_sizes, prev=None, batch_size=64):
-    return MLPPolicy(ob_size, num_actions, hidden_sizes=hidden_sizes, prev=prev, batch_size=batch_size)
+def make_mlp_policy(
+    ob_size, num_actions, hidden_sizes, prev=None, batch_size=64
+):
+    return MLPPolicy(
+        ob_size,
+        num_actions,
+        hidden_sizes=hidden_sizes,
+        prev=prev,
+        batch_size=batch_size,
+    )
 
 
-def make_conv_policy(ob_size, num_actions, hidden_sizes, prev=None, batch_size=64):
-    return ConvPolicy(ob_size, num_actions, hidden_sizes=hidden_sizes, prev=prev, batch_size=batch_size)
+def make_conv_policy(
+    ob_size, num_actions, hidden_sizes, prev=None, batch_size=64
+):
+    return ConvPolicy(
+        ob_size,
+        num_actions,
+        hidden_sizes=hidden_sizes,
+        prev=prev,
+        batch_size=batch_size,
+    )
 
 
 def make_adam_optimizer(lr):
-    return tf.train.AdamOptimizer(learning_rate=lr, beta1=0.9, beta2=0.999, epsilon=1e-08, use_locking=False,
-                                       name='Adam')
+    return tf.train.AdamOptimizer(
+        learning_rate=lr,
+        beta1=0.9,
+        beta2=0.999,
+        epsilon=1e-08,
+        use_locking=False,
+        name="Adam",
+    )
+
 
 def make_sgd_optimizer(lr):
     return tf.train.GradientDescentOptimizer(learning_rate=lr)
 
 
 class LOLADICE(tune.Trainable):
+    def _init_lola(
+        self,
+        *,
+        env_name,
+        make_policy,
+        make_optimizer,
+        epochs,
+        batch_size,
+        trace_length,
+        grid_size,
+        gamma,
+        lr_inner,
+        lr_outer,
+        lr_value,
+        lr_om,
+        inner_asymm,
+        n_agents,
+        n_inner_steps,
+        value_batch_size,
+        value_epochs,
+        om_batch_size,
+        om_epochs,
+        use_baseline,
+        use_dice,
+        use_opp_modeling,
+        seed,
+        **kwargs,
+    ):
 
-    def _init_lola(self, *, env_name, make_policy,
-          make_optimizer,
-          epochs,
-           batch_size, trace_length, grid_size,
-          gamma,
-          lr_inner,
-          lr_outer,
-          lr_value,
-          lr_om,
-          inner_asymm,
-          n_agents,
-          n_inner_steps,
-          value_batch_size,
-          value_epochs,
-          om_batch_size,
-          om_epochs,
-          use_baseline,
-          use_dice,
-          use_opp_modeling,
-          seed,
-           **kwargs):
-
-        print("args not used:",kwargs)
+        print("args not used:", kwargs)
 
         # Instantiate the environment
         # TODO use the env from the toolbox (with RLLib API)
         if env_name == "IPD":
-            self.env = lola_dice_envs.IPD(max_steps=trace_length, batch_size=batch_size)
+            self.env = lola_dice_envs.IPD(
+                max_steps=trace_length, batch_size=batch_size
+            )
         elif env_name == "AsymBoS":
-            self.env = lola_dice_envs.AsymBoS(max_steps=trace_length, batch_size=batch_size)
+            self.env = lola_dice_envs.AsymBoS(
+                max_steps=trace_length, batch_size=batch_size
+            )
         elif env_name == "IMP":
             self.env = lola_dice_envs.IMP(trace_length)
         elif env_name == "CoinGame":
             self.env = lola_dice_envs.CG(trace_length, batch_size, grid_size)
             self.env.seed(int(seed))
         elif env_name == "AsymCoinGame":
-            self.env = lola_dice_envs.AsymCG(trace_length, batch_size, grid_size)
+            self.env = lola_dice_envs.AsymCG(
+                trace_length, batch_size, grid_size
+            )
             self.env.seed(int(seed))
         else:
             raise ValueError(f"env: {env_name}")
@@ -96,18 +143,24 @@ class LOLADICE(tune.Trainable):
         self.timestep = 0
 
         if make_policy[0] == "make_simple_policy":
-            make_policy = functools.partial(make_simple_policy, **make_policy[1])
+            make_policy = functools.partial(
+                make_simple_policy, **make_policy[1]
+            )
         elif make_policy[0] == "make_conv_policy":
-            make_policy = functools.partial(make_conv_policy,**make_policy[1])
+            make_policy = functools.partial(make_conv_policy, **make_policy[1])
         elif make_policy[0] == "make_mlp_policy":
-            make_policy = functools.partial(make_mlp_policy,**make_policy[1])
+            make_policy = functools.partial(make_mlp_policy, **make_policy[1])
         else:
             NotImplementedError()
 
         if make_optimizer[0] == "make_adam_optimizer":
-            make_optimizer = functools.partial(make_adam_optimizer,**make_optimizer[1])
+            make_optimizer = functools.partial(
+                make_adam_optimizer, **make_optimizer[1]
+            )
         elif make_optimizer[0] == "make_sgd_optimizer":
-            make_optimizer = functools.partial(make_sgd_optimizer,**make_optimizer[1])
+            make_optimizer = functools.partial(
+                make_sgd_optimizer, **make_optimizer[1]
+            )
         else:
             NotImplementedError()
 
@@ -115,13 +168,30 @@ class LOLADICE(tune.Trainable):
         graph = tf.Graph()
         with graph.as_default() as g:
 
-            (self.policies, self.rollout_policies, pol_losses, val_losses, om_losses,
-             update_pol_ops, update_val_ops, update_om_ops) = build_graph(
-                self.env, make_policy, make_optimizer,
-                lr_inner=lr_inner, lr_outer=lr_outer, lr_value=lr_value, lr_om=lr_om,
-                n_agents=self.n_agents, n_inner_steps=n_inner_steps,
-                use_baseline=use_baseline, use_dice=use_dice,
-                use_opp_modeling=self.use_opp_modeling, inner_asymm=inner_asymm)
+            (
+                self.policies,
+                self.rollout_policies,
+                pol_losses,
+                val_losses,
+                om_losses,
+                update_pol_ops,
+                update_val_ops,
+                update_om_ops,
+            ) = build_graph(
+                self.env,
+                make_policy,
+                make_optimizer,
+                lr_inner=lr_inner,
+                lr_outer=lr_outer,
+                lr_value=lr_value,
+                lr_om=lr_om,
+                n_agents=self.n_agents,
+                n_inner_steps=n_inner_steps,
+                use_baseline=use_baseline,
+                use_dice=use_dice,
+                use_opp_modeling=self.use_opp_modeling,
+                inner_asymm=inner_asymm,
+            )
 
             # Train.
             self.acs_all = []
@@ -136,25 +206,38 @@ class LOLADICE(tune.Trainable):
 
             # Construct update functions.
             self.update_funcs = {
-                'policy': [
+                "policy": [
                     get_update(
                         [self.policies[k]] + self.policies[k].opponents,
-                        pol_losses[k], update_pol_ops[k], self.sess,
-                        gamma=self.gamma)
-                    for k in range(self.n_agents)],
-                'value': [
+                        pol_losses[k],
+                        update_pol_ops[k],
+                        self.sess,
+                        gamma=self.gamma,
+                    )
+                    for k in range(self.n_agents)
+                ],
+                "value": [
                     get_update(
                         [self.policies[k]],
-                        val_losses[k], update_val_ops[k], self.sess,
-                        gamma=self.gamma)
-                    for k in range(self.n_agents)],
-                'opp': [
+                        val_losses[k],
+                        update_val_ops[k],
+                        self.sess,
+                        gamma=self.gamma,
+                    )
+                    for k in range(self.n_agents)
+                ],
+                "opp": [
                     get_update(
                         self.policies[k].root.opponents,
-                        om_losses[k], update_om_ops[k], self.sess,
-                        gamma=self.gamma)
+                        om_losses[k],
+                        update_om_ops[k],
+                        self.sess,
+                        gamma=self.gamma,
+                    )
                     for k in range(self.n_agents)
-                ] if om_losses else None,
+                ]
+                if om_losses
+                else None,
             }
 
             self.root_policies = [pi.root for pi in self.policies]
@@ -177,15 +260,22 @@ class LOLADICE(tune.Trainable):
                 om_losses = np.zeros((self.n_agents, self.n_agents - 1))
                 for om_ep in range(self.om_epochs):
                     traces, _ = rollout(
-                        self.env, self.root_policies, self.rollout_policies, self.sess,
-                        gamma=self.gamma, parent_traces=[])
+                        self.env,
+                        self.root_policies,
+                        self.rollout_policies,
+                        self.sess,
+                        gamma=self.gamma,
+                        parent_traces=[],
+                    )
                     om_traces = [
                         [tr for j, tr in enumerate(traces) if j != k]
-                        for k in range(self.n_agents)]
+                        for k in range(self.n_agents)
+                    ]
                     for k in range(self.n_agents):
-                        update_om = self.update_funcs['opp'][k]
+                        update_om = self.update_funcs["opp"][k]
                         for trace_batch in gen_trace_batches(
-                                om_traces[k], batch_size=self.om_batch_size):
+                            om_traces[k], batch_size=self.om_batch_size
+                        ):
                             update_om(trace_batch)
                         loss = update_om(om_traces[k])
                         om_losses[k] += np.asarray(loss)
@@ -201,12 +291,18 @@ class LOLADICE(tune.Trainable):
             value_losses = np.zeros(self.n_agents)
             for v_ep in range(self.value_epochs):
                 traces, _ = rollout(
-                    self.env, self.root_policies, self.rollout_policies, self.sess,
-                    gamma=self.gamma, parent_traces=[])
+                    self.env,
+                    self.root_policies,
+                    self.rollout_policies,
+                    self.sess,
+                    gamma=self.gamma,
+                    parent_traces=[],
+                )
                 for k in range(self.n_agents):
-                    update_val = self.update_funcs['value'][k]
+                    update_val = self.update_funcs["value"][k]
                     for trace_batch in gen_trace_batches(
-                            [traces[k]], batch_size=self.value_batch_size):
+                        [traces[k]], batch_size=self.value_batch_size
+                    ):
                         update_val(trace_batch)
                     loss = update_val([traces[k]])
                     value_losses[k] += loss[0]
@@ -237,10 +333,16 @@ class LOLADICE(tune.Trainable):
                 to_log = []
                 for m in range(self.n_inner_steps):
                     policies_k = [self.policies[k].parents[m]] + [
-                        opp.parents[m] for opp in self.policies[k].opponents]
+                        opp.parents[m] for opp in self.policies[k].opponents
+                    ]
                     traces, sub_to_log = rollout(
-                        self.env, policies_k, self.rollout_policies, self.sess,
-                        gamma=self.gamma, parent_traces=parent_traces)
+                        self.env,
+                        policies_k,
+                        self.rollout_policies,
+                        self.sess,
+                        gamma=self.gamma,
+                        parent_traces=parent_traces,
+                    )
                     parent_traces.append(traces)
                     to_log.append(sub_to_log)
                 inner_traces.append(parent_traces)
@@ -256,8 +358,13 @@ class LOLADICE(tune.Trainable):
                 parent_traces = inner_traces[k]
                 policies_k = [self.policies[k]] + self.policies[k].opponents
                 traces, to_log = rollout(
-                    self.env, policies_k, self.rollout_policies, self.sess,
-                    gamma=self.gamma, parent_traces=parent_traces)
+                    self.env,
+                    policies_k,
+                    self.rollout_policies,
+                    self.sess,
+                    gamma=self.gamma,
+                    parent_traces=parent_traces,
+                )
                 outer_traces.append(traces)
                 outer_all_to_log.append([to_log])
         times.append(outer_timer())
@@ -269,9 +376,8 @@ class LOLADICE(tune.Trainable):
             # Policy
             with utils.elapsed_timer() as pol_upd_timer:
                 parent_traces = inner_traces[k]
-                update_pol = self.update_funcs['policy'][k]
-                loss = update_pol(
-                    outer_traces[k], parent_traces=parent_traces)
+                update_pol = self.update_funcs["policy"][k]
+                loss = update_pol(outer_traces[k], parent_traces=parent_traces)
                 policy_losses.append(loss)
             update_time += pol_upd_timer()
 
@@ -281,23 +387,35 @@ class LOLADICE(tune.Trainable):
             # Logging.
             if self.n_inner_steps > 0:
                 # obs, acs, rets, vals, infos = list(zip(*inner_traces[0][ag_idx]))
-                obs, acs, rets, vals, infos = list(zip(*inner_traces[ag_idx][0]))
+                obs, acs, rets, vals, infos = list(
+                    zip(*inner_traces[ag_idx][0])
+                )
                 all_to_log = inner_all_to_log
             else:
                 obs, acs, rets, vals, infos = list(zip(*outer_traces[ag_idx]))
                 all_to_log = outer_all_to_log
-            all_to_log = [per_agent_to_log[0] for per_agent_to_log in all_to_log][ag_idx]
+            all_to_log = [
+                per_agent_to_log[0] for per_agent_to_log in all_to_log
+            ][ag_idx]
             policy_loss = policy_losses[ag_idx]
 
             self.times_all.append(times)
             self.acs_all.append([ac.mean() for ac in acs])
 
-            generate_rate_trace = [all_to_log[i].pop('generate_rate') for i in range(len(all_to_log))
-                                   if "generate_rate" in all_to_log[i].keys()]
-            self.pick_speed_all.append(sum(generate_rate_trace) / len(generate_rate_trace)
-                                  if len(generate_rate_trace) > 0 else -1)
+            generate_rate_trace = [
+                all_to_log[i].pop("generate_rate")
+                for i in range(len(all_to_log))
+                if "generate_rate" in all_to_log[i].keys()
+            ]
+            self.pick_speed_all.append(
+                sum(generate_rate_trace) / len(generate_rate_trace)
+                if len(generate_rate_trace) > 0
+                else -1
+            )
 
-            self.rets_all.append([r.sum(axis=0).mean() * (1 - self.gamma) for r in rets])
+            self.rets_all.append(
+                [r.sum(axis=0).mean() * (1 - self.gamma) for r in rets]
+            )
             # rets_all.append([r.sum(axis=0).mean() for r in rets])
             # print("Epoch:", e + 1, '-' * 60)
             # print("Policy losses:", list(map(sum, policy_losses)))
@@ -338,7 +456,9 @@ class LOLADICE(tune.Trainable):
     def save_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint.json")
         tf_checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
-        tf_checkpoint_dir, tf_checkpoint_filename = os.path.split(tf_checkpoint_path)
+        tf_checkpoint_dir, tf_checkpoint_filename = os.path.split(
+            tf_checkpoint_path
+        )
         checkpoint = {
             "timestep": self.timestep,
             "tf_checkpoint_dir": tf_checkpoint_dir,
@@ -353,12 +473,14 @@ class LOLADICE(tune.Trainable):
         return path
 
     def load_checkpoint(self, checkpoint_path):
-        print('Loading Model...',checkpoint_path)
-        with open(checkpoint_path, 'r') as f:
+        print("Loading Model...", checkpoint_path)
+        with open(checkpoint_path, "r") as f:
             checkpoint = json.load(f)
 
-        ckpt = tf.train.get_checkpoint_state(checkpoint["tf_checkpoint_dir"],
-                                             latest_filename=f'{checkpoint["tf_checkpoint_filename"]}')
+        ckpt = tf.train.get_checkpoint_state(
+            checkpoint["tf_checkpoint_dir"],
+            latest_filename=f'{checkpoint["tf_checkpoint_filename"]}',
+        )
         self.saver.restore(self.sess, ckpt.model_checkpoint_path)
 
         # TODO need to set in eval like batchnorm fixed
@@ -370,16 +492,16 @@ class LOLADICE(tune.Trainable):
     def _get_agent_to_use(self, policy_id):
         if policy_id == "player_red":
             agent_n = 0
-            available_actions = np.ones(shape=[1,4])
+            available_actions = np.ones(shape=[1, 4])
         elif policy_id == "player_blue":
             agent_n = 1
-            available_actions = np.ones(shape=[1,4])
+            available_actions = np.ones(shape=[1, 4])
         elif policy_id == "player_row":
             agent_n = 0
-            available_actions = np.ones(shape=[1,2])
+            available_actions = np.ones(shape=[1, 2])
         elif policy_id == "player_col":
             agent_n = 1
-            available_actions = np.ones(shape=[1,2])
+            available_actions = np.ones(shape=[1, 2])
         else:
             raise ValueError(f"policy_id {policy_id}")
         info = {"available_actions": available_actions}
@@ -392,8 +514,7 @@ class LOLADICE(tune.Trainable):
     def _post_process_action(self, action):
         return action[None, ...]  # add batch dim
 
-
-    def compute_actions(self, policy_id:str, obs_batch:list):
+    def compute_actions(self, policy_id: str, obs_batch: list):
         # because of the LSTM
         assert len(obs_batch) == 1
 
@@ -407,4 +528,3 @@ class LOLADICE(tune.Trainable):
         state_out = []
         extra_fetches = {}
         return action, state_out, extra_fetches
-

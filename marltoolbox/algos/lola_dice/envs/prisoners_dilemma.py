@@ -3,7 +3,6 @@ Iterated Prisoner's dilemma environment.
 """
 import gym
 import numpy as np
-
 from gym.spaces import Discrete, Tuple
 
 from .common import OneHot
@@ -14,6 +13,7 @@ class IteratedPrisonersDilemma(gym.Env):
     A two-agent vectorized environment.
     Possible actions for each agent are (C)ooperate and (D)efect.
     """
+
     # Possible actions
     NUM_AGENTS = 2
     NUM_ACTIONS = 2
@@ -23,13 +23,13 @@ class IteratedPrisonersDilemma(gym.Env):
         self.ob_space_shape = [self.NUM_STATES]
         self.max_steps = max_steps
         self.batch_size = batch_size
-        self.payout_mat = np.array([[-1., 0.], [-3., -2.]])
-        self.action_space = Tuple([
-            Discrete(self.NUM_ACTIONS) for _ in range(self.NUM_AGENTS)
-        ])
-        self.observation_space = Tuple([
-            OneHot(self.NUM_STATES) for _ in range(self.NUM_AGENTS)
-        ])
+        self.payout_mat = np.array([[-1.0, 0.0], [-3.0, -2.0]])
+        self.action_space = Tuple(
+            [Discrete(self.NUM_ACTIONS) for _ in range(self.NUM_AGENTS)]
+        )
+        self.observation_space = Tuple(
+            [OneHot(self.NUM_STATES) for _ in range(self.NUM_AGENTS)]
+        )
         self.available_actions = [
             np.ones((batch_size, self.NUM_ACTIONS), dtype=int)
             for _ in range(self.NUM_AGENTS)
@@ -42,8 +42,8 @@ class IteratedPrisonersDilemma(gym.Env):
         init_state = np.zeros((self.batch_size, self.NUM_STATES))
         init_state[:, -1] = 1
         observations = [init_state, init_state]
-        info = [{'available_actions': aa} for aa in self.available_actions]
-        info = { "available_actions":info}
+        info = [{"available_actions": aa} for aa in self.available_actions]
+        info = {"available_actions": info}
         return observations, info
 
     def step(self, action):
@@ -61,8 +61,8 @@ class IteratedPrisonersDilemma(gym.Env):
         rewards = list(map(np.asarray, zip(*rewards)))
         observations = [state0, state1]
 
-        done = (self.step_count == self.max_steps)
-        info = [{'available_actions': aa} for aa in self.available_actions]
-        info = { "available_actions":info}
+        done = self.step_count == self.max_steps
+        info = [{"available_actions": aa} for aa in self.available_actions]
+        info = {"available_actions": info}
 
         return observations, rewards, done, info

@@ -22,10 +22,17 @@ class SoftQSchedule(StochasticSampling):
     output divided by the temperature. Returns the argmax iff explore=False.
     """
 
-    def __init__(self, action_space, *, framework,
-                 initial_temperature=1.0, final_temperature=1e-6,
-                 temperature_timesteps=int(1e5),
-                 temperature_schedule=None, **kwargs):
+    def __init__(
+        self,
+        action_space,
+        *,
+        framework,
+        initial_temperature=1.0,
+        final_temperature=1e-6,
+        temperature_timesteps=int(1e5),
+        temperature_schedule=None,
+        **kwargs,
+    ):
         """Initializes a SoftQ Exploration object.
 
         Args:
@@ -40,25 +47,30 @@ class SoftQSchedule(StochasticSampling):
         assert isinstance(action_space, Discrete)
         super().__init__(action_space, framework=framework, **kwargs)
 
-        self.temperature_schedule = \
-            from_config(Schedule, temperature_schedule, framework=framework) \
-            or PiecewiseSchedule(
-                endpoints=[
-                    (0, initial_temperature),
-                    (temperature_timesteps, final_temperature)],
-                outside_value=final_temperature,
-                framework=self.framework)
+        self.temperature_schedule = from_config(
+            Schedule, temperature_schedule, framework=framework
+        ) or PiecewiseSchedule(
+            endpoints=[
+                (0, initial_temperature),
+                (temperature_timesteps, final_temperature),
+            ],
+            outside_value=final_temperature,
+            framework=self.framework,
+        )
 
         # The current timestep value (tf-var or python int).
         self.last_timestep = get_variable(
-            0, framework=framework, tf_name="timestep")
+            0, framework=framework, tf_name="timestep"
+        )
         self.temperature = self.temperature_schedule(self.last_timestep)
 
     @override(StochasticSampling)
-    def get_exploration_action(self,
-                               action_distribution: ActionDistribution,
-                               timestep: Union[int, TensorType],
-                               explore: bool = True):
+    def get_exploration_action(
+        self,
+        action_distribution: ActionDistribution,
+        timestep: Union[int, TensorType],
+        explore: bool = True,
+    ):
         cls = type(action_distribution)
         assert cls in [Categorical, TorchCategorical]
 
@@ -67,17 +79,18 @@ class SoftQSchedule(StochasticSampling):
         self._set_temperature(explore, timestep)
         action_distribution = self._apply_temperature(action_distribution, cls)
 
-
         # Delegate to super method.
         return super().get_exploration_action(
             action_distribution=action_distribution,
             timestep=timestep,
-            explore=explore)
+            explore=explore,
+        )
 
     def _set_temperature(self, explore, timestep):
         if explore:
             self.temperature = self.temperature_schedule(
-                timestep if timestep is not None else self.last_timestep)
+                timestep if timestep is not None else self.last_timestep
+            )
         else:
             self.temperature = 1.0
 
@@ -86,51 +99,51 @@ class SoftQSchedule(StochasticSampling):
         dist = cls(
             action_distribution.inputs,
             self.model,
-            temperature=self.temperature)
+            temperature=self.temperature,
+        )
         return dist
 
 
 class SoftQScheduleWtClustering(SoftQSchedule):
-
-    def __init__(self,
-                 action_space,
-                 *,
-                 framework,
-                 clustering_distance=0.5,
-                 **kwargs):
+    def __init__(
+        self, action_space, *, framework, clustering_distance=0.5, **kwargs
+    ):
         super().__init__(action_space, framework=framework, **kwargs)
 
         self.clustering_distance = clustering_distance
 
     @override(StochasticSampling)
-    def get_exploration_action(self,
-                               action_distribution: ActionDistribution,
-                               timestep: Union[int, TensorType],
-                               explore: bool = True):
+    def get_exploration_action(
+        self,
+        action_distribution: ActionDistribution,
+        timestep: Union[int, TensorType],
+        explore: bool = True,
+    ):
         logger.debug(f"Going to clusterize_q_values")
         self.clusterize_q_values(action_distribution.inputs)
 
         return super().get_exploration_action(
             action_distribution=action_distribution,
             timestep=timestep,
-            explore=explore)
+            explore=explore,
+        )
 
     def clusterize_q_values(self, action_distrib_inputs):
         for batch_idx in range(len(action_distrib_inputs)):
-            action_distrib_inputs[batch_idx, ...] = \
-                self.clusterize_one_sample(
-                    action_distrib_inputs[batch_idx, ...])
+            action_distrib_inputs[batch_idx, ...] = self.clusterize_one_sample(
+                action_distrib_inputs[batch_idx, ...]
+            )
 
     def clusterize_one_sample(self, one_action_distrib_input):
         return clusterize_by_distance(
-            one_action_distrib_input.squeeze(dim=0),
-            self.clustering_distance
+            one_action_distrib_input.squeeze(dim=0), self.clustering_distance
         ).unsqueeze(dim=0)
 
 
 def clusterize_by_distance(pdparam, clustering_distance):
-    assert pdparam.dim() == 1, \
-        f"need pdparam.dim() == 1: pdparam.shape {pdparam.shape}"
+    assert (
+        pdparam.dim() == 1
+    ), f"need pdparam.dim() == 1: pdparam.shape {pdparam.shape}"
 
     clusters = find_clusters(pdparam, clustering_distance)
     clustered_pdparam = get_mean_values_over_cluster(pdparam, clusters)
@@ -156,14 +169,14 @@ def get_mean_values_over_cluster(pdparam, clusters):
         if i in clusters.keys():
             cluster_i = list(set(group_cluster(i, clusters)))
             if p_1 != 0.0:
-                adaptation_ratio = (pdparam[cluster_i].clone().detach().mean()
-                                    / p_1)
+                adaptation_ratio = (
+                    pdparam[cluster_i].clone().detach().mean() / p_1
+                )
                 clustered_pdparam[i] = clustered_pdparam[i] * adaptation_ratio
             else:
-                clustered_pdparam[i] = (
-                        pdparam[cluster_i].clone().detach().mean() *
-                        (1+clustered_pdparam[i])
-                )
+                clustered_pdparam[i] = pdparam[
+                    cluster_i
+                ].clone().detach().mean() * (1 + clustered_pdparam[i])
     return clustered_pdparam
 
 

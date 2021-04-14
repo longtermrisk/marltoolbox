@@ -22,92 +22,102 @@ from ray.util.iter import LocalIterator
 from torch.nn import CrossEntropyLoss
 
 from marltoolbox.algos import augmented_dqn, supervised_learning, hierarchical
-from marltoolbox.algos.ltft.ltft_torch_policy import \
-    LTFTCallbacks, LTFTTorchPolicy
-from marltoolbox.utils import log, miscellaneous, exploration, callbacks
+from marltoolbox.algos.ltft.ltft_torch_policy import (
+    LTFTCallbacks,
+    LTFTTorchPolicy,
+)
+from marltoolbox.utils import log, exploration, callbacks
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONFIG = merge_dicts(hierarchical.DEFAULT_CONFIG,
-                             DQN_DEFAULT_CONFIG)
-DEFAULT_CONFIG.update({
-    # Percentile to use when performing the likelihood test on the
-    # hypothesis that the opponent is cooperating.
-    # If the observes behavior is below this percentile, then consider that
-    # the opponent is cooperative.
-    "percentile_for_likelihood_test": 95,
-    # Number of episode during which to punish after detecting that the
-    # opponent was not cooperating during the last episode
-    "punishment_time": 1,
-    # Min number of epi during which to cooperate after stopping punishment
-    "min_coop_epi_after_punishing": 0,
-    # Option to add some bias to the likelihood check.
-    "defection_threshold": 0.0,
-    # Average the defection value over several episodes
-    "average_defection_value": True,
-    "average_defection_value_len": 20,
-    "use_last_step_for_search": True,
-    # Length of the history (n of steps) to sample from to simulate the
-    # opponent
-    "length_of_history": 200,
-    # Number of steps sampled to assemble an episode simulating the opponent
-    # behavior
-    "n_steps_in_bootstrap_replicates": 20,
-    # Number of replicates of the simulation of the opponent behavior
-    "n_bootstrap_replicates": 50,
-
-    "callbacks": callbacks.merge_callbacks(
-        LTFTCallbacks,
-        log.get_logging_callbacks_class()),
-
-    "optimizer": {"sgd_momentum": 0.9, },
-    'nested_policies': [
-        # Here the trainer need to be a DQNTrainer to provide the config
-        # for the 3 MyDQNTorchPolicy
-        {"Policy_class": augmented_dqn.MyDQNTorchPolicy, "config_update": {}},
-        {"Policy_class": augmented_dqn.MyDQNTorchPolicy, "config_update": {}},
-        {"Policy_class": augmented_dqn.MyDQNTorchPolicy, "config_update": {}},
-        {"Policy_class": supervised_learning.MySPLTorchPolicy,
-         "config_update": {
-             "learn_action": True,
-             "learn_reward": False,
-             "explore": False,
-             # "timesteps_per_iteration": None,  # To fill
-             # === Optimization ===
-             # Learning rate for adam optimizer
-             # "lr": None,  # To fill
-             # Learning rate schedule
-             # "lr_schedule": [(0, None),
-             #                 (None, 1e-12)],  # To fill
-             "loss_fn": CrossEntropyLoss(),
-         }},
-    ],
-
-    # === Exploration Settings ===
-    # Default exploration behavior, iff `explore`=None is passed into
-    # compute_action(s).
-    # Set to False for no exploration behavior (e.g., for evaluation).
-    "explore": True,
-    # Provide a dict specifying the Exploration object's config.
-    "exploration_config": {
-        # The Exploration class to use. In the simplest case, this is the name
-        # (str) of any class present in the `rllib.utils.exploration` package.
-        # You can also provide the python class directly or the full location
-        # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-        # EpsilonGreedy").
-        "type": exploration.SoftQScheduleWtClustering,
-        # Add constructor kwargs here (if any).
-        "clustering_distance": 0.2,
-        "temperature_schedule": PiecewiseSchedule(
-            endpoints=[
-                (0, 1.0),
-                (1000000, 0.1)],
-            outside_value=0.1,
-            framework="torch")
-    },
-
-    "log_level": "DEBUG",
-}
+DEFAULT_CONFIG = merge_dicts(hierarchical.DEFAULT_CONFIG, DQN_DEFAULT_CONFIG)
+DEFAULT_CONFIG.update(
+    {
+        # Percentile to use when performing the likelihood test on the
+        # hypothesis that the opponent is cooperating.
+        # If the observes behavior is below this percentile, then consider that
+        # the opponent is cooperative.
+        "percentile_for_likelihood_test": 95,
+        # Number of episode during which to punish after detecting that the
+        # opponent was not cooperating during the last episode
+        "punishment_time": 1,
+        # Min number of epi during which to cooperate after stopping punishment
+        "min_coop_epi_after_punishing": 0,
+        # Option to add some bias to the likelihood check.
+        "defection_threshold": 0.0,
+        # Average the defection value over several episodes
+        "average_defection_value": True,
+        "average_defection_value_len": 20,
+        "use_last_step_for_search": True,
+        # Length of the history (n of steps) to sample from to simulate the
+        # opponent
+        "length_of_history": 200,
+        # Number of steps sampled to assemble an episode simulating the opponent
+        # behavior
+        "n_steps_in_bootstrap_replicates": 20,
+        # Number of replicates of the simulation of the opponent behavior
+        "n_bootstrap_replicates": 50,
+        "callbacks": callbacks.merge_callbacks(
+            LTFTCallbacks, log.get_logging_callbacks_class()
+        ),
+        "optimizer": {
+            "sgd_momentum": 0.9,
+        },
+        "nested_policies": [
+            # Here the trainer need to be a DQNTrainer to provide the config
+            # for the 3 MyDQNTorchPolicy
+            {
+                "Policy_class": augmented_dqn.MyDQNTorchPolicy,
+                "config_update": {},
+            },
+            {
+                "Policy_class": augmented_dqn.MyDQNTorchPolicy,
+                "config_update": {},
+            },
+            {
+                "Policy_class": augmented_dqn.MyDQNTorchPolicy,
+                "config_update": {},
+            },
+            {
+                "Policy_class": supervised_learning.MySPLTorchPolicy,
+                "config_update": {
+                    "learn_action": True,
+                    "learn_reward": False,
+                    "explore": False,
+                    # "timesteps_per_iteration": None,  # To fill
+                    # === Optimization ===
+                    # Learning rate for adam optimizer
+                    # "lr": None,  # To fill
+                    # Learning rate schedule
+                    # "lr_schedule": [(0, None),
+                    #                 (None, 1e-12)],  # To fill
+                    "loss_fn": CrossEntropyLoss(),
+                },
+            },
+        ],
+        # === Exploration Settings ===
+        # Default exploration behavior, iff `explore`=None is passed into
+        # compute_action(s).
+        # Set to False for no exploration behavior (e.g., for evaluation).
+        "explore": True,
+        # Provide a dict specifying the Exploration object's config.
+        "exploration_config": {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": exploration.SoftQScheduleWtClustering,
+            # Add constructor kwargs here (if any).
+            "clustering_distance": 0.2,
+            "temperature_schedule": PiecewiseSchedule(
+                endpoints=[(0, 1.0), (1000000, 0.1)],
+                outside_value=0.1,
+                framework="torch",
+            ),
+        },
+        "log_level": "DEBUG",
+    }
 )
 
 PLOT_KEYS = [
@@ -144,8 +154,9 @@ def validate_config(config: TrainerConfigDict) -> None:
     validate_config_dqn(config)
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(
+    workers: WorkerSet, config: TrainerConfigDict
+) -> LocalIterator[dict]:
     """
     Modified from the execution plan of the DQNTrainer
     """
@@ -165,7 +176,8 @@ def execution_plan(workers: WorkerSet,
         replay_batch_size=config["train_batch_size"],
         replay_mode=config["multiagent"]["replay_mode"],
         replay_sequence_length=config["replay_sequence_length"],
-        **prio_args)
+        **prio_args,
+    )
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -177,7 +189,8 @@ def execution_plan(workers: WorkerSet,
     # (1) Generate rollouts and store them in our local replay buffer. Calling
     # next() on store_op drives this.
     store_op = rollouts_dqn.for_each(
-        StoreToReplayBuffer(local_buffer=local_replay_buffer))
+        StoreToReplayBuffer(local_buffer=local_replay_buffer)
+    )
 
     def update_prio(item):
         samples, info_dict = item
@@ -188,10 +201,15 @@ def execution_plan(workers: WorkerSet,
                 #  torch/tf. Clean up these results/info dicts across
                 #  policies (note: fixing this in torch_policy.py will
                 #  break e.g. DDPPO!).
-                td_error = info.get("td_error",
-                                    info[LEARNER_STATS_KEY].get("td_error"))
-                prio_dict[policy_id] = (samples.policy_batches[policy_id]
-                                        .data.get("batch_indexes"), td_error)
+                td_error = info.get(
+                    "td_error", info[LEARNER_STATS_KEY].get("td_error")
+                )
+                prio_dict[policy_id] = (
+                    samples.policy_batches[policy_id].data.get(
+                        "batch_indexes"
+                    ),
+                    td_error,
+                )
             local_replay_buffer.update_priorities(prio_dict)
         return info_dict
 
@@ -199,21 +217,27 @@ def execution_plan(workers: WorkerSet,
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step, and then we decide whether to update the target network.
     post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
-    replay_op_dqn = Replay(local_buffer=local_replay_buffer) \
-        .for_each(lambda x: post_fn(x, workers, config)) \
-        .for_each(LocalTrainablePolicyModifier(workers, train_dqn_only)) \
-        .for_each(TrainOneStep(workers)) \
-        .for_each(update_prio) \
-        .for_each(UpdateTargetNetwork(
-        workers, config["target_network_update_freq"]))
+    replay_op_dqn = (
+        Replay(local_buffer=local_replay_buffer)
+        .for_each(lambda x: post_fn(x, workers, config))
+        .for_each(LocalTrainablePolicyModifier(workers, train_dqn_only))
+        .for_each(TrainOneStep(workers))
+        .for_each(update_prio)
+        .for_each(
+            UpdateTargetNetwork(workers, config["target_network_update_freq"])
+        )
+    )
 
     # Inform LTFT that we want to train the supervised learning policy only
     # Only train the LTFT policies with this batch
     ltft_policies_ids = _get_ltft_policies_ids(workers)
-    train_op_pg = rollouts_pg \
-        .combine(ConcatBatches(min_batch_size=config["train_batch_size"])) \
-        .for_each(LocalTrainablePolicyModifier(workers, train_pg_only)) \
+    train_op_pg = (
+        rollouts_pg.combine(
+            ConcatBatches(min_batch_size=config["train_batch_size"])
+        )
+        .for_each(LocalTrainablePolicyModifier(workers, train_pg_only))
         .for_each(TrainOneStep(workers, policies=ltft_policies_ids))
+    )
 
     # opt = train_op_pg.union(replay_op_dqn, deterministic=True).batch(2)
     round_robin_weights = calculate_rr_weights(config)
@@ -225,7 +249,8 @@ def execution_plan(workers: WorkerSet,
         [store_op, replay_op_dqn, train_op_pg],
         mode="round_robin",
         output_indexes=[1, 2],
-        round_robin_weights=round_robin_weights)
+        round_robin_weights=round_robin_weights,
+    )
 
     return StandardMetricsReporting(train_op, workers, config)
 
@@ -239,11 +264,12 @@ def _get_ltft_policies_ids(workers):
 
 
 class LocalTrainablePolicyModifier:
-
-    def __init__(self,
-                 workers: WorkerSet,
-                 fn_to_apply,
-                 policies: List[PolicyID] = frozenset([])):
+    def __init__(
+        self,
+        workers: WorkerSet,
+        fn_to_apply,
+        policies: List[PolicyID] = frozenset([]),
+    ):
         self.workers = workers
         self.policies = policies or workers.local_worker().policies_to_train
         self.fn_to_apply = fn_to_apply
@@ -274,4 +300,5 @@ LTFTTrainer = DQNTrainer.with_updates(
     default_config=DEFAULT_CONFIG,
     get_policy_class=None,
     validate_config=validate_config,
-    execution_plan=execution_plan)
+    execution_plan=execution_plan,
+)

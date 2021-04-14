@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
-from ray.tune.trial import Trial
-from ray.tune.checkpoint_manager import Checkpoint
-from ray.tune import register_trainable
 from ray.tune import Trainable
+from ray.tune import register_trainable
+from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
+from ray.tune.checkpoint_manager import Checkpoint
+from ray.tune.trial import Trial
 
 if TYPE_CHECKING:
     pass

@@ -7,7 +7,7 @@ from ray import tune
 from ray.rllib.agents import dqn
 from ray.rllib.agents.dqn.dqn_torch_policy import postprocess_nstep_and_prio
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.schedules import PiecewiseSchedule, ExponentialSchedule
+from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.tune.integration.wandb import WandbLogger
 from ray.tune.logger import DEFAULT_LOGGERS
 
@@ -18,6 +18,9 @@ from marltoolbox.envs import (
     vectorized_mixed_motive_coin_game,
     ssd_mixed_motive_coin_game,
 )
+from marltoolbox.envs.utils.wrappers import (
+    add_RewardUncertaintyEnvClassWrapper,
+)
 from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
 from marltoolbox.utils import (
     exploration,
@@ -27,9 +30,6 @@ from marltoolbox.utils import (
     plot,
     self_and_cross_perf,
     callbacks,
-)
-from marltoolbox.envs.utils.wrappers import (
-    add_RewardUncertaintyEnvClassWrapper,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,6 @@ def get_hyperparameters(
     env=None,
     reward_uncertainty=0.0,
 ):
-
     if debug:
         train_n_replicates = 2
         n_times_more_utilitarians_seeds = 1

@@ -1,6 +1,6 @@
-import numpy as np
 from collections import deque
 
+import numpy as np
 from gym import ObservationWrapper
 
 
@@ -8,6 +8,7 @@ class FrameStack(ObservationWrapper):
     """
     Stacks k last frames. Not the most efficient implementation.
     """
+
     def __init__(self, env, k):
         super(FrameStack, self).__init__(env)
         self.NUM_STATES = env.NUM_STATES * k

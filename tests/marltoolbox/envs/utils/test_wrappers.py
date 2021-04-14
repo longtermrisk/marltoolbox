@@ -1,8 +1,11 @@
-import numpy as np
 import random
 
+import numpy as np
+
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
-from marltoolbox.envs.utils.wrappers import add_RewardUncertaintyEnvClassWrapper
+from marltoolbox.envs.utils.wrappers import (
+    add_RewardUncertaintyEnvClassWrapper,
+)
 
 
 def init_env(max_steps, env_class, seed=None, grid_size=3):
@@ -20,8 +23,12 @@ def test_add_RewardUncertaintyEnvClassWrapper():
     max_steps, grid_size = 20, 3
     n_steps = int(max_steps * 8.25)
     reward_uncertainty_mean, reward_uncertainty_std = 10, 1
-    MyCoinGame = add_RewardUncertaintyEnvClassWrapper(CoinGame, reward_uncertainty_std, reward_uncertainty_mean)
-    MyAsymCoinGame = add_RewardUncertaintyEnvClassWrapper(AsymCoinGame, reward_uncertainty_std, reward_uncertainty_mean)
+    MyCoinGame = add_RewardUncertaintyEnvClassWrapper(
+        CoinGame, reward_uncertainty_std, reward_uncertainty_mean
+    )
+    MyAsymCoinGame = add_RewardUncertaintyEnvClassWrapper(
+        AsymCoinGame, reward_uncertainty_std, reward_uncertainty_mean
+    )
     coin_game = init_env(max_steps, MyCoinGame, grid_size)
     asymm_coin_game = init_env(max_steps, MyAsymCoinGame, grid_size)
 
@@ -32,7 +39,10 @@ def test_add_RewardUncertaintyEnvClassWrapper():
         step_i = 0
         for _ in range(n_steps):
             step_i += 1
-            actions = {policy_id: random.randint(0, env.NUM_ACTIONS - 1) for policy_id in env.players_ids}
+            actions = {
+                policy_id: random.randint(0, env.NUM_ACTIONS - 1)
+                for policy_id in env.players_ids
+            }
             obs, reward, done, info = env.step(actions)
             print("reward", reward)
             all_rewards.append(reward[env.player_red_id])

@@ -12,21 +12,21 @@ consistently.
 import collections
 
 import mock
-
-import numpy as np
 import tensorflow as tf
 
 
 def wrap_variable_creation(func, custom_getter):
     """Provides a custom getter for all variable creations."""
     original_get_variable = tf.get_variable
+
     def custom_get_variable(*args, **kwargs):
         return original_get_variable(
-            *args, custom_getter=custom_getter, **kwargs)
+            *args, custom_getter=custom_getter, **kwargs
+        )
 
     # Mock the get_variable method
     with mock.patch("tensorflow.get_variable", custom_get_variable):
-            return func()
+        return func()
 
 
 def make_with_custom_variables(func, variables):

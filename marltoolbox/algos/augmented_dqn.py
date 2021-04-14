@@ -1,17 +1,16 @@
 from typing import Dict
 
-from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.policy.policy import Policy
-from ray.rllib.agents.dqn.dqn_torch_policy import compute_q_values, QLoss
-from ray.rllib.utils.torch_ops import FLOAT_MIN
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import TensorType
-from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
-from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
-from ray.rllib.agents.dqn.dqn_torch_policy import ComputeTDErrorMixin
-
 import torch
 import torch.nn.functional as F
+from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
+from ray.rllib.agents.dqn.dqn_torch_policy import ComputeTDErrorMixin
+from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
+from ray.rllib.agents.dqn.dqn_torch_policy import compute_q_values, QLoss
+from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.torch_ops import FLOAT_MIN
+from ray.rllib.utils.typing import TensorType
 
 from marltoolbox.utils import log, optimizers, policy
 

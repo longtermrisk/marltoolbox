@@ -2,7 +2,7 @@ import numpy as np
 
 
 def add_RewardUncertaintyEnvClassWrapper(
-    env_class, reward_uncertainty_std, reward_uncertainty_mean=0.0
+        env_class, reward_uncertainty_std, reward_uncertainty_mean=0.0
 ):
     class RewardUncertaintyEnvClassWrapper(env_class):
         def step(self, action):

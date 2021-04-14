@@ -137,7 +137,7 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
 
         if self._same_pos(self.red_pos, self.red_coin_pos):
             if self.red_coin and self._same_pos(
-                self.blue_pos, self.red_coin_pos
+                    self.blue_pos, self.red_coin_pos
             ):
                 # Red coin is a coop coin
                 generate_new_coin = True
@@ -154,7 +154,7 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
                 red_pick_red = True
         elif self._same_pos(self.blue_pos, self.blue_coin_pos):
             if not self.red_coin and self._same_pos(
-                self.red_pos, self.blue_coin_pos
+                    self.red_pos, self.blue_coin_pos
             ):
                 # Blue coin is a coop coin
                 generate_new_coin = True
@@ -203,13 +203,13 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
 
     @override(coin_game.CoinGame)
     def _accumulate_info(
-        self,
-        red_pick_any,
-        red_pick_red,
-        blue_pick_any,
-        blue_pick_blue,
-        picked_red_coop,
-        picked_blue_coop,
+            self,
+            red_pick_any,
+            red_pick_red,
+            blue_pick_any,
+            blue_pick_blue,
+            picked_red_coop,
+            picked_blue_coop,
     ):
 
         self.red_pick.append(red_pick_any)
@@ -238,11 +238,11 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
             player_red_info["pick_speed"] = red_pick / n_steps_played
             if red_pick > 0:
                 player_red_info["pick_own_color"] = (
-                    sum(self.red_pick_own) / red_pick
+                        sum(self.red_pick_own) / red_pick
                 )
 
             player_red_info["red_coop_speed"] = (
-                sum(self.picked_red_coop) / n_steps_played
+                    sum(self.picked_red_coop) / n_steps_played
             )
 
             if red_pick > 0:
@@ -253,11 +253,11 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
             player_blue_info["pick_speed"] = blue_pick / n_steps_played
             if blue_pick > 0:
                 player_blue_info["pick_own_color"] = (
-                    sum(self.blue_pick_own) / blue_pick
+                        sum(self.blue_pick_own) / blue_pick
                 )
 
             player_blue_info["blue_coop_speed"] = (
-                sum(self.picked_blue_coop) / n_steps_played
+                    sum(self.picked_blue_coop) / n_steps_played
             )
 
             if blue_pick > 0:

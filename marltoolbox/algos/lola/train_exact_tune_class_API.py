@@ -17,8 +17,11 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 from ray import tune
 
-from marltoolbox.algos.lola.utils import \
-    GetFlatWtSess, SetFromFlatWtSess, flatgrad
+from marltoolbox.algos.lola.utils import (
+    GetFlatWtSess,
+    SetFromFlatWtSess,
+    flatgrad,
+)
 
 
 class Qnetwork:
@@ -35,15 +38,17 @@ class Qnetwork:
                 act = tf.nn.tanh(
                     layers.fully_connected(
                         tf.one_hot(self.input_place, 5, dtype=tf.float32),
-                        num_outputs=num_hidden, activation_fn=None
+                        num_outputs=num_hidden,
+                        activation_fn=None,
                     )
                 )
                 self.p_act = layers.fully_connected(
                     act, num_outputs=1, activation_fn=None
                 )
         self.parameters = []
-        for i in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                   scope=myScope):
+        for i in tf.get_collection(
+            tf.GraphKeys.TRAINABLE_VARIABLES, scope=myScope
+        ):
             self.parameters.append(i)  # i.name if you want just a name
         self.setparams = SetFromFlatWtSess(self.parameters, sess)
         self.getparams = GetFlatWtSess(self.parameters, sess)
@@ -51,9 +56,11 @@ class Qnetwork:
 
 def update(mainQN, lr, final_delta_1_v, final_delta_2_v):
     update_theta_1 = mainQN[0].setparams(
-        mainQN[0].getparams() + lr * np.squeeze(final_delta_1_v))
+        mainQN[0].getparams() + lr * np.squeeze(final_delta_1_v)
+    )
     update_theta_2 = mainQN[1].setparams(
-        mainQN[1].getparams() + lr * np.squeeze(final_delta_2_v))
+        mainQN[1].getparams() + lr * np.squeeze(final_delta_2_v)
+    )
 
 
 def corrections_func(mainQN, corrections, gamma, pseudo, reg):
@@ -82,23 +89,24 @@ def corrections_func(mainQN, corrections, gamma, pseudo, reg):
     s_0 = tf.reshape(tf.matmul(p_1_0_v, tf.transpose(p_2_0_v)), [-1, 1])
 
     # CC, CD, DC, DD
-    P = tf.concat([
-        tf.multiply(p_1, p_2),
-        tf.multiply(p_1, 1 - p_2),
-        tf.multiply(1 - p_1, p_2),
-        tf.multiply(1 - p_1, 1 - p_2)
-    ], 1)
+    P = tf.concat(
+        [
+            tf.multiply(p_1, p_2),
+            tf.multiply(p_1, 1 - p_2),
+            tf.multiply(1 - p_1, p_2),
+            tf.multiply(1 - p_1, 1 - p_2),
+        ],
+        1,
+    )
     R_1 = tf.placeholder(shape=[4, 1], dtype=tf.float32)
     R_2 = tf.placeholder(shape=[4, 1], dtype=tf.float32)
 
     I_m_P = tf.diag([1.0, 1.0, 1.0, 1.0]) - P * gamma
     v_0 = tf.matmul(
-        tf.matmul(tf.matrix_inverse(I_m_P), R_1), s_0,
-        transpose_a=True
+        tf.matmul(tf.matrix_inverse(I_m_P), R_1), s_0, transpose_a=True
     )
     v_1 = tf.matmul(
-        tf.matmul(tf.matrix_inverse(I_m_P), R_2), s_0,
-        transpose_a=True
+        tf.matmul(tf.matrix_inverse(I_m_P), R_2), s_0, transpose_a=True
     )
     if reg > 0:
         for indx, _ in enumerate(mainQN[0].parameters):
@@ -121,20 +129,20 @@ def corrections_func(mainQN, corrections, gamma, pseudo, reg):
     if pseudo:
         multiply0 = tf.matmul(
             tf.reshape(v_0_grad_theta_1, [1, param_len]),
-            tf.reshape(v_1_grad_theta_1, [param_len, 1])
+            tf.reshape(v_1_grad_theta_1, [param_len, 1]),
         )
         multiply1 = tf.matmul(
             tf.reshape(v_1_grad_theta_0, [1, param_len]),
-            tf.reshape(v_0_grad_theta_0, [param_len, 1])
+            tf.reshape(v_0_grad_theta_0, [param_len, 1]),
         )
     else:
         multiply0 = tf.matmul(
             tf.reshape(tf.stop_gradient(v_0_grad_theta_1), [1, param_len]),
-            tf.reshape(v_1_grad_theta_1_wrong, [param_len, 1])
+            tf.reshape(v_1_grad_theta_1_wrong, [param_len, 1]),
         )
         multiply1 = tf.matmul(
             tf.reshape(tf.stop_gradient(v_1_grad_theta_0), [1, param_len]),
-            tf.reshape(v_0_grad_theta_0_wrong, [param_len, 1])
+            tf.reshape(v_0_grad_theta_0_wrong, [param_len, 1]),
         )
 
     second_order0 = flatgrad(multiply0, mainQN[0].parameters)
@@ -151,12 +159,24 @@ def corrections_func(mainQN, corrections, gamma, pseudo, reg):
 
 
 class LOLAExact(tune.Trainable):
-
-    def _init_lola(self, env_name, *, num_episodes=50, trace_length=200,
-                   simple_net=True, corrections=True, pseudo=False,
-                   num_hidden=10, reg=0.0, lr=1., lr_correction=0.5, gamma=0.96,
-                   with_linear_LR_decay_to_zero=False, clip_update=None,
-                   **kwargs):
+    def _init_lola(
+        self,
+        env_name,
+        *,
+        num_episodes=50,
+        trace_length=200,
+        simple_net=True,
+        corrections=True,
+        pseudo=False,
+        num_hidden=10,
+        reg=0.0,
+        lr=1.0,
+        lr_correction=0.5,
+        gamma=0.96,
+        with_linear_LR_decay_to_zero=False,
+        clip_update=None,
+        **kwargs,
+    ):
 
         print("args not used:", kwargs)
 
@@ -170,9 +190,8 @@ class LOLAExact(tune.Trainable):
         self.lr = lr
         self.lr_correction = lr_correction
         self.gamma = gamma
-        self.with_linear_LR_decay_to_zero=with_linear_LR_decay_to_zero
-        self.clip_update=clip_update
-
+        self.with_linear_LR_decay_to_zero = with_linear_LR_decay_to_zero
+        self.clip_update = clip_update
 
         graph = tf.Graph()
 
@@ -181,11 +200,11 @@ class LOLAExact(tune.Trainable):
             # Get info about the env
 
             if env_name == "IPD":
-                self.payout_mat_1 = np.array([[-1., 0.], [-3., -2.]])
+                self.payout_mat_1 = np.array([[-1.0, 0.0], [-3.0, -2.0]])
                 self.payout_mat_2 = self.payout_mat_1.T
             elif env_name == "AsymmetricIteratedBoS":
-                self.payout_mat_1 = np.array([[+4., 0.], [0., +2.]])
-                self.payout_mat_2 = np.array([[+1., 0.], [0., +2.]])
+                self.payout_mat_1 = np.array([[+4.0, 0.0], [0.0, +2.0]])
+                self.payout_mat_2 = np.array([[+1.0, 0.0], [0.0, +2.0]])
             else:
                 raise ValueError(f"exp_name: {env_name}")
 
@@ -194,10 +213,23 @@ class LOLAExact(tune.Trainable):
             # Q-networks
             self.mainQN = []
             for agent in range(2):
-                self.mainQN.append(Qnetwork('main' + str(agent), self.num_hidden, self.sess, self.simple_net))
+                self.mainQN.append(
+                    Qnetwork(
+                        "main" + str(agent),
+                        self.num_hidden,
+                        self.sess,
+                        self.simple_net,
+                    )
+                )
 
             # Corrections
-            corrections_func(self.mainQN, self.corrections, self.gamma, self.pseudo, self.reg)
+            corrections_func(
+                self.mainQN,
+                self.corrections,
+                self.gamma,
+                self.pseudo,
+                self.reg,
+            )
 
             self.results = []
             self.norm = 1 / (1 - self.gamma)
@@ -218,7 +250,7 @@ class LOLAExact(tune.Trainable):
         lr_coor = np.ones(1) * self.lr_correction
 
         log_items = {}
-        log_items['episode'] = self.training_iteration
+        log_items["episode"] = self.training_iteration
 
         res = []
         params_time = []
@@ -228,8 +260,12 @@ class LOLAExact(tune.Trainable):
             params0 = self.mainQN[0].getparams()
             params1 = self.mainQN[1].getparams()
             outputs = [
-                self.mainQN[0].delta, self.mainQN[1].delta, self.mainQN[0].v, self.mainQN[1].v,
-                self.mainQN[0].policy, self.mainQN[1].policy
+                self.mainQN[0].delta,
+                self.mainQN[1].delta,
+                self.mainQN[0].v,
+                self.mainQN[1].v,
+                self.mainQN[0].policy,
+                self.mainQN[1].policy,
             ]
             # print("input_vals", input_vals)
             update1, update2, v1, v2, policy1, policy2 = self.sess.run(
@@ -240,16 +276,16 @@ class LOLAExact(tune.Trainable):
                     self.mainQN[0].R1: np.reshape(self.payout_mat_2, [-1, 1]),
                     self.mainQN[1].R1: np.reshape(self.payout_mat_1, [-1, 1]),
                     self.mainQN[0].lr_correction: lr_coor,
-                    self.mainQN[1].lr_correction: lr_coor
-                }
+                    self.mainQN[1].lr_correction: lr_coor,
+                },
             )
             update1, update2 = self._clip_update(update1, update2)
             self._update_with_lr_decay(update1, update2, i)
             params_time.append([params0, params1])
             delta_time.append([update1, update2])
 
-            log_items['ret1'] = v1[0][0] / self.norm
-            log_items['ret2'] = v2[0][0] / self.norm
+            log_items["ret1"] = v1[0][0] / self.norm
+            log_items["ret2"] = v2[0][0] / self.norm
             res.append([v1[0][0] / self.norm, v2[0][0] / self.norm])
         self.results.append(res)
 
@@ -285,7 +321,9 @@ class LOLAExact(tune.Trainable):
     def save_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint.json")
         tf_checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
-        tf_checkpoint_dir, tf_checkpoint_filename = os.path.split(tf_checkpoint_path)
+        tf_checkpoint_dir, tf_checkpoint_filename = os.path.split(
+            tf_checkpoint_path
+        )
         checkpoint = {
             "timestep": self.training_iteration,
             "tf_checkpoint_dir": tf_checkpoint_dir,
@@ -302,20 +340,21 @@ class LOLAExact(tune.Trainable):
     def load_checkpoint(self, checkpoint_path):
 
         checkpoint_path = os.path.expanduser(checkpoint_path)
-        print('Loading Model...',checkpoint_path)
-        with open(checkpoint_path, 'r') as f:
+        print("Loading Model...", checkpoint_path)
+        with open(checkpoint_path, "r") as f:
             checkpoint = json.load(f)
         print("checkpoint", checkpoint)
 
         # Support VM and local (manual) loading
         tf_checkpoint_dir, _ = os.path.split(checkpoint_path)
         print("tf_checkpoint_dir", tf_checkpoint_dir)
-        ckpt = tf.train.get_checkpoint_state(tf_checkpoint_dir,
-                                             latest_filename=f'{checkpoint["tf_checkpoint_filename"]}')
+        ckpt = tf.train.get_checkpoint_state(
+            tf_checkpoint_dir,
+            latest_filename=f'{checkpoint["tf_checkpoint_filename"]}',
+        )
         tail, head = os.path.split(ckpt.model_checkpoint_path)
         ckpt.model_checkpoint_path = os.path.join(tf_checkpoint_dir, head)
         self.saver.restore(self.sess, ckpt.model_checkpoint_path)
-
 
     def cleanup(self):
         self.sess.close()
@@ -342,10 +381,9 @@ class LOLAExact(tune.Trainable):
     def _post_process_action(self, action):
         return action[None, ...]  # add batch dim
 
-    def compute_actions(self, policy_id:str, obs_batch:list):
+    def compute_actions(self, policy_id: str, obs_batch: list):
         # because of the LSTM
         assert len(obs_batch) == 1
-
 
         for single_obs in obs_batch:
             agent_to_use = self._get_agent_to_use(policy_id)
@@ -355,7 +393,7 @@ class LOLAExact(tune.Trainable):
                 [self.mainQN[agent_to_use].policy],
                 feed_dict={
                     self.mainQN[agent_to_use].input_place: input_vals,
-                }
+                },
             )
             coop_proba = policy[0][obs][0]
             if coop_proba > random.random():

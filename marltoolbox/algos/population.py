@@ -1,6 +1,6 @@
 import copy
 import random
-from typing import List, Union, Optional, Dict, Tuple, TYPE_CHECKING
+from typing import List, Union, Optional, Dict, Tuple
 
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import SampleBatch
