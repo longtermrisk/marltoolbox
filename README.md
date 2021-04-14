@@ -3,6 +3,7 @@
 ![CI](https://github.com/longtermrisk/marltoolbox/actions/workflows/ci.yml/badge.svg)
 ![CI Notebooks](https://github.com/longtermrisk/marltoolbox/actions/workflows/ci_notebooks.yml/badge.svg)
 ![CI Weekly Tests](https://github.com/longtermrisk/marltoolbox/actions/workflows/weekly_tests.yml/badge.svg)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/d143b4574720496994226d7adc24f417)](https://www.codacy.com/gh/longtermrisk/marltoolbox/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=longtermrisk/marltoolbox&amp;utm_campaign=Badge_Grade)
 
 ## Table of contents
 

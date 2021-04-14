@@ -8,7 +8,7 @@ from ray.rllib.agents.pg import PGTrainer, PGTorchPolicy
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
-from examples.rllib_api.pg_ipd import get_rllib_config
+from marltoolbox.examples.rllib_api.pg_ipd import get_rllib_config
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
     IteratedPrisonersDilemma,
 )

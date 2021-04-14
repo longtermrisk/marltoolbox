@@ -4,7 +4,7 @@ import ray
 from ray import tune
 from ray.rllib.agents.pg import PGTrainer
 
-from examples.rllib_api.pg_ipd import get_rllib_config
+from marltoolbox.examples.rllib_api.pg_ipd import get_rllib_config
 from marltoolbox.utils import log, miscellaneous, restore
 from marltoolbox.utils import self_and_cross_perf
 from marltoolbox.utils.miscellaneous import get_random_seeds
