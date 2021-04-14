@@ -7,8 +7,9 @@ logger = logging.getLogger(__name__)
 LOAD_FROM_CONFIG_KEY = "checkpoint_to_load_from"
 
 
-def after_init_load_policy_checkpoint(policy, observation_space=None,
-                                      action_space=None, trainer_config=None):
+def after_init_load_policy_checkpoint(
+    policy, observation_space=None, action_space=None, trainer_config=None
+):
     """
     This function is to be given to a policy template(a policy factory)
     (to the 'after_init' argument).
@@ -26,28 +27,34 @@ def after_init_load_policy_checkpoint(policy, observation_space=None,
     Example: determining the checkpoint to load conditional on the current seed
     (when doing a grid_search over random seeds and with a multistage training)
     """
-    checkpoint_path, policy_id = policy.config.pop(LOAD_FROM_CONFIG_KEY,
-                                                   (False, False))
+    checkpoint_path, policy_id = policy.config.pop(
+        LOAD_FROM_CONFIG_KEY, (None, None)
+    )
 
     if callable(checkpoint_path):
         checkpoint_path = checkpoint_path(policy.config)
 
-    if checkpoint_path:
+    if checkpoint_path is not None:
         load_one_policy_checkpoint(policy_id, policy, checkpoint_path)
-        msg = f"marltoolbox restore: checkpoint found for policy_id: " \
-              f"{policy_id}"
+        msg = (
+            f"marltoolbox restore: checkpoint found for policy_id: "
+            f"{policy_id}"
+        )
         logger.info(msg)
         print(msg)
     else:
-        msg = f"marltoolbox restore: NO checkpoint found for policy_id:" \
-              f" {policy_id} and policy {policy}." \
-              f"Not found under the config key: {LOAD_FROM_CONFIG_KEY}"
+        msg = (
+            f"marltoolbox restore: NO checkpoint found for policy_id:"
+            f" {policy_id} and policy {policy}."
+            f"Not found under the config key: {LOAD_FROM_CONFIG_KEY}"
+        )
         logger.warning(msg)
         print(msg)
 
 
-def load_one_policy_checkpoint(policy_id, policy, checkpoint_path,
-                               using_Tune_class=False):
+def load_one_policy_checkpoint(
+    policy_id, policy, checkpoint_path, using_Tune_class=False
+):
     """
 
     :param policy_id: the policy_id of the policy inside the checkpoint that
@@ -79,12 +86,16 @@ def load_one_policy_checkpoint(policy_id, policy, checkpoint_path,
         found_policy_id = False
         for p_id, state in objs["state"].items():
             if p_id == policy_id:
-                print(f"going to load policy {policy_id} "
-                      f"from checkpoint {checkpoint_path}")
+                print(
+                    f"going to load policy {policy_id} "
+                    f"from checkpoint {checkpoint_path}"
+                )
                 policy.set_state(state)
                 found_policy_id = True
                 break
         if not found_policy_id:
-            print(f'policy_id {policy_id} not in '
-                  f'checkpoint["worker"]["state"].keys() '
-                  f'{objs["state"].keys()}')
+            print(
+                f"policy_id {policy_id} not in "
+                f'checkpoint["worker"]["state"].keys() '
+                f'{objs["state"].keys()}'
+            )

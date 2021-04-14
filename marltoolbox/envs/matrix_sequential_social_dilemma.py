@@ -2,30 +2,33 @@
 # Part of the code modified from:
 # https://github.com/alshedivat/lola/tree/master/lola
 ##########
-from collections import Iterable
-
 import logging
-import numpy as np
 from abc import ABC
+from collections import Iterable
+from typing import Dict
+
+import numpy as np
 from gym.spaces import Discrete
 from gym.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from typing import Dict
 
 from marltoolbox.envs.utils.interfaces import InfoAccumulationInterface
-from marltoolbox.envs.utils.mixins import TwoPlayersTwoActionsInfoMixin, \
-    NPlayersNDiscreteActionsInfoMixin
+from marltoolbox.envs.utils.mixins import (
+    TwoPlayersTwoActionsInfoMixin,
+    NPlayersNDiscreteActionsInfoMixin,
+)
 
 logger = logging.getLogger(__name__)
 
-PLOT_KEYS = ["CC_freq",
-             "DD_freq",
-             "CD_freq",
-             "DC_freq",
-             ]
+PLOT_KEYS = [
+    "CC_freq",
+    "DD_freq",
+    "CD_freq",
+    "DC_freq",
+]
 
 PLOT_ASSEMBLAGE_TAGS = [
-    ("_freq_player_row_mean","_freq_player_col_mean"),
+    ("_freq_player_row_mean", "_freq_player_col_mean"),
     ("_freq",),
     ("CC_freq",),
     ("DD_freq",),
@@ -33,8 +36,10 @@ PLOT_ASSEMBLAGE_TAGS = [
     ("DC_freq",),
 ]
 
+
 class MatrixSequentialSocialDilemma(
-    InfoAccumulationInterface, MultiAgentEnv, ABC):
+    InfoAccumulationInterface, MultiAgentEnv, ABC
+):
     """
     A multi-agent abstract class for two player matrix games.
 
@@ -56,17 +61,22 @@ class MatrixSequentialSocialDilemma(
         assert "reward_randomness" not in config.keys()
         assert self.PAYOUT_MATRIX is not None
         if "players_ids" in config:
-            assert isinstance(config["players_ids"], Iterable) and len(
-                config["players_ids"]) == self.NUM_AGENTS
+            assert (
+                isinstance(config["players_ids"], Iterable)
+                and len(config["players_ids"]) == self.NUM_AGENTS
+            )
 
-        self.players_ids = config.get("players_ids",
-                                      ["player_row", "player_col"])
+        self.players_ids = config.get(
+            "players_ids", ["player_row", "player_col"]
+        )
         self.player_row_id, self.player_col_id = self.players_ids
         self.max_steps = config.get("max_steps", 20)
-        self.output_additional_info = \
-            config.get("output_additional_info", True)
-        self.same_obs_for_each_player = \
-            config.get("same_obs_for_each_player", True)
+        self.output_additional_info = config.get(
+            "output_additional_info", True
+        )
+        self.same_obs_for_each_player = config.get(
+            "same_obs_for_each_player", True
+        )
 
         self.step_count_in_current_episode = None
 
@@ -85,7 +95,7 @@ class MatrixSequentialSocialDilemma(
             self._reset_info()
         return {
             self.player_row_id: self.NUM_STATES - 1,
-            self.player_col_id: self.NUM_STATES - 1
+            self.player_col_id: self.NUM_STATES - 1,
         }
 
     def step(self, actions: dict):
@@ -100,15 +110,17 @@ class MatrixSequentialSocialDilemma(
         if self.output_additional_info:
             self._accumulate_info(action_player_row, action_player_col)
 
-        observations = \
-            self._produce_observations(
-                action_player_row, action_player_col)
-        rewards = self._get_players_rewards(action_player_row,
-                                            action_player_col)
+        observations = self._produce_observations(
+            action_player_row, action_player_col
+        )
+        rewards = self._get_players_rewards(
+            action_player_row, action_player_col
+        )
         epi_is_done = self.step_count_in_current_episode >= self.max_steps
         if self.step_count_in_current_episode > self.max_steps:
             logger.warning(
-                "self.step_count_in_current_episode >= self.max_steps")
+                "self.step_count_in_current_episode >= self.max_steps"
+            )
         info = self._get_info_for_current_epi(epi_is_done)
         return self._to_RLLib_API(observations, rewards, epi_is_done, info)
 
@@ -123,43 +135,49 @@ class MatrixSequentialSocialDilemma(
             )
 
     def _produce_same_observations_for_each_player(
-            self, action_player_0: int, action_player_1: int):
-        return [action_player_0 * self.NUM_ACTIONS + action_player_1,
-                action_player_0 * self.NUM_ACTIONS + action_player_1]
+        self, action_player_0: int, action_player_1: int
+    ):
+        return [
+            action_player_0 * self.NUM_ACTIONS + action_player_1,
+            action_player_0 * self.NUM_ACTIONS + action_player_1,
+        ]
 
     def _produce_observations_invariant_to_the_player_trained(
-            self, action_player_0: int, action_player_1: int):
+        self, action_player_0: int, action_player_1: int
+    ):
         """
         We want to be able to use a policy trained as player 1
         for evaluation as player 2 and vice versa.
         """
-        return [action_player_0 * self.NUM_ACTIONS + action_player_1,
-                action_player_1 * self.NUM_ACTIONS + action_player_0]
+        return [
+            action_player_0 * self.NUM_ACTIONS + action_player_1,
+            action_player_1 * self.NUM_ACTIONS + action_player_0,
+        ]
 
     def _get_players_rewards(self, action_player_0: int, action_player_1: int):
-        return [self.PAYOUT_MATRIX[action_player_0][action_player_1][0],
-                self.PAYOUT_MATRIX[action_player_0][action_player_1][1]]
+        return [
+            self.PAYOUT_MATRIX[action_player_0][action_player_1][0],
+            self.PAYOUT_MATRIX[action_player_0][action_player_1][1],
+        ]
 
-    def _to_RLLib_API(self, observations: list, rewards: list,
-                      epi_is_done: bool, info: dict):
+    def _to_RLLib_API(
+        self, observations: list, rewards: list, epi_is_done: bool, info: dict
+    ):
 
         observations = {
             self.player_row_id: observations[0],
-            self.player_col_id: observations[1]
+            self.player_col_id: observations[1],
         }
 
         rewards = {
             self.player_row_id: rewards[0],
-            self.player_col_id: rewards[1]
+            self.player_col_id: rewards[1],
         }
 
         if info is None:
             info = {}
         else:
-            info = {
-                self.player_row_id: info,
-                self.player_col_id: info
-            }
+            info = {self.player_row_id: info, self.player_col_id: info}
 
         done = {
             self.player_row_id: epi_is_done,
@@ -180,23 +198,25 @@ class MatrixSequentialSocialDilemma(
         return self.NAME
 
 
-class IteratedMatchingPennies(TwoPlayersTwoActionsInfoMixin,
-                              MatrixSequentialSocialDilemma):
+class IteratedMatchingPennies(
+    TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
+):
     """
     A two-agent environment for the Matching Pennies game.
     """
+
     NUM_AGENTS = 2
     NUM_ACTIONS = 2
     NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
-    PAYOUT_MATRIX = np.array([[[+1, -1], [-1, +1]],
-                              [[-1, +1], [+1, -1]]])
+    PAYOUT_MATRIX = np.array([[[+1, -1], [-1, +1]], [[-1, +1], [+1, -1]]])
     NAME = "IMP"
 
 
-class IteratedPrisonersDilemma(TwoPlayersTwoActionsInfoMixin,
-                               MatrixSequentialSocialDilemma):
+class IteratedPrisonersDilemma(
+    TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
+):
     """
     A two-agent environment for the Prisoner's Dilemma game.
     """
@@ -206,13 +226,13 @@ class IteratedPrisonersDilemma(TwoPlayersTwoActionsInfoMixin,
     NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
-    PAYOUT_MATRIX = np.array([[[-1, -1], [-3, +0]],
-                              [[+0, -3], [-2, -2]]])
+    PAYOUT_MATRIX = np.array([[[-1, -1], [-3, +0]], [[+0, -3], [-2, -2]]])
     NAME = "IPD"
 
 
-class IteratedAsymPrisonersDilemma(TwoPlayersTwoActionsInfoMixin,
-                                   MatrixSequentialSocialDilemma):
+class IteratedAsymPrisonersDilemma(
+    TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
+):
     """
     A two-agent environment for the Asymmetric Prisoner's Dilemma game.
     """
@@ -222,13 +242,13 @@ class IteratedAsymPrisonersDilemma(TwoPlayersTwoActionsInfoMixin,
     NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
-    PAYOUT_MATRIX = np.array([[[+0, -1], [-3, +0]],
-                              [[+0, -3], [-2, -2]]])
+    PAYOUT_MATRIX = np.array([[[+0, -1], [-3, +0]], [[+0, -3], [-2, -2]]])
     NAME = "IPD"
 
 
-class IteratedStagHunt(TwoPlayersTwoActionsInfoMixin,
-                       MatrixSequentialSocialDilemma):
+class IteratedStagHunt(
+    TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
+):
     """
     A two-agent environment for the Stag Hunt game.
     """
@@ -238,13 +258,13 @@ class IteratedStagHunt(TwoPlayersTwoActionsInfoMixin,
     NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
-    PAYOUT_MATRIX = np.array([[[3, 3], [0, 2]],
-                              [[2, 0], [1, 1]]])
+    PAYOUT_MATRIX = np.array([[[3, 3], [0, 2]], [[2, 0], [1, 1]]])
     NAME = "IteratedStagHunt"
 
 
-class IteratedChicken(TwoPlayersTwoActionsInfoMixin,
-                      MatrixSequentialSocialDilemma):
+class IteratedChicken(
+    TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
+):
     """
     A two-agent environment for the Chicken game.
     """
@@ -254,13 +274,15 @@ class IteratedChicken(TwoPlayersTwoActionsInfoMixin,
     NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
-    PAYOUT_MATRIX = np.array([[[+0, +0], [-1., +1.]],
-                              [[+1, -1], [-10, -10]]])
+    PAYOUT_MATRIX = np.array(
+        [[[+0, +0], [-1.0, +1.0]], [[+1, -1], [-10, -10]]]
+    )
     NAME = "IteratedChicken"
 
 
-class IteratedAsymChicken(TwoPlayersTwoActionsInfoMixin,
-                          MatrixSequentialSocialDilemma):
+class IteratedAsymChicken(
+    TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
+):
     """
     A two-agent environment for the Asymmetric Chicken game.
     """
@@ -270,13 +292,15 @@ class IteratedAsymChicken(TwoPlayersTwoActionsInfoMixin,
     NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
-    PAYOUT_MATRIX = np.array([[[+2.0, +0], [-1., +1.]],
-                              [[+2.5, -1], [-10, -10]]])
+    PAYOUT_MATRIX = np.array(
+        [[[+2.0, +0], [-1.0, +1.0]], [[+2.5, -1], [-10, -10]]]
+    )
     NAME = "AsymmetricIteratedChicken"
 
 
-class IteratedBoS(TwoPlayersTwoActionsInfoMixin,
-                  MatrixSequentialSocialDilemma):
+class IteratedBoS(
+    TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
+):
     """
     A two-agent environment for the BoS game.
     """
@@ -286,13 +310,15 @@ class IteratedBoS(TwoPlayersTwoActionsInfoMixin,
     NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
-    PAYOUT_MATRIX = np.array([[[+3.0, +2.0], [+0.0, +0.0]],
-                              [[+0.0, +0.0], [+2.0, +3.0]]])
+    PAYOUT_MATRIX = np.array(
+        [[[+3.0, +2.0], [+0.0, +0.0]], [[+0.0, +0.0], [+2.0, +3.0]]]
+    )
     NAME = "IteratedBoS"
 
 
-class IteratedAsymBoS(TwoPlayersTwoActionsInfoMixin,
-                      MatrixSequentialSocialDilemma):
+class IteratedAsymBoS(
+    TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
+):
     """
     A two-agent environment for the BoS game.
     """
@@ -302,14 +328,16 @@ class IteratedAsymBoS(TwoPlayersTwoActionsInfoMixin,
     NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
-    PAYOUT_MATRIX = np.array([[[+4.0, +1.0], [+0.0, +0.0]],
-                              [[+0.0, +0.0], [+2.0, +2.0]]])
+    PAYOUT_MATRIX = np.array(
+        [[[+4.0, +1.0], [+0.0, +0.0]], [[+0.0, +0.0], [+2.0, +2.0]]]
+    )
     NAME = "AsymmetricIteratedBoS"
 
 
 def define_greed_fear_matrix_game(greed, fear):
-    class GreedFearGame(TwoPlayersTwoActionsInfoMixin,
-                        MatrixSequentialSocialDilemma):
+    class GreedFearGame(
+        TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
+    ):
         NUM_AGENTS = 2
         NUM_ACTIONS = 2
         NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
@@ -319,8 +347,7 @@ def define_greed_fear_matrix_game(greed, fear):
         P = 1
         T = R + greed
         S = P - fear
-        PAYOUT_MATRIX = np.array([[[R, R], [S, T]],
-                                  [[T, S], [P, P]]])
+        PAYOUT_MATRIX = np.array([[[R, R], [S, T]], [[T, S], [P, P]]])
         NAME = "IteratedGreedFear"
 
         def __str__(self):
@@ -329,8 +356,9 @@ def define_greed_fear_matrix_game(greed, fear):
     return GreedFearGame
 
 
-class IteratedBoSAndPD(NPlayersNDiscreteActionsInfoMixin,
-                       MatrixSequentialSocialDilemma):
+class IteratedBoSAndPD(
+    NPlayersNDiscreteActionsInfoMixin, MatrixSequentialSocialDilemma
+):
     """
     A two-agent environment for the BOTS + PD game.
     """
@@ -340,7 +368,11 @@ class IteratedBoSAndPD(NPlayersNDiscreteActionsInfoMixin,
     NUM_STATES = NUM_ACTIONS ** NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
-    PAYOUT_MATRIX = np.array([[[3.5, +1], [+0, +0], [-3, +2]],
-                              [[+0., +0], [+1, +3], [-3, +2]],
-                              [[+2., -3], [+2, -3], [-1, -1]]])
+    PAYOUT_MATRIX = np.array(
+        [
+            [[3.5, +1], [+0, +0], [-3, +2]],
+            [[+0.0, +0], [+1, +3], [-3, +2]],
+            [[+2.0, -3], [+2, -3], [-1, -1]],
+        ]
+    )
     NAME = "IteratedBoSAndPD"

@@ -19,11 +19,17 @@ def test_add_inequity_aversion_welfare_to_batch_beta():
     # Disvalue higher than opp
     beta = 1.0
 
-    sample_batch, opp_ag_batch = generate_batch(own_rew=[0, 1, 0, 10, 1, 0, -2, -888, -888],
-                                                opp_rew=[0, 0, 1, 11, 0.5, -1, -4, -1888, 1888])
-    postprocessing._add_inequity_aversion_welfare_to_batch(sample_batch, opp_ag_batch, alpha, beta, gamma, lambda_)
-    assert (sample_batch[postprocessing.WELFARE_INEQUITY_AVERSION]
-            == [0, 0, 0, 10, 0.5, -1, -4, -1888, -888]).all()
+    sample_batch, opp_ag_batch = generate_batch(
+        own_rew=[0, 1, 0, 10, 1, 0, -2, -888, -888],
+        opp_rew=[0, 0, 1, 11, 0.5, -1, -4, -1888, 1888],
+    )
+    postprocessing._add_inequity_aversion_welfare_to_batch(
+        sample_batch, opp_ag_batch, alpha, beta, gamma, lambda_
+    )
+    assert (
+        sample_batch[postprocessing.WELFARE_INEQUITY_AVERSION]
+        == [0, 0, 0, 10, 0.5, -1, -4, -1888, -888]
+    ).all()
 
 
 def test_add_inequity_aversion_welfare_to_batch_alpha():
@@ -34,11 +40,17 @@ def test_add_inequity_aversion_welfare_to_batch_alpha():
     # Disvalue higher than opp
     beta = 0.0
 
-    sample_batch, opp_ag_batch = generate_batch(own_rew=[0, 1, 0, 10, 1, 0, -2, -888, -500],
-                                                opp_rew=[0, 0, 1, 11, 0.5, -1, -4, -1888, 1500])
-    postprocessing._add_inequity_aversion_welfare_to_batch(sample_batch, opp_ag_batch, alpha, beta, gamma, lambda_)
-    assert (sample_batch[postprocessing.WELFARE_INEQUITY_AVERSION]
-            == [0, 1, -.5, 9.5, 1, 0, -2, -888, -1500]).all()
+    sample_batch, opp_ag_batch = generate_batch(
+        own_rew=[0, 1, 0, 10, 1, 0, -2, -888, -500],
+        opp_rew=[0, 0, 1, 11, 0.5, -1, -4, -1888, 1500],
+    )
+    postprocessing._add_inequity_aversion_welfare_to_batch(
+        sample_batch, opp_ag_batch, alpha, beta, gamma, lambda_
+    )
+    assert (
+        sample_batch[postprocessing.WELFARE_INEQUITY_AVERSION]
+        == [0, 1, -0.5, 9.5, 1, 0, -2, -888, -1500]
+    ).all()
 
 
 def test_add_inequity_aversion_welfare_to_batch_lambda():
@@ -53,15 +65,26 @@ def test_add_inequity_aversion_welfare_to_batch_lambda():
         #  smoothed cumulative rewards [0, 1, 0.9, 1.81]
         own_rew=[0, 1, 0, 1],
         #  smoothed cumulative rewards [0, 0, 0.5, 0.45]
-        opp_rew=[0, 0, 0.5, 0])
-    postprocessing._add_inequity_aversion_welfare_to_batch(sample_batch, opp_ag_batch, alpha, beta, gamma, lambda_)
-    assert (sample_batch[postprocessing.WELFARE_INEQUITY_AVERSION]
-            == [0.0, 0.5, -0.2, 1 - 0.68]).all()
+        opp_rew=[0, 0, 0.5, 0],
+    )
+    postprocessing._add_inequity_aversion_welfare_to_batch(
+        sample_batch, opp_ag_batch, alpha, beta, gamma, lambda_
+    )
+    assert (
+        sample_batch[postprocessing.WELFARE_INEQUITY_AVERSION]
+        == [0.0, 0.5, -0.2, 1 - 0.68]
+    ).all()
 
 
 def test_add_utilitarian_welfare_to_batch():
-    sample_batch, opp_ag_batch = generate_batch(own_rew=[0, 1, 0, 10, 1, 0, -2, -888, -888],
-                                                opp_rew=[0, 0, 1, 11, 0.5, -1, -4, -1888, 1888])
-    postprocessing._add_utilitarian_welfare_to_batch(sample_batch, [opp_ag_batch])
-    assert (sample_batch[postprocessing.WELFARE_UTILITARIAN]
-            == [0, 1, 1, 21, 1.5, -1, -6, -2776, 1000]).all()
+    sample_batch, opp_ag_batch = generate_batch(
+        own_rew=[0, 1, 0, 10, 1, 0, -2, -888, -888],
+        opp_rew=[0, 0, 1, 11, 0.5, -1, -4, -1888, 1888],
+    )
+    postprocessing._add_utilitarian_welfare_to_batch(
+        sample_batch, [opp_ag_batch]
+    )
+    assert (
+        sample_batch[postprocessing.WELFARE_UTILITARIAN]
+        == [0, 1, 1, 21, 1.5, -1, -6, -2776, 1000]
+    ).all()

@@ -12,17 +12,21 @@ from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 from marltoolbox.utils import log, optimizers, policy
 
-SPL_DEFAULT_CONFIG = with_common_config({
-    "learn_action": True,
-    "learn_reward": False,
-    "loss_fn": torch.nn.CrossEntropyLoss()
-})
+SPL_DEFAULT_CONFIG = with_common_config(
+    {
+        "learn_action": True,
+        "learn_reward": False,
+        "loss_fn": torch.nn.CrossEntropyLoss(),
+    }
+)
 
 
 def spl_torch_loss(
-        policy: Policy, model: ModelV2,
-        dist_class: Type[TorchDistributionWrapper],
-        train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+    policy: Policy,
+    model: ModelV2,
+    dist_class: Type[TorchDistributionWrapper],
+    train_batch: SampleBatch,
+) -> Union[TensorType, List[TensorType]]:
     """The basic policy gradients loss function.
 
     Args:
@@ -45,7 +49,8 @@ def spl_torch_loss(
         _, _ = policy.exploration.get_exploration_action(
             action_distribution=action_dist,
             timestep=policy.global_timestep,
-            explore=policy.config["explore"])
+            explore=policy.config["explore"],
+        )
         action_dist = dist_class(dist_inputs, policy.model)
 
     targets = []
@@ -53,9 +58,11 @@ def spl_torch_loss(
         targets.append(train_batch[SampleBatch.ACTIONS])
     if policy.config["learn_reward"]:
         targets.append(train_batch[SampleBatch.REWARDS])
-    assert len(targets) > 0, f"In config, use learn_action=True and/or " \
-                             f"learn_reward=True to specify which target to " \
-                             f"use in supervised learning"
+    assert len(targets) > 0, (
+        f"In config, use learn_action=True and/or "
+        f"learn_reward=True to specify which target to "
+        f"use in supervised learning"
+    )
     targets = torch.cat(targets, dim=0)
 
     # Save the loss in the policy object for the spl_stats below.
@@ -65,8 +72,9 @@ def spl_torch_loss(
     return policy.spl_loss
 
 
-def spl_stats(policy: Policy,
-              train_batch: SampleBatch) -> Dict[str, TensorType]:
+def spl_stats(
+    policy: Policy, train_batch: SampleBatch
+) -> Dict[str, TensorType]:
     """Returns the calculated loss in a stats dict.
 
     Args:
@@ -84,8 +92,9 @@ def spl_stats(policy: Policy,
     }
 
 
-def setup_early_mixins(policy: Policy, obs_space, action_space,
-                       config: TrainerConfigDict) -> None:
+def setup_early_mixins(
+    policy: Policy, obs_space, action_space, config: TrainerConfigDict
+) -> None:
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
@@ -98,7 +107,8 @@ SPLTorchPolicy = build_torch_policy(
     before_init=setup_early_mixins,
     mixins=[
         LearningRateSchedule,
-    ])
+    ],
+)
 
 MySPLTorchPolicy = SPLTorchPolicy.with_updates(
     optimizer_fn=optimizers.sgd_optimizer_spl,
@@ -106,7 +116,7 @@ MySPLTorchPolicy = SPLTorchPolicy.with_updates(
     before_init=policy.my_setup_early_mixins,
     mixins=[
         policy.MyLearningRateSchedule,
-    ]
+    ],
 )
 
 MyAdamSPLTorchPolicy = SPLTorchPolicy.with_updates(

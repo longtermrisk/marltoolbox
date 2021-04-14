@@ -1,10 +1,11 @@
-from typing import List, Dict, TYPE_CHECKING
 import logging
+from typing import List, Dict, TYPE_CHECKING
 
 import numpy as np
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.evaluation.postprocessing import discount
+from ray.rllib.evaluation.sampler import _get_or_raise
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AgentID, PolicyID
@@ -38,6 +39,7 @@ ADD_OPPONENT_NEG_REWARD = "add_opponent_neg_reward"
 
 ADD_WELFARE_CONFIG_KEYS = (ADD_UTILITARIAN_WELFARE,
                            ADD_INEQUITY_AVERSION_WELFARE)
+
 
 def welfares_postprocessing_fn(
         add_utilitarian_welfare: bool = None,
@@ -125,17 +127,17 @@ def welfares_postprocessing_fn(
             policy.config, ADD_OPPONENT_NEG_REWARD, add_opponent_neg_reward)
 
         return add_utilitarian_w, \
-            add_ia_w, ia_alpha, ia_beta, ia_gamma, ia_lambda, \
-            add_nash_w, add_egalitarian_w, \
-            add_opponent_a, add_opponent_neg_r
+               add_ia_w, ia_alpha, ia_beta, ia_gamma, ia_lambda, \
+               add_nash_w, add_egalitarian_w, \
+               add_opponent_a, add_opponent_neg_r
 
     def _add_welfare_to_own_batch(
             sample_batch, other_agent_batches, episode, policy, *parameters):
 
         add_utilitarian_w, \
-            add_ia_w, ia_alpha, ia_beta, ia_gamma, ia_lambda, \
-            add_nash_w, add_egalitarian_w, \
-            add_opponent_a, add_opponent_neg_r = parameters
+        add_ia_w, ia_alpha, ia_beta, ia_gamma, ia_lambda, \
+        add_nash_w, add_egalitarian_w, \
+        add_opponent_a, add_opponent_neg_r = parameters
 
         assert len(set(sample_batch[sample_batch.EPS_ID])) == 1, \
             "design to work on one complete episode"
@@ -151,7 +153,7 @@ def welfares_postprocessing_fn(
                 sample_batch, opp_batches, policy)
         if add_ia_w:
             logger.debug(f"add inequity aversion welfare to batch of policy"
-                        f" {policy}")
+                         f" {policy}")
             _assert_two_players_env(other_agent_batches)
             opp_batch = _get_opp_batch(other_agent_batches)
             sample_batch = _add_inequity_aversion_welfare_to_batch(
@@ -188,13 +190,14 @@ def welfares_postprocessing_fn(
 
 
 def _call_list_of_additional_fn(additional_fn,
-        sample_batch, other_agent_batches, episode, policy):
-
+                                sample_batch, other_agent_batches, episode,
+                                policy):
     for postprocessing_function in additional_fn:
         sample_batch = postprocessing_function(
             sample_batch, other_agent_batches, episode, policy)
 
     return sample_batch
+
 
 def _assert_two_players_env(other_agent_batches):
     assert len(other_agent_batches) == 1
@@ -350,13 +353,20 @@ class OverwriteRewardWtWelfareCallback(DefaultCallbacks):
 
         for welfare_key in WELFARES:
             if welfare_key in postprocessed_batch.data.keys():
-
                 postprocessed_batch[postprocessed_batch.REWARDS] = \
                     postprocessed_batch.data[welfare_key]
-                msg = f"overwrite reward of agent_id {agent_id} with" \
-                      f"welfare_key {welfare_key}"
+                msg = f"Overwrite the reward of agent_id {agent_id} " \
+                      f"with the value from the" \
+                      f" welfare_key {welfare_key}"
                 print(msg)
                 logger.debug(msg)
                 break
 
         return postprocessed_batch
+
+
+def apply_preprocessors(worker, raw_observation, policy_id):
+    prep_obs = _get_or_raise(
+        worker.preprocessors, policy_id).transform(raw_observation)
+    filtered_obs = _get_or_raise(worker.filters, policy_id)(prep_obs)
+    return filtered_obs

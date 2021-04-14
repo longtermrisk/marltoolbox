@@ -1,10 +1,11 @@
 import argparse
 import os
+
 import ray
 from ray import tune
 from ray.rllib.agents.ppo import PPOTrainer
 
-from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
+from marltoolbox.envs.coin_game import AsymCoinGame
 from marltoolbox.utils import log, miscellaneous
 
 parser = argparse.ArgumentParser()
@@ -34,17 +35,20 @@ def main(debug, stop_iters=2000, tf=False):
     rllib_config = {
         "env": env_class,
         "env_config": env_config,
-
         "multiagent": {
             "policies": {
-                env_config["players_ids"][0]: (None,
-                                               env_class(env_config).OBSERVATION_SPACE,
-                                               env_class.ACTION_SPACE,
-                                               {}),
-                env_config["players_ids"][1]: (None,
-                                               env_class(env_config).OBSERVATION_SPACE,
-                                               env_class.ACTION_SPACE,
-                                               {}),
+                env_config["players_ids"][0]: (
+                    None,
+                    env_class(env_config).OBSERVATION_SPACE,
+                    env_class.ACTION_SPACE,
+                    {},
+                ),
+                env_config["players_ids"][1]: (
+                    None,
+                    env_class(env_config).OBSERVATION_SPACE,
+                    env_class.ACTION_SPACE,
+                    {},
+                ),
             },
             "policy_mapping_fn": lambda agent_id: agent_id,
         },
@@ -55,10 +59,10 @@ def main(debug, stop_iters=2000, tf=False):
         "train_batch_size": 512,
         "model": {
             "dim": env_config["grid_size"],
-            "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]]  # [Channel, [Kernel, Kernel], Stride]]
+            "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]]
+            # [Channel, [Kernel, Kernel], Stride]]
         },
         "lr": 5e-3,
-
         "seed": tune.grid_search(seeds),
         "callbacks": log.get_logging_callbacks_class(),
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
@@ -66,10 +70,17 @@ def main(debug, stop_iters=2000, tf=False):
         "num_workers": 0,
     }
 
-    tune_analysis = tune.run(PPOTrainer, config=rllib_config, stop=stop,
-                       checkpoint_freq=0, checkpoint_at_end=True, name=exp_name)
+    tune_analysis = tune.run(
+        PPOTrainer,
+        config=rllib_config,
+        stop=stop,
+        checkpoint_freq=0,
+        checkpoint_at_end=True,
+        name=exp_name,
+    )
     ray.shutdown()
     return tune_analysis
+
 
 if __name__ == "__main__":
     args = parser.parse_args()

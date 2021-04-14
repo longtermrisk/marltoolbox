@@ -3,7 +3,9 @@ import os
 import ray
 from ray import tune
 from ray.rllib.agents.dqn import DQNTrainer
-from ray.rllib.utils.schedules import PiecewiseSchedule, ExponentialSchedule
+from ray.rllib.utils.schedules import PiecewiseSchedule
+from ray.tune.integration.wandb import WandbLogger
+from ray.tune.logger import DEFAULT_LOGGERS
 
 from marltoolbox.algos import augmented_dqn
 from marltoolbox.envs import coin_game
@@ -32,10 +34,11 @@ def _get_hyperparameters(seeds, debug, exp_name):
         "debug": debug,
         "exp_name": exp_name,
         "n_steps_per_epi": 100,
-        "n_epi": 1000,
-        "buf_frac": 0.5,
+        "n_epi": 2000,
+        "buf_frac": 0.125,
         "last_exploration_temp_value": 0.1,
-        "bs_epi_mul": 2,
+        "bs_epi_mul": 1,
+
         "plot_keys":
             coin_game.PLOT_KEYS +
             aggregate_and_plot_tensorboard_data.PLOT_KEYS,
@@ -43,32 +46,22 @@ def _get_hyperparameters(seeds, debug, exp_name):
             coin_game.PLOT_ASSEMBLAGE_TAGS +
             aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS,
     }
-    hparams["temperature_schedule"] = PiecewiseSchedule(
-        endpoints=[
-            (0,
-             2.0),
-            (int(hparams["n_steps_per_epi"] * hparams["n_epi"] * 0.20),
-             0.5),
-            (int(hparams["n_steps_per_epi"] * hparams["n_epi"] * 0.60),
-             hparams["last_exploration_temp_value"])],
-        outside_value=hparams["last_exploration_temp_value"],
-        framework="torch")
     return hparams
 
 
-def _get_rllib_configs(hparams):
+def _get_rllib_configs(hp, env_class=None):
     stop_config = {
-        "episodes_total": 2 if hparams["debug"] else hparams["n_epi"],
+        "episodes_total": 2 if hp["debug"] else hp["n_epi"],
     }
 
     env_config = {
         "players_ids": ["player_red", "player_blue"],
-        "max_steps": hparams["n_steps_per_epi"],
+        "max_steps": hp["n_steps_per_epi"],
         "grid_size": 3,
         "get_additional_info": True,
     }
 
-    env_class = coin_game.CoinGame
+    env_class = coin_game.CoinGame if env_class is None else env_class
     rllib_config = {
         "env": env_class,
         "env_config": env_config,
@@ -92,12 +85,14 @@ def _get_rllib_configs(hparams):
         # === DQN Models ===
 
         # Update the target network every `target_network_update_freq` steps.
-        "target_network_update_freq": 30 * hparams["n_steps_per_epi"],
+        "target_network_update_freq": tune.sample_from(
+            lambda spec: int(spec.config["env_config"]["max_steps"] * 30)),
         # === Replay buffer ===
         # Size of the replay buffer. Note that if async_updates is set, then
         # each worker will have a replay buffer of this size.
-        "buffer_size": int(hparams["n_steps_per_epi"] * hparams["n_epi"] *
-                           hparams["buf_frac"]),
+        "buffer_size": tune.sample_from(
+            lambda spec: int(spec.config["env_config"]["max_steps"] *
+                             spec.stop["episodes_total"] * hp["buf_frac"])),
         # Whether to use dueling dqn
         "dueling": False,
         # Whether to use double dqn
@@ -105,13 +100,15 @@ def _get_rllib_configs(hparams):
         # If True prioritized replay buffer will be used.
         "prioritized_replay": False,
 
-        "rollout_fragment_length": hparams["n_steps_per_epi"],
+        "rollout_fragment_length": tune.sample_from(
+            lambda spec: spec.config["env_config"]["max_steps"]),
         "training_intensity": 10,
         # Size of a batch sampled from replay buffer for training. Note that
         # if async_updates is set, then each worker returns gradients for a
         # batch of this size.
-        "train_batch_size": int(hparams["n_steps_per_epi"] *
-                                hparams["bs_epi_mul"]),
+        "train_batch_size": tune.sample_from(
+            lambda spec: int(spec.config["env_config"]["max_steps"] *
+                             hp["bs_epi_mul"])),
         "batch_mode": "complete_episodes",
 
         # === Exploration Settings ===
@@ -130,7 +127,19 @@ def _get_rllib_configs(hparams):
             # "type": exploration.SoftQSchedule,
             "type": exploration.SoftQSchedule,
             # Add constructor kwargs here (if any).
-            "temperature_schedule": hparams["temperature_schedule"],
+            "temperature_schedule": tune.sample_from(
+                lambda spec: PiecewiseSchedule(
+                    endpoints=[
+                        (0,
+                         2.0),
+                        (int(spec.config["env_config"]["max_steps"] *
+                             spec.stop["episodes_total"] * 0.20),
+                         0.5),
+                        (int(spec.config["env_config"]["max_steps"] *
+                             spec.stop["episodes_total"] * 0.60),
+                         hp["last_exploration_temp_value"])],
+                    outside_value=hp["last_exploration_temp_value"],
+                    framework="torch")),
         },
 
         # Size of batches collected from each worker.
@@ -141,36 +150,54 @@ def _get_rllib_configs(hparams):
         },
         "gamma": 0.96,
         "optimizer": {"sgd_momentum": 0.9, },
-        "lr": 0.4,
+        "lr": 0.1,
         "lr_schedule": tune.sample_from(
-            lambda spec: ExponentialSchedule(
-                schedule_timesteps=int(hparams["n_steps_per_epi"] *
-                                       hparams["n_epi"]),
-                initial_p=spec.config.lr,
-                decay_rate=1 / 20,
-                framework="torch"
-            )
+            lambda spec: [
+                (0, 0.0),
+                (int(spec.config["env_config"]["max_steps"] *
+                     spec.stop["episodes_total"] * 0.05),
+                 spec.config.lr),
+                (int(spec.config["env_config"]["max_steps"] *
+                     spec.stop["episodes_total"]),
+                 spec.config.lr / 1e9)
+            ]
         ),
 
-        "seed": tune.grid_search(hparams["seeds"]),
+        "seed": tune.grid_search(hp["seeds"]),
         "callbacks": log.get_logging_callbacks_class(),
         "framework": "torch",
+
+        "logger_config": {
+            "wandb": {
+                "project": "DQN_CG",
+                "group": hp["exp_name"],
+                "api_key_file":
+                    os.path.join(os.path.dirname(__file__),
+                                 "../../../api_key_wandb"),
+                "log_config": True
+            },
+        },
+
     }
 
     return rllib_config, stop_config
 
 
-def _train_dqn_and_plot_logs(hparams, rllib_config, stop_config):
-    ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=hparams["debug"])
-    tune_analysis = tune.run(DQNTrainer,
-                             config=rllib_config,
-                             stop=stop_config,
-                             name=hparams["exp_name"])
-    if not hparams["debug"]:
+def _train_dqn_and_plot_logs(hp, rllib_config, stop_config):
+    ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=hp["debug"])
+    tune_analysis = tune.run(
+        DQNTrainer,
+        config=rllib_config,
+        stop=stop_config,
+        name=hp["exp_name"],
+        log_to_file=not hp["debug"],
+        loggers=None if hp["debug"] else DEFAULT_LOGGERS + (WandbLogger,),
+    )
+    if not hp["debug"]:
         aggregate_and_plot_tensorboard_data.add_summary_plots(
-            main_path=os.path.join("~/ray_results/", hparams["exp_name"]),
-            plot_keys=hparams["plot_keys"],
-            plot_assemble_tags_in_one_plot=hparams["plot_assemblage_tags"],
+            main_path=os.path.join("~/ray_results/", hp["exp_name"]),
+            plot_keys=hp["plot_keys"],
+            plot_assemble_tags_in_one_plot=hp["plot_assemblage_tags"],
         )
     ray.shutdown()
     return tune_analysis

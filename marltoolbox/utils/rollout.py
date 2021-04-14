@@ -246,7 +246,6 @@ def _worker_compute_action(worker, timestep,
         policy_id].transform(observation)
     filtered_obs = worker.filters[policy_id](
         preprocessed, update=False)
-
     result = worker.get_policy(policy_id).compute_single_action(
         filtered_obs,
         state,

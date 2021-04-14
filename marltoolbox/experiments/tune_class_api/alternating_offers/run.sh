@@ -10,8 +10,6 @@
 
 ipython -- train.py --name=selfish_debug --enable_cheap_comm --utterance_entropy_reg=1e-3 --proposal_entropy_reg 0.05 --response_entropy_reg 0.05 --fairness_coeffs='0.1,0.1' --utility_type='skew_0.5,skew_0.5'
 
-
-
 # Previous training configs
 
 # ipython -- train.py --enable-cuda --disable-prosocial --disable-comms --model-file=models/model.pt
@@ -35,7 +33,6 @@ ipython -- train.py --name=selfish_debug --enable_cheap_comm --utterance_entropy
 # nothing is open
 # ipython -- train.py --enable-cuda --disable-proposal --disable-prosocial --disable-comms --term-entropy-reg 0.05 --utterance-entropy-reg 0.0001 --proposal-entropy-reg 0.005
 
-
 # only new proposal_repr channel open, orig reg coeffs
 # ipython -- train.py --enable-cuda --disable-proposal --disable-prosocial --disable-comms --enable-proposal-repr --term-entropy-reg 0.05 --utterance-entropy-reg 0.0001 --proposal-entropy-reg 0.005
 
@@ -48,8 +45,6 @@ ipython -- train.py --name=selfish_debug --enable_cheap_comm --utterance_entropy
 # all reg coeffs at max values
 # ipython -- train.py --enable-cuda --disable-proposal --disable-prosocial --disable-comms --enable-proposal-repr --term-entropy-reg 0.5 --utterance-entropy-reg 0.01 --proposal-entropy-reg 0.01
 
-
-
 # proposal and proposal_repr both open, utterance entropy reg = proposal entropy reg
 # ipython -- train.py --enable-cuda --disable-prosocial --disable-comms --enable-proposal-repr --term-entropy-reg 0.05 --mediator-entropy-reg 0.05 --utterance-entropy-reg 0.005 --proposal-entropy-reg 0.005
 
@@ -59,21 +54,14 @@ ipython -- train.py --name=selfish_debug --enable_cheap_comm --utterance_entropy
 # both closed
 # ipython -- train.py --enable-cuda --disable-prosocial --disable-proposal --disable-comms --term-entropy-reg 0.05 --mediator-entropy-reg 0.05 --utterance-entropy-reg 0.005 --proposal-entropy-reg 0.005
 
-
-
 # only new proposal_repr channel open, mediation enabled
 # ipython -- train.py --enable-cuda --disable-proposal --disable-prosocial --disable-comms --enable-proposal-repr --term-entropy-reg 0.05 --mediator-entropy-reg 0.05 --utterance-entropy-reg 0.005 --proposal-entropy-reg 0.005 --enable-mediator
 # ipython -- train.py --disable-proposal --disable-prosocial --disable-comms --enable-proposal-repr --term-entropy-reg 0.05 --mediator-entropy-reg 0.05 --mediator-main-loss-coeff 100000 --utterance-entropy-reg 0.005 --proposal-entropy-reg 0.005 --enable-mediator
 
 # ipython -- train.py --name=debug --enable_proposal_repr --enable_mediator --term_entropy_reg 0.05 --mediator_entropy_reg 0.05 --utterance_entropy_reg 0.005 --proposal_entropy_reg 0.005 --mediator_main_loss_coeff 100000
 
-
 # mediation disabled, just for debug
 # ipython -- train.py --name=debug --enable_proposal_repr --term_entropy_reg 0.05 --mediator_entropy_reg 0.05 --utterance_entropy_reg 0.005 --proposal_entropy_reg 0.005
-
-
-
-
 
 # Trying out some mediation hyperparams
 
@@ -96,7 +84,6 @@ ipython -- train.py --name=selfish_debug --enable_cheap_comm --utterance_entropy
 # ipython -- train.py --name=debug --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 0.05 --utterance_entropy_reg 0.005 --proposal_entropy_reg 0.005 --term_entropy_reg 0.05
 # ipython -- train.py --name=do_not_scale --enable_proposal_repr --utterance_entropy_reg 0.005 --proposal_entropy_reg 0.005 --term_entropy_reg 0.05
 
-
 # ipython -- train.py --name=debug --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-9 --utterance_entropy_reg 0.005 --proposal_entropy_reg 0.005 --term_entropy_reg 0.05
 # ipython -- train.py --name=1e+4_scaling_both --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 1e+4 --mediator_entropy_reg 500 --utterance_entropy_reg 0.005 --proposal_entropy_reg 0.005 --term_entropy_reg 0.05
 # ipython -- train.py --name=1e+1_scaling_both --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 1e+1 --mediator_entropy_reg 0.05 --utterance_entropy_reg 0.005 --proposal_entropy_reg 0.005 --term_entropy_reg 0.05
@@ -109,14 +96,12 @@ ipython -- train.py --name=selfish_debug --enable_cheap_comm --utterance_entropy
 # ipython -- train.py --name=random_arbitration --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 0 --mediator_entropy_reg 0.05 --utterance_entropy_reg 0.005 --proposal_entropy_reg 0.005 --term_entropy_reg 0.05
 # ipython -- train.py --name=random_arbitration_larger_ent_coeffs --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 0 --mediator_entropy_reg 0.05 --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05
 
-
 # ipython -- train.py --name=agents_sgd --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-9 --utterance_entropy_reg 0.005 --proposal_entropy_reg 0.005 --term_entropy_reg 0.05 --agents_sgd
 # ipython -- train.py --name=agents_med_sgd --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-9 --utterance_entropy_reg 0.005 --proposal_entropy_reg 0.005 --term_entropy_reg 0.05 --agents_sgd --mediator_sgd
 # ipython -- train.py --name=agents_sgd_larger_ent_coeffs --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-9 --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05 --agents_sgd
 # ipython -- train.py --name=agents_med_sgd_larger_ent_coeffs --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-9 --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05 --agents_sgd --mediator_sgd
 # ipython -- train.py --name=agents_sgd_larger_ent_coeffs_redo --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-7 --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05 --agents_sgd
 # ipython -- train.py --name=agents_med_sgd_larger_ent_coeffs_redo --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-7 --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05 --agents_sgd --mediator_sgd
-
 
 # ipython -- train.py --name=share_utilities --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-9 --utterance_entropy_reg 0.005 --proposal_entropy_reg 0.005 --term_entropy_reg 0.05 --share_utilities
 # ipython -- train.py --name=debug --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-9 --utterance_entropy_reg 0.005 --proposal_entropy_reg 0.005 --term_entropy_reg 0.05 --share_utilities
@@ -145,7 +130,6 @@ ipython -- train.py --name=selfish_debug --enable_cheap_comm --utterance_entropy
 
 # python -- train.py --name=redist_after_scaling_redo --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-7 --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05
 
-
 # ipython -- train.py --name=main_exp_ent_8 --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-8 --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05
 # ipython -- train.py --name=main_exp_ent_7 --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-7 --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05
 # ipython -- train.py --name=main_exp_ent_6 --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-6 --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05
@@ -158,8 +142,6 @@ ipython -- train.py --name=selfish_debug --enable_cheap_comm --utterance_entropy
 # ipython -- train.py --name=main_exp_ent_6e-7 --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 6e-7 --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05
 # ipython -- train.py --name=main_exp_ent_1.2e-6 --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 1.2e-6 --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05
 # ipython -- train.py --name=main_exp_wo_arb --enable_proposal_repr --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05
-
-
 
 # ipython -- train.py --name=paper_coeffs_wo_arb --enable_proposal_repr --utterance_entropy_reg 1e-3 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05
 
@@ -185,9 +167,7 @@ ipython -- train.py --name=selfish_debug --enable_cheap_comm --utterance_entropy
 
 # ipython -- train.py --name=impl_coeffs_med_ent_0 --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 0 --utterance_entropy_reg 1e-4 --proposal_entropy_reg 5e-3 --term_entropy_reg 0.05
 
-
-
-# ipython -- train.py --name=debug --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-2 --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05 
+# ipython -- train.py --name=debug --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-2 --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05
 
 # ipython -- train.py --name=overflow_baseline --enable_overflow --enable_proposal_repr --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05
 # ipython -- train.py --name=overflow_arbitration --enable_overflow --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-7 --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05
@@ -214,7 +194,6 @@ ipython -- train.py --name=selfish_debug --enable_cheap_comm --utterance_entropy
 # ipython -- train.py --name=prosocial_binding_scale_before_redist_higher_reg --enable_proposal_repr --enable_proposal --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05 --prosocial --scale_before_redist
 # ipython -- train.py --name=prosocial_higher_utt_reg --enable_proposal_repr --utterance_entropy_reg 0.05 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05 --prosocial
 
-
 # ipython -- train.py --name=cross_play_pair1_1e-3 --enable_proposal_repr --utterance_entropy_reg 1e-3 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05
 # ipython -- train.py --name=cross_play_pair1_fully_prosocial_1e-3 --enable_proposal_repr --utterance_entropy_reg 1e-3 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05 --prosocial
 # ipython -- train.py --name=cross_play_pair1_fully_prosocial_binding_1e-3 --enable_proposal_repr --enable_proposal --utterance_entropy_reg 1e-3 --proposal_entropy_reg 0.005 --term_entropy_reg 0.05 --prosocial
@@ -222,7 +201,6 @@ ipython -- train.py --name=selfish_debug --enable_cheap_comm --utterance_entropy
 # turn the regime on
 # ipython -- train.py --name=cross_play_pair1_partially_prosocial_0.5_1e-3 --enable_proposal_repr  --utterance_entropy_reg 1e-3 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05 --scale_before_redist
 # ipython -- train.py --name=cross_play_pair1_partially_prosocial_0.5_w_med_1e-3 --enable_proposal_repr --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-7 --utterance_entropy_reg 1e-3 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05 --scale_before_redist
-
 
 # different utility types
 
@@ -243,6 +221,3 @@ ipython -- train.py --name=selfish_debug --enable_cheap_comm --utterance_entropy
 # ipython -- train.py --name=partially_prosocial_1_5_only_vs_3_4_5_only --enable_proposal_repr --utterance_entropy_reg 1e-3 --proposal_entropy_reg 0.05 --term_entropy_reg 0.05 --utility_type='1_5_only,3_4_5_only' --prosociality_level=0.5 --scale_before_redist
 
 # ipython -- train.py --name=debug --training_episodes=16 --utterance_entropy_reg=0.05 --proposal_entropy_reg=0.05 --term_entropy_reg=0.05 --scale_before_redist --prosociality_level=0.5 --enable_mediator --mediator_main_loss_coeff 6.1e-8 --mediator_entropy_reg 3.05e-7
-
-
-
