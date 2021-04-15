@@ -1,5 +1,7 @@
 import copy
 import logging
+
+from ray.rllib.utils.threading import with_lock
 from typing import List, Union, Iterable
 
 import torch
@@ -181,6 +183,7 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
     def nested_key(self, i):
         return f"nested_{i}"
 
+    @with_lock
     @override(rllib.policy.TorchPolicy)
     def _compute_action_helper(
         self, input_dict, state_batches, seq_lens, explore, timestep
@@ -193,6 +196,7 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
 
         return actions, state_out, extra_fetches
 
+    @with_lock
     def learn_on_batch(self, samples: SampleBatch):
         stats = self._learn_on_batch(samples)
         self._log_learning_rates()

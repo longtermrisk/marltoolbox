@@ -81,7 +81,7 @@ def get_hyperparameters(
         n_times_more_utilitarians_seeds = 1
     elif train_n_replicates is None:
         n_times_more_utilitarians_seeds = 4
-        train_n_replicates = 4
+        train_n_replicates = 2
     else:
         n_times_more_utilitarians_seeds = 4
 
@@ -464,8 +464,6 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         "min_iter_time_s": 0.0,
         # General config
         "framework": "torch",
-        # LE supports only 1 worker only otherwise
-        # it would be mixing several opponents trajectories
         "num_workers": 0,
         # LE supports only 1 env per worker only otherwise
         # several episodes would be played at the same time
@@ -816,5 +814,5 @@ def print_inequity_aversion_welfare(env_config, analysis_metrics_per_mode):
 
 
 if __name__ == "__main__":
-    debug_mode = True
+    debug_mode = False
     main(debug_mode)

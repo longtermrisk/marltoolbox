@@ -1,3 +1,4 @@
+from ray.rllib.utils.threading import with_lock
 from typing import List, Union, Optional, Dict, Tuple
 
 import numpy as np
@@ -38,19 +39,10 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
             if "use_lstm" in config["model"].keys():
                 assert not config["model"]["use_lstm"]
 
-    def compute_actions(
-        self,
-        obs_batch: Union[List[TensorType], TensorType],
-        state_batches: Optional[List[TensorType]] = None,
-        prev_action_batch: Union[List[TensorType], TensorType] = None,
-        prev_reward_batch: Union[List[TensorType], TensorType] = None,
-        info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["MultiAgentEpisode"]] = None,
-        explore: Optional[bool] = None,
-        timestep: Optional[int] = None,
-        **kwargs,
-    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
+    @with_lock
+    def _compute_action_helper(
+        self, input_dict, state_batches, seq_lens, explore, timestep
+    ):
         # Option to overwrite action during internal rollouts
         if self.use_opponent_policies:
             if len(self.overwrite_action) > 0:
@@ -61,16 +53,8 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
                     print("overwritten actions", actions, type(actions))
                 return actions, state_out, extra_fetches
 
-        return super().compute_actions(
-            obs_batch,
-            state_batches,
-            prev_action_batch,
-            prev_reward_batch,
-            info_batch,
-            episodes,
-            explore,
-            timestep,
-            **kwargs,
+        return super()._compute_action_helper(
+            input_dict, state_batches, seq_lens, explore, timestep
         )
 
     def _select_algo_to_use_in_eval(self):

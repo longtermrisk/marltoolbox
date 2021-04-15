@@ -1,5 +1,7 @@
 import copy
 import logging
+
+from ray.rllib.utils.threading import with_lock
 from typing import List, Union, Optional, Dict, Tuple, TYPE_CHECKING
 
 import numpy as np
@@ -66,37 +68,14 @@ class AmTFTPolicyBase(
         for algo in self.algorithms:
             algo.model.eval()
 
-    @override(hierarchical.HierarchicalTorchPolicy)
-    def compute_actions(
-        self,
-        obs_batch: Union[List[TensorType], TensorType],
-        state_batches: Optional[List[TensorType]] = None,
-        prev_action_batch: Union[List[TensorType], TensorType] = None,
-        prev_reward_batch: Union[List[TensorType], TensorType] = None,
-        info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["MultiAgentEpisode"]] = None,
-        explore: Optional[bool] = None,
-        timestep: Optional[int] = None,
-        **kwargs,
-    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
+    @with_lock
+    def _compute_action_helper(
+        self, input_dict, state_batches, seq_lens, explore, timestep
+    ):
         self._select_witch_algo_to_use()
-        actions, state_out, extra_fetches = self.algorithms[
-            self.active_algo_idx
-        ].compute_actions(
-            obs_batch,
-            state_batches,
-            prev_action_batch,
-            prev_reward_batch,
-            info_batch,
-            episodes,
-            explore,
-            timestep,
-            **kwargs,
+        return super()._compute_action_helper(
+            input_dict, state_batches, seq_lens, explore, timestep
         )
-        if self.verbose > 2:
-            print(f"self.active_algo_idx {self.active_algo_idx}")
-        return actions, state_out, extra_fetches
 
     def _select_witch_algo_to_use(self):
         if (
@@ -128,20 +107,14 @@ class AmTFTPolicyBase(
     @override(hierarchical.HierarchicalTorchPolicy)
     def _learn_on_batch(self, samples: SampleBatch):
 
-        # working_state_idx = WORKING_STATES.index(self.working_state)
-        # assert working_state_idx == OWN_COOP_POLICY_IDX \
-        #        or working_state_idx == OWN_SELFISH_POLICY_IDX, \
-        #     f"current working_state is {self.working_state} " \
-        #     f"but must be one of " \
-        #     f"[{WORKING_STATES[OWN_COOP_POLICY_IDX]}, " \
-        #     f"{WORKING_STATES[OWN_SELFISH_POLICY_IDX]}]"
-
         if self.working_state == WORKING_STATES[0]:
             algo_idx_to_train = OWN_COOP_POLICY_IDX
         elif self.working_state == WORKING_STATES[1]:
             algo_idx_to_train = OWN_SELFISH_POLICY_IDX
         else:
-            raise ValueError()
+            raise ValueError(
+                f"self.working_state must be one of " f"{WORKING_STATES[0:2]}"
+            )
         samples = self._modify_batch_for_policy(algo_idx_to_train, samples)
 
         algo_to_train = self.algorithms[algo_idx_to_train]

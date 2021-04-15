@@ -235,7 +235,9 @@ class LOLAPGCG(tune.Trainable):
 
         self.obs_batch = deque(maxlen=self.batch_size)
         self.full_episode_logger = FullEpisodeLogger(
-            logdir=self._logdir, log_interval=100, log_ful_epi_one_hot_obs=True
+            logdir=self._logdir,
+            log_interval=100,
+            convert_one_hot_obs_to_idx=True,
         )
 
         # Setting the training parameters

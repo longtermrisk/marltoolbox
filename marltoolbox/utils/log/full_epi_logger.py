@@ -4,18 +4,32 @@ import os
 
 import numpy as np
 from ray.rllib.evaluation import MultiAgentEpisode
-
 from ray.tune.logger import SafeFallbackEncoder
 
 logger = logging.getLogger(__name__)
 
 
 class FullEpisodeLogger:
-    def __init__(self, logdir, log_interval, log_ful_epi_one_hot_obs):
-        self.log_interval = log_interval
-        self.log_ful_epi_one_hot_obs = log_ful_epi_one_hot_obs
+    """
+    Helper to log the entire history of one episode as txt
+    """
 
-        file_path = os.path.join(logdir, f"full_episodes_logs.json")
+    def __init__(
+        self, logdir: str, log_interval: int, convert_one_hot_obs_to_idx: bool
+    ):
+        """
+
+        :param logdir: dir where to save the log file with the full episode
+        :param log_interval: interval (in number of episode) between the log
+            of two episodes
+        :param convert_one_hot_obs_to_idx: bool flag to chose to convert the
+            observation to their idx
+            (indented to bue used when dealing with one hot observations)
+        """
+        self.log_interval = log_interval
+        self.log_ful_epi_one_hot_obs = convert_one_hot_obs_to_idx
+
+        file_path = os.path.join(logdir, "full_episodes_logs.json")
         self.file_path = os.path.expanduser(file_path)
         logger.info(f"FullEpisodeLogger: using as file_path: {self.file_path}")
 
@@ -23,7 +37,6 @@ class FullEpisodeLogger:
         self.internal_episode_counter = -1
         self.step_counter = 0
         self.episode_finised = True
-        # self._first_fake_step_done = False
 
         self.json_logger = JsonSimpleLogger(self.file_path)
 
@@ -57,7 +70,6 @@ class FullEpisodeLogger:
             step_data = {}
             for agent_id, policy in episode._policies.items():
 
-                # if self._first_fake_step_done:
                 if agent_id in self._log_full_epi_tmp_data.keys():
                     obs_before_act = self._log_full_epi_tmp_data[agent_id]
                 else:
@@ -82,7 +94,6 @@ class FullEpisodeLogger:
                 obs_after_act = episode.last_observation_for(agent_id)
                 self._log_full_epi_tmp_data[agent_id] = obs_after_act
 
-                # if self._first_fake_step_done:
                 if self.log_ful_epi_one_hot_obs:
                     obs_before_act = np.argwhere(obs_before_act)
                     obs_after_act = np.argwhere(obs_after_act)
@@ -96,13 +107,9 @@ class FullEpisodeLogger:
                     "epi": epi,
                 }
 
-        # if self._first_fake_step_done:
         self.json_logger.write_json(step_data)
         self.json_logger.write("\n")
         self.step_counter += 1
-        # else:
-        #     logger.info("FullEpisodeLogger: don't log first fake step")
-        #     self._first_fake_step_done = True
 
     def on_episode_end(self, base_env=None):
         if self._log_current_full_episode:
@@ -131,7 +138,15 @@ class FullEpisodeLogger:
 
 
 class JsonSimpleLogger:
+    """
+    Simple logger in json format
+    """
+
     def __init__(self, file_path):
+        """
+
+        :param file_path: file path to the file to save to
+        """
         self.local_file = file_path
 
     def write_json(self, json_data):

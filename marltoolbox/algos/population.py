@@ -110,22 +110,7 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
         self.algorithms[self.active_algo_idx].set_weights(weights)
 
     @override(hierarchical.HierarchicalTorchPolicy)
-    def compute_actions(
-        self,
-        obs_batch: Union[List[TensorType], TensorType],
-        state_batches: Optional[List[TensorType]] = None,
-        prev_action_batch: Union[List[TensorType], TensorType] = None,
-        prev_reward_batch: Union[List[TensorType], TensorType] = None,
-        info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["MultiAgentEpisode"]] = None,
-        explore: Optional[bool] = None,
-        timestep: Optional[int] = None,
-        **kwargs,
-    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        return self.algorithms[self.active_algo_idx].compute_actions(obs_batch)
-
-    @override(hierarchical.HierarchicalTorchPolicy)
-    def learn_on_batch(self, samples: SampleBatch):
+    def _learn_on_batch(self, samples: SampleBatch):
         if not self.freeze_algo:
             # TODO maybe need to call optimizer to update the LR of the nested optimizers
             learner_stats = {"learner_stats": {}}

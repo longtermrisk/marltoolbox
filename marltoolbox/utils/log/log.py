@@ -65,7 +65,7 @@ def get_logging_callbacks_class(
             self._full_episode_logger = FullEpisodeLogger(
                 logdir=worker.io_context.log_dir,
                 log_interval=log_full_epi_interval,
-                log_ful_epi_one_hot_obs=log_ful_epi_one_hot_obs,
+                convert_one_hot_obs_to_idx=log_ful_epi_one_hot_obs,
             )
             logger.info("_full_episode_logger init done")
 
@@ -245,7 +245,7 @@ def _log_action_prob_pytorch(
             ), "Do not support nested discrete spaces"
 
             to_log = _add_action_distrib_to_log(policy, train_batch, to_log)
-            to_log = _add_entropy_to_log(train_batch, to_log)
+            to_log = add_entropy_to_log(train_batch, to_log)
             to_log = _add_proba_of_action_played(train_batch, to_log)
             to_log = _add_q_values(policy, train_batch, to_log)
         else:
@@ -272,7 +272,7 @@ def _add_action_distrib_to_log(policy, train_batch, to_log):
     return to_log
 
 
-def _add_entropy_to_log(train_batch, to_log):
+def add_entropy_to_log(train_batch, to_log):
     actions_proba_batch = train_batch["action_dist_inputs"]
 
     if _is_cuda_tensor(actions_proba_batch):
