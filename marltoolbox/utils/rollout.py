@@ -5,14 +5,19 @@
 
 import collections
 import copy
+
+from ray.rllib.evaluation.worker_set import WorkerSet
 from typing import List
 
 from gym import wrappers as gym_wrappers
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.rollout import DefaultMapping, default_policy_agent_mapping, \
-    RolloutSaver
+from ray.rllib.rollout import (
+    DefaultMapping,
+    default_policy_agent_mapping,
+    RolloutSaver,
+)
 from ray.rllib.utils.framework import TensorStructType
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.typing import EnvInfoDict, PolicyID
@@ -43,26 +48,27 @@ class RolloutManager(RolloutSaver):
         """Add a step to the current rollout, if we are saving them"""
         if self._save_info:
             self._current_rollout.append(
-                [obs, action, next_obs, reward, done, info])
+                [obs, action, next_obs, reward, done, info]
+            )
         else:
-            self._current_rollout.append(
-                [obs, action, next_obs, reward, done])
+            self._current_rollout.append([obs, action, next_obs, reward, done])
         self._total_steps += 1
 
 
-def internal_rollout(worker,
-                     num_steps,
-                     policy_map=None,
-                     policy_agent_mapping=None,
-                     reset_env_before=True,
-                     num_episodes=0,
-                     last_obs=None,
-                     saver=None,
-                     no_render=True,
-                     video_dir=None,
-                     seed=None,
-                     explore=None,
-                     ):
+def internal_rollout(
+    worker,
+    num_steps,
+    policy_map=None,
+    policy_agent_mapping=None,
+    reset_env_before=True,
+    num_episodes=0,
+    last_obs=None,
+    saver=None,
+    no_render=True,
+    video_dir=None,
+    seed=None,
+    explore=None,
+):
     """
     Can perform rollouts on the environment from inside a worker_rollout or
     from a policy. Can perform rollouts during the evaluation rollouts ran
@@ -103,7 +109,8 @@ def internal_rollout(worker,
     if policy_agent_mapping is None:
         if worker.multiagent:
             policy_agent_mapping = worker.policy_config["multiagent"][
-                "policy_mapping_fn"]
+                "policy_mapping_fn"
+            ]
         else:
             policy_agent_mapping = default_policy_agent_mapping
 
@@ -123,11 +130,13 @@ def internal_rollout(worker,
             env=env,
             directory=video_dir,
             video_callable=lambda x: True,
-            force=True)
+            force=True,
+        )
 
     random_policy_id = list(policy_map.keys())[0]
     virtual_global_timestep = worker.get_policy(
-        random_policy_id).global_timestep
+        random_policy_id
+    ).global_timestep
 
     steps = 0
     episodes = 0
@@ -139,14 +148,17 @@ def internal_rollout(worker,
         else:
             obs = last_obs
         agent_states = DefaultMapping(
-            lambda agent_id_: state_init[mapping_cache[agent_id_]])
+            lambda agent_id_: state_init[mapping_cache[agent_id_]]
+        )
         prev_actions = DefaultMapping(
-            lambda agent_id_: action_init[mapping_cache[agent_id_]])
-        prev_rewards = collections.defaultdict(lambda: 0.)
+            lambda agent_id_: action_init[mapping_cache[agent_id_]]
+        )
+        prev_rewards = collections.defaultdict(lambda: 0.0)
         done = False
         reward_total = 0.0
-        while not done and _keep_going(steps, num_steps, episodes,
-                                       num_episodes):
+        while not done and _keep_going(
+            steps, num_steps, episodes, num_episodes
+        ):
 
             multi_obs = obs if multiagent else {_DUMMY_AGENT_ID: obs}
             action_dict = {}
@@ -154,7 +166,8 @@ def internal_rollout(worker,
             for agent_id, a_obs in multi_obs.items():
                 if a_obs is not None:
                     policy_id = mapping_cache.setdefault(
-                        agent_id, policy_agent_mapping(agent_id))
+                        agent_id, policy_agent_mapping(agent_id)
+                    )
                     p_use_lstm = use_lstm[policy_id]
                     # print("rollout")
                     if p_use_lstm:
@@ -166,7 +179,7 @@ def internal_rollout(worker,
                             prev_action=prev_actions[agent_id],
                             prev_reward=prev_rewards[agent_id],
                             policy_id=policy_id,
-                            explore=explore
+                            explore=explore,
                         )
                         agent_states[agent_id] = p_state
                     else:
@@ -177,7 +190,7 @@ def internal_rollout(worker,
                             prev_action=prev_actions[agent_id],
                             prev_reward=prev_rewards[agent_id],
                             policy_id=policy_id,
-                            explore=explore
+                            explore=explore,
                         )
                     a_action = flatten_to_single_ndarray(a_action)
                     action_dict[agent_id] = a_action
@@ -196,7 +209,8 @@ def internal_rollout(worker,
             if multiagent:
                 done = done["__all__"]
                 reward_total += sum(
-                    r for r in reward.values() if r is not None)
+                    r for r in reward.values() if r is not None
+                )
             else:
                 reward_total += reward
             if not no_render:
@@ -228,24 +242,25 @@ def _keep_going(steps, num_steps, episodes, num_episodes):
     return True
 
 
-def _worker_compute_action(worker, timestep,
-                           observation: TensorStructType,
-                           state: List[TensorStructType] = None,
-                           prev_action: TensorStructType = None,
-                           prev_reward: float = None,
-                           info: EnvInfoDict = None,
-                           policy_id: PolicyID = DEFAULT_POLICY_ID,
-                           full_fetch: bool = False,
-                           explore: bool = None) -> TensorStructType:
+def _worker_compute_action(
+    worker,
+    timestep,
+    observation: TensorStructType,
+    state: List[TensorStructType] = None,
+    prev_action: TensorStructType = None,
+    prev_reward: float = None,
+    info: EnvInfoDict = None,
+    policy_id: PolicyID = DEFAULT_POLICY_ID,
+    full_fetch: bool = False,
+    explore: bool = None,
+) -> TensorStructType:
     """
     Modified version of the Trainer compute_action method
     """
     if state is None:
         state = []
-    preprocessed = worker.preprocessors[
-        policy_id].transform(observation)
-    filtered_obs = worker.filters[policy_id](
-        preprocessed, update=False)
+    preprocessed = worker.preprocessors[policy_id].transform(observation)
+    filtered_obs = worker.filters[policy_id](preprocessed, update=False)
     result = worker.get_policy(policy_id).compute_single_action(
         filtered_obs,
         state,
@@ -254,7 +269,8 @@ def _worker_compute_action(worker, timestep,
         info,
         clip_actions=worker.policy_config["clip_actions"],
         explore=explore,
-        timestep=timestep)
+        timestep=timestep,
+    )
 
     if state or full_fetch:
         return result

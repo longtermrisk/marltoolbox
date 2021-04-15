@@ -33,7 +33,7 @@ def build_q_losses_wt_additional_logs(
     )
 
     # Target Q-network evaluation.
-    q_tp1, q_logits_tp1, q_probs_tp1, _ = compute_q_values(
+    q_tp1, _, q_probs_tp1, _ = compute_q_values(
         policy,
         policy.target_q_model,
         {"obs": train_batch[SampleBatch.NEXT_OBS]},
@@ -128,7 +128,7 @@ def build_q_losses_wt_additional_logs(
 def build_q_stats_wt_addtional_log(
     policy: Policy, batch
 ) -> Dict[str, TensorType]:
-    entropy_avg, entropy_single = log.compute_entropy_from_raw_q_values(
+    entropy_avg, _ = log.compute_entropy_from_raw_q_values(
         policy, policy.last_q_t.clone()
     )
 

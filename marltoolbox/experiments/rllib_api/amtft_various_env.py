@@ -81,7 +81,7 @@ def get_hyperparameters(
         n_times_more_utilitarians_seeds = 1
     elif train_n_replicates is None:
         n_times_more_utilitarians_seeds = 4
-        train_n_replicates = 2
+        train_n_replicates = 1
     else:
         n_times_more_utilitarians_seeds = 4
 

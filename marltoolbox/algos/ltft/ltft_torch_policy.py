@@ -535,11 +535,7 @@ def compute_log_likelihoods(
             # Try new action_distribution_fn signature, supporting
             # state_batches and seq_lens.
             try:
-                (
-                    dist_inputs,
-                    dist_class,
-                    state_out,
-                ) = policy.action_distribution_fn(
+                (dist_inputs, dist_class, _,) = policy.action_distribution_fn(
                     policy,
                     policy.model,
                     input_dict=input_dict,

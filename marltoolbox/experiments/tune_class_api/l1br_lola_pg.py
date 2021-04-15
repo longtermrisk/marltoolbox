@@ -16,6 +16,7 @@ from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.dqn.dqn_torch_policy import (
     DQNTorchPolicy,
     build_q_stats,
+    before_loss_init,
 )
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.tune.integration.wandb import WandbLoggerCallback
@@ -374,7 +375,10 @@ def get_rllib_config(hp: dict, lvl1_idx: list, lvl1_training: bool):
 
     before_loss_init_fn = functools.partial(
         miscellaneous.sequence_of_fn_wt_same_args,
-        function_list=[restore.before_loss_init_load_policy_checkpoint],
+        function_list=[
+            before_loss_init,
+            restore.before_loss_init_load_policy_checkpoint,
+        ],
     )
 
     def sgd_optimizer_dqn(policy, config) -> "torch.optim.Optimizer":

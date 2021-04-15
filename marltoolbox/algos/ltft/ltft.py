@@ -160,7 +160,8 @@ def validate_config(config: TrainerConfigDict) -> None:
 def execution_plan(
     workers: WorkerSet, config: TrainerConfigDict
 ) -> LocalIterator[dict]:
-    """Execution plan of the DQN algorithm. Defines the distributed dataflow.
+    """
+    Execution plan of the DQN algorithm. Defines the distributed dataflow.
 
     Args:
         workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
