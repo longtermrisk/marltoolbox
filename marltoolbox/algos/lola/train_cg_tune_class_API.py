@@ -21,7 +21,7 @@ from marltoolbox.algos.lola.corrections import (
 from marltoolbox.algos.lola.networks import Pnetwork
 from marltoolbox.algos.lola.utils import get_monte_carlo, make_cube
 from marltoolbox.envs.vectorized_coin_game import AsymVectorizedCoinGame
-from marltoolbox.utils.full_epi_logger import FullEpisodeLogger
+from marltoolbox.utils.log.full_epi_logger import FullEpisodeLogger
 
 PLOT_KEYS = [
     "player_1_loss",

@@ -10,6 +10,7 @@ import os
 import ray
 from ray import tune
 from ray.rllib.agents.pg import PGTorchPolicy
+from ray.tune.integration.wandb import WandbLoggerCallback
 
 from marltoolbox.algos.lola.train_exact_tune_class_API import LOLAExact
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
@@ -33,6 +34,13 @@ def main(debug):
         # Example "load_plot_data": ".../SelfAndCrossPlay_save.p",
         "exp_name": exp_name,
         "train_n_replicates": train_n_replicates,
+        "wandb": {
+            "project": "LOLA_Exact",
+            "group": exp_name,
+            "api_key_file": os.path.join(
+                os.path.dirname(__file__), "../../../api_key_wandb"
+            ),
+        },
         "env_name": "IPD",
         # "env_name": "IMP",
         # "env_name": "AsymBoS",
@@ -76,6 +84,16 @@ def train(hp):
         stop=stop,
         metric=hp["metric"],
         mode="max",
+        callbacks=None
+        if hp["debug"]
+        else [
+            WandbLoggerCallback(
+                project=hp["wandb"]["project"],
+                group=hp["wandb"]["group"],
+                api_key_file=hp["wandb"]["api_key_file"],
+                log_config=True,
+            )
+        ],
     )
     tune_analysis_per_exp = {"": tune_analysis}
     return tune_analysis_per_exp

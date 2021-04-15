@@ -60,7 +60,7 @@ class AmTFTPolicyBase(
             self.auto_load_checkpoint
             and restore.LOAD_FROM_CONFIG_KEY in config.keys()
         ):
-            restore.after_init_load_policy_checkpoint(self)
+            restore.before_loss_init_load_policy_checkpoint(self)
 
     def _set_models_for_evaluation(self):
         for algo in self.algorithms:

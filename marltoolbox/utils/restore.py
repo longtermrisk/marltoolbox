@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 LOAD_FROM_CONFIG_KEY = "checkpoint_to_load_from"
 
 
-def after_init_load_policy_checkpoint(
+def before_loss_init_load_policy_checkpoint(
     policy, observation_space=None, action_space=None, trainer_config=None
 ):
     """

@@ -8,21 +8,19 @@ import pickle
 import pprint
 import re
 from collections import Iterable
-from typing import Dict, Callable, TYPE_CHECKING
+from typing import Dict, Callable, TYPE_CHECKING, Optional
 
 import gym
-import torch
+from scipy.special import softmax
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.typing import PolicyID, TensorType
-from scipy.special import softmax
-from torch.nn import Module
-
-from marltoolbox.utils.full_epi_logger import FullEpisodeLogger
+from ray.util.debug import log_once
+from marltoolbox.utils.log.full_epi_logger import FullEpisodeLogger
+from marltoolbox.utils.log.model_summarizer import ModelSummarizer
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
@@ -49,7 +47,7 @@ def get_logging_callbacks_class(
             base_env: BaseEnv,
             policies: Dict[PolicyID, Policy],
             episode: MultiAgentEpisode,
-            env_index: int,
+            env_index: Optional[int] = None,
             **kwargs,
         ):
             if log_full_epi:
@@ -72,85 +70,8 @@ def get_logging_callbacks_class(
             logger.info("_full_episode_logger init done")
 
         def _log_model_sumamry(self, worker):
-            if not hasattr(self, "_log_model_sumamry_done"):
-                self._log_model_sumamry_done = True
-                self._for_every_policy_print_model_stats(worker)
-
-        def _for_every_policy_print_model_stats(self, worker):
-            for policy_id, policy in worker.policy_map.items():
-                msg = f"===== Models summaries policy_id {policy_id} ====="
-                print(msg)
-                logger.info(msg)
-                self._print_model_summary(policy)
-                self._count_parameters_in_every_modules(policy)
-
-        @staticmethod
-        def _print_model_summary(policy):
-            if isinstance(policy, TorchPolicy):
-                for k, v in policy.__dict__.items():
-                    if isinstance(v, Module):
-                        msg = f"{k}, {v}"
-                        print(msg)
-                        logger.info(msg)
-
-        def _count_parameters_in_every_modules(self, policy):
-            if isinstance(policy, TorchPolicy):
-                for k, v in policy.__dict__.items():
-                    if isinstance(v, Module):
-                        self._count_and_log_for_one_module(policy, k, v)
-
-        def _count_and_log_for_one_module(self, policy, module_name, module):
-            n_param = self._count_parameters(module, module_name)
-            n_param_shared_counted_once = self._count_parameters(
-                module, module_name, count_shared_once=True
-            )
-            n_param_trainable = self._count_parameters(
-                module, module_name, only_trainable=True
-            )
-            self._log_values_in_to_log(
-                policy,
-                {
-                    f"module_{module_name}_n_param": n_param,
-                    f"module_{module_name}_n_param_shared_counted_once": n_param_shared_counted_once,
-                    f"module_{module_name}_n_param_trainable": n_param_trainable,
-                },
-            )
-
-        @staticmethod
-        def _log_values_in_to_log(policy, dictionary):
-            if hasattr(policy, "to_log"):
-                policy.to_log.update(dictionary)
-
-        @staticmethod
-        def _count_parameters(
-            m: torch.nn.Module,
-            module_name: str,
-            count_shared_once: bool = False,
-            only_trainable: bool = False,
-        ):
-            """
-            returns the total number of parameters used by `m` (only counting
-            shared parameters once); if `only_trainable` is True, then only
-            includes parameters with `requires_grad = True`
-            """
-            parameters = m.parameters()
-            if only_trainable:
-                parameters = list(p for p in parameters if p.requires_grad)
-            if count_shared_once:
-                parameters = dict(
-                    (p.data_ptr(), p) for p in parameters
-                ).values()
-            number_of_parameters = sum(p.numel() for p in parameters)
-
-            msg = (
-                f"{module_name}: "
-                f"number_of_parameters: {number_of_parameters} "
-                f"(only_trainable: {only_trainable}, "
-                f"count_shared_once: {count_shared_once})"
-            )
-            print(msg)
-            logger.info(msg)
-            return number_of_parameters
+            if log_once("model_summaries"):
+                ModelSummarizer.for_every_policy_print_model_stats(worker)
 
         def on_episode_step(
             self,
@@ -158,7 +79,7 @@ def get_logging_callbacks_class(
             worker: "RolloutWorker",
             base_env: BaseEnv,
             episode: MultiAgentEpisode,
-            env_index: int,
+            env_index: Optional[int] = None,
             **kwargs,
         ):
             if log_env_step:
@@ -173,7 +94,7 @@ def get_logging_callbacks_class(
             base_env: BaseEnv,
             policies: Dict[PolicyID, Policy],
             episode: MultiAgentEpisode,
-            env_index: int,
+            env_index: Optional[int] = None,
             **kwargs,
         ):
             if log_full_epi:
@@ -296,7 +217,9 @@ def augment_stats_fn_wt_additionnal_logs(
         if policy.config["framework"] == "torch":
             stats_to_log.update(_log_action_prob_pytorch(policy, train_batch))
         else:
-            logger.warning("wt_additional_info workin only for PyTorch")
+            logger.warning(
+                "wt_additional_info (stats_fn) working only for PyTorch"
+            )
 
         return stats_to_log
 
@@ -316,15 +239,20 @@ def _log_action_prob_pytorch(
     # TODO add entropy
     to_log = {}
     if isinstance(policy.action_space, gym.spaces.Discrete):
+        if train_batch.ACTION_DIST_INPUTS in train_batch.keys():
+            assert (
+                train_batch[train_batch.ACTION_DIST_INPUTS].dim() == 2
+            ), "Do not support nested discrete spaces"
 
-        assert (
-            train_batch["action_dist_inputs"].dim() == 2
-        ), "Do not support nested discrete spaces"
-
-        to_log = _add_action_distrib_to_log(policy, train_batch, to_log)
-        to_log = _add_entropy_to_log(train_batch, to_log)
-        to_log = _add_proba_of_action_played(train_batch, to_log)
-        to_log = _add_q_values(policy, train_batch, to_log)
+            to_log = _add_action_distrib_to_log(policy, train_batch, to_log)
+            to_log = _add_entropy_to_log(train_batch, to_log)
+            to_log = _add_proba_of_action_played(train_batch, to_log)
+            to_log = _add_q_values(policy, train_batch, to_log)
+        else:
+            logger.warning(
+                "Key ACTION_DIST_INPUTS not found in train_batch. "
+                "Can't perform _log_action_prob_pytorch."
+            )
     else:
         raise NotImplementedError()
     return to_log
@@ -416,7 +344,7 @@ def _add_q_values(policy, train_batch, to_log):
     return to_log
 
 
-def _compute_entropy_from_raw_q_values(policy, q_values):
+def compute_entropy_from_raw_q_values(policy, q_values):
     actions_proba_batch = _apply_exploration(policy, dist_inputs=q_values)
     if _is_cuda_tensor(actions_proba_batch):
         actions_proba_batch = actions_proba_batch.cpu()
@@ -500,13 +428,15 @@ def pprint_saved_metrics(file_path, keywords_to_print=None):
         pp.pprint(metrics)
 
 
-def _log_learning_rate(policy):
+def log_learning_rate(policy):
     to_log = {}
     if hasattr(policy, "cur_lr"):
         to_log["cur_lr"] = policy.cur_lr
     for j, opt in enumerate(policy._optimizers):
         if hasattr(opt, "param_groups"):
             to_log[f"opt{j}_lr"] = [p["lr"] for p in opt.param_groups][0]
+        else:
+            print("opt doesn't have attr param_groups")
     return to_log
 
 

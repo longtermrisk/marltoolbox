@@ -114,8 +114,9 @@ def _produce_rllib_config_for_each_replicates(tau, hp):
 
 
 def _load_base_game_results(hp, load_base_replicate_i):
-    prefix = "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-2/"
-    # prefix = "/ray_results/"
+    prefix = "~/dev-maxime/CLR/vm-data/instance-10-cpu-2/"
+    # prefix = "~/ray_results/"
+    prefix = os.path.expanduser(prefix)
     if "CoinGame" in hp["env_name"]:
         hp["data_dir"] = (prefix + "amTFT/2021_04_10/19_37_20",)[
             load_base_replicate_i

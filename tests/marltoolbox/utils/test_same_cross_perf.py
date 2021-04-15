@@ -34,6 +34,7 @@ def _train_pg_in_ipd(train_n_replicates):
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("testing")
 
+    ray.shutdown()
     ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
 
     rllib_config, stop_config = get_rllib_config(seeds, debug, stop_iters, tf)

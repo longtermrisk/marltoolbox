@@ -8,8 +8,7 @@ from ray.rllib.agents import dqn
 from ray.rllib.agents.dqn.dqn_torch_policy import postprocess_nstep_and_prio
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.schedules import PiecewiseSchedule
-from ray.tune.integration.wandb import WandbLogger
-from ray.tune.logger import DEFAULT_LOGGERS
+from ray.tune.integration.wandb import WandbLoggerCallback
 
 from marltoolbox.algos import amTFT
 from marltoolbox.envs import (
@@ -100,6 +99,13 @@ def get_hyperparameters(
         "train_n_replicates": train_n_replicates,
         "n_times_more_utilitarians_seeds": n_times_more_utilitarians_seeds,
         "exp_name": exp_name,
+        "wandb": {
+            "project": "amTFT",
+            "group": exp_name,
+            "api_key_file": os.path.join(
+                os.path.dirname(__file__), "../../../api_key_wandb"
+            ),
+        },
         "log_n_points": 250,
         "load_plot_data": None,
         # Example: "load_plot_data": ".../SelfAndCrossPlay_save.p",
@@ -385,7 +391,16 @@ def train_for_each_welfare_function(hp):
             plot_assemblage_tags=hp["plot_assemblage_tags"],
             debug=hp["debug"],
             log_to_file=not hp["debug"],
-            loggers=None if hp["debug"] else DEFAULT_LOGGERS + (WandbLogger,),
+            callbacks=None
+            if hp["debug"]
+            else [
+                WandbLoggerCallback(
+                    project=hp["wandb"]["project"],
+                    group=hp["wandb"]["group"],
+                    api_key_file=hp["wandb"]["api_key_file"],
+                    log_config=True,
+                )
+            ],
         )
         if welfare_fn == postprocessing.WELFARE_UTILITARIAN:
             results, hp = postprocess_utilitarian_results(
@@ -422,13 +437,6 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         "multiagent": {
             "policies": policies,
             "policy_mapping_fn": lambda agent_id: agent_id,
-            # When replay_mode=lockstep, RLlib will replay all the agent
-            # transitions at a particular timestep together in a batch.
-            # This allows the policy to implement differentiable shared
-            # computations between  agents it controls at that timestep.
-            # When replay_mode=independent,
-            # transitions are replayed independently per policy.
-            # "replay_mode": "lockstep",
             "observation_fn": amTFT.observation_fn,
         },
         "gamma": hp["gamma"],

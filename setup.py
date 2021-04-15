@@ -15,7 +15,7 @@ setup(
     long_description=read("README.md"),
     license="MIT",
     install_requires=[
-        "ray[rllib]==1.0.0",
+        "ray[rllib]>=1.2.0",
         "gym==0.17.3",
         "torch>=1.6.0,<=1.7.0",
         "tensorboard==1.15.0",

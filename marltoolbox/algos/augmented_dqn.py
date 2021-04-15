@@ -20,36 +20,34 @@ def build_q_losses_wt_additional_logs(
 ) -> TensorType:
     """
     Copy of build_q_losses with additional values saved into the policy
-    Made only 2 changes, see in comments.
+    Made only 1 change, see in comments.
     """
     config = policy.config
     # Q-network evaluation.
-    q_t, q_logits_t, q_probs_t = compute_q_values(
+    q_t, q_logits_t, q_probs_t, _ = compute_q_values(
         policy,
-        policy.q_model,
-        train_batch[SampleBatch.CUR_OBS],
+        model,
+        {"obs": train_batch[SampleBatch.CUR_OBS]},
         explore=False,
         is_training=True,
     )
-
-    # Addition 1 out of 2
-    policy.last_q_t = q_t.clone()
 
     # Target Q-network evaluation.
-    q_tp1, q_logits_tp1, q_probs_tp1 = compute_q_values(
+    q_tp1, q_logits_tp1, q_probs_tp1, _ = compute_q_values(
         policy,
         policy.target_q_model,
-        train_batch[SampleBatch.NEXT_OBS],
+        {"obs": train_batch[SampleBatch.NEXT_OBS]},
         explore=False,
         is_training=True,
     )
 
-    # Addition 2 out of 2
-    policy.last_target_q_t = q_tp1.clone()
+    # Only additions
+    policy.last_q_t = q_t.clone().detach()
+    policy.last_target_q_t = q_tp1.clone().detach()
 
     # Q scores for actions which we know were selected in the given state.
     one_hot_selection = F.one_hot(
-        train_batch[SampleBatch.ACTIONS], policy.action_space.n
+        train_batch[SampleBatch.ACTIONS].long(), policy.action_space.n
     )
     q_t_selected = torch.sum(
         torch.where(
@@ -68,10 +66,11 @@ def build_q_losses_wt_additional_logs(
             q_tp1_using_online_net,
             q_logits_tp1_using_online_net,
             q_dist_tp1_using_online_net,
+            _,
         ) = compute_q_values(
             policy,
-            policy.q_model,
-            train_batch[SampleBatch.NEXT_OBS],
+            model,
+            {"obs": train_batch[SampleBatch.NEXT_OBS]},
             explore=False,
             is_training=True,
         )
@@ -108,20 +107,12 @@ def build_q_losses_wt_additional_logs(
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1
         )
 
-    if PRIO_WEIGHTS not in train_batch.keys():
-        assert config["prioritized_replay"] is False
-        prio_weights = torch.tensor(
-            [1.0] * len(train_batch[SampleBatch.REWARDS])
-        ).to(policy.device)
-    else:
-        prio_weights = train_batch[PRIO_WEIGHTS]
-
     policy.q_loss = QLoss(
         q_t_selected,
         q_logits_t_selected,
         q_tp1_best,
         q_probs_tp1_best,
-        prio_weights,
+        train_batch[PRIO_WEIGHTS],
         train_batch[SampleBatch.REWARDS],
         train_batch[SampleBatch.DONES].float(),
         config["gamma"],
@@ -137,7 +128,7 @@ def build_q_losses_wt_additional_logs(
 def build_q_stats_wt_addtional_log(
     policy: Policy, batch
 ) -> Dict[str, TensorType]:
-    entropy_avg, entropy_single = log._compute_entropy_from_raw_q_values(
+    entropy_avg, entropy_single = log.compute_entropy_from_raw_q_values(
         policy, policy.last_q_t.clone()
     )
 

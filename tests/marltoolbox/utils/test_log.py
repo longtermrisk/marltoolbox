@@ -1,6 +1,6 @@
 import numpy as np
 
-from marltoolbox.utils.log import _add_entropy_to_log
+from utils.log.log import _add_entropy_to_log
 
 
 def test__add_entropy_to_log():

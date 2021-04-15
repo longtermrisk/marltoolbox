@@ -422,15 +422,14 @@ def read_from_dict_default_to_args(dict_, key, *args):
 def filter_sample_batch(
     samples: SampleBatch, filter_key, remove=True, copy_data=False
 ) -> SampleBatch:
-    filter = samples.data[filter_key]
+    filter = samples.columns([filter_key])[0]
     if remove:
-        # torch logical not
+        assert isinstance(
+            filter, np.ndarray
+        ), f"type {type(filter)} for filter_key {filter_key}"
         filter = ~filter
     return SampleBatch(
-        {
-            k: np.array(v, copy=copy_data)[filter]
-            for (k, v) in samples.data.items()
-        }
+        {k: np.array(v, copy=copy_data)[filter] for (k, v) in samples.items()}
     )
 
 

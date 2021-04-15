@@ -98,7 +98,10 @@ class MetaGameSolver:
         :param tau:
         """
         print("================================================")
-        print(f"Start solving meta game with tau={tau}")
+        print(
+            f"Player (idx={self.own_player_idx}) starts solving meta game "
+            f"with tau={tau}"
+        )
         self.tau = tau
         self.selected_pure_policy_idx = None
         self.best_objective = -np.inf
@@ -182,7 +185,7 @@ class MetaGameSolver:
             payoffs_player_2.append(payoff_player_2)
         mean_payoff_p1 = sum(payoffs_player_1) / len(payoffs_player_1)
         mean_payoff_p2 = sum(payoffs_player_2) / len(payoffs_player_2)
-        return (mean_payoff_p1, mean_payoff_p2)
+        return mean_payoff_p1, mean_payoff_p2
 
     def _read_own_payoff_from_data(self, own_welfare, opp_welfare):
         welfare_pair_name = self._from_pair_of_welfare_names_to_key(

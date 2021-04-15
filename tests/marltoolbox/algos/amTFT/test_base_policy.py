@@ -123,21 +123,20 @@ def test_lr_update():
     )
     one_policy_batch = multiagent_batch.policy_batches[env.players_ids[0]]
 
-    am_tft_policy.on_global_var_update({"timestep": 0})
-    am_tft_policy.learn_on_batch(one_policy_batch)
-    for algo in am_tft_policy.algorithms:
-        assert algo.cur_lr == base_lr
-        for opt in algo._optimizers:
-            for p in opt.param_groups:
-                assert p["lr"] == algo.cur_lr
+    def _assert_lr_equals(policy, lr):
+        for algo in policy.algorithms:
+            assert algo.cur_lr == lr
+            for opt in algo._optimizers:
+                for p in opt.param_groups:
+                    assert p["lr"] == lr
 
-    am_tft_policy.on_global_var_update({"timestep": interm_global_timestep})
-    am_tft_policy.learn_on_batch(one_policy_batch)
-    for algo in am_tft_policy.algorithms:
-        assert algo.cur_lr == final_lr
-        for opt in algo._optimizers:
-            for p in opt.param_groups:
-                assert p["lr"] == algo.cur_lr
+    def _fake_n_step_assert_lr(policy, n_step, lr):
+        policy.on_global_var_update({"timestep": n_step})
+        policy.learn_on_batch(one_policy_batch)
+        _assert_lr_equals(policy, lr)
+
+    _fake_n_step_assert_lr(am_tft_policy, 0, base_lr)
+    _fake_n_step_assert_lr(am_tft_policy, interm_global_timestep, final_lr)
 
 
 def test__is_punishment_planned():

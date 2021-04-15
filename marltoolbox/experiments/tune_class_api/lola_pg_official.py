@@ -17,8 +17,7 @@ import time
 import ray
 from ray import tune
 from ray.rllib.agents.dqn import DQNTorchPolicy
-from ray.tune.integration.wandb import WandbLogger
-from ray.tune.logger import DEFAULT_LOGGERS
+from ray.tune.integration.wandb import WandbLoggerCallback
 
 from marltoolbox.algos.lola import train_cg_tune_class_API
 from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
@@ -57,16 +56,12 @@ def main(debug: bool, env=None):
         "debug": debug,
         "exp_name": exp_name,
         "train_n_replicates": train_n_replicates,
-        # wandb configuration
-        "wandb": None
-        if debug
-        else {
+        "wandb": {
             "project": "LOLA_PG",
             "group": exp_name,
             "api_key_file": os.path.join(
                 os.path.dirname(__file__), "../../../api_key_wandb"
             ),
-            "log_config": True,
         },
         # Print metrics
         "load_plot_data": None,
@@ -189,7 +184,16 @@ def _train(tune_hp):
         metric=tune_config["metric"],
         mode="max",
         log_to_file=not tune_hp["debug"],
-        loggers=DEFAULT_LOGGERS + (WandbLogger,),
+        callbacks=None
+        if tune_hp["debug"]
+        else [
+            WandbLoggerCallback(
+                project=tune_hp["wandb"]["project"],
+                group=tune_hp["wandb"]["group"],
+                api_key_file=tune_hp["wandb"]["api_key_file"],
+                log_config=True,
+            )
+        ],
     )
     tune_analysis_per_exp = {"": tune_analysis}
 
