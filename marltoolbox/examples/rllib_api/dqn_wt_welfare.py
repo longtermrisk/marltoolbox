@@ -10,12 +10,13 @@ def main(debug, welfare=postprocessing.WELFARE_UTILITARIAN):
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("DQN_welfare_CG")
 
-    hparams = dqn_coin_game._get_hyperparameters(seeds, debug, exp_name)
-    rllib_config, stop_config = dqn_coin_game._get_rllib_configs(hparams)
+    hparams = dqn_coin_game.get_hyperparameters(seeds, debug, exp_name)
+    rllib_config, stop_config = dqn_coin_game.get_rllib_configs(hparams)
     rllib_config = _modify_policy_to_use_welfare(rllib_config, welfare)
 
     tune_analysis = dqn_coin_game._train_dqn_and_plot_logs(
-        hparams, rllib_config, stop_config)
+        hparams, rllib_config, stop_config
+    )
 
     return tune_analysis
 
@@ -51,8 +52,9 @@ def _modify_policy_to_use_welfare(rllib_config, welfare):
                 ia_lambda,
             )
             new_policies[policies_id][3].update(
-                {postprocessing.ADD_INEQUITY_AVERSION_WELFARE:
-                     inequity_aversion_parameters}
+                {
+                    postprocessing.ADD_INEQUITY_AVERSION_WELFARE: inequity_aversion_parameters
+                }
             )
     rllib_config["multiagent"]["policies"] = new_policies
     rllib_config["callbacks"] = callbacks.merge_callbacks(

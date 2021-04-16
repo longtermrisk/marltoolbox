@@ -1,7 +1,6 @@
-from typing import Dict
-
 import torch
 import torch.nn.functional as F
+from ray.rllib.agents.dqn import dqn_torch_policy
 from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.agents.dqn.dqn_torch_policy import ComputeTDErrorMixin
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
@@ -11,6 +10,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.torch_ops import FLOAT_MIN
 from ray.rllib.utils.typing import TensorType
+from typing import Dict
 
 from marltoolbox.utils import log, optimizers, policy
 
@@ -125,28 +125,25 @@ def build_q_losses_wt_additional_logs(
     return policy.q_loss.loss
 
 
-def build_q_stats_wt_addtional_log(
-    policy: Policy, batch
-) -> Dict[str, TensorType]:
+def my_build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
+    q_stats = dqn_torch_policy.build_q_stats_wt_addtional_log(policy, batch)
+
     entropy_avg, _ = log.compute_entropy_from_raw_q_values(
         policy, policy.last_q_t.clone()
     )
-
-    return dict(
+    q_stats.update(
         {
             "entropy_avg": entropy_avg,
-            "cur_lr": policy.cur_lr,
-        },
-        **policy.q_loss.stats,
+        }
     )
+
+    return q_stats
 
 
 MyDQNTorchPolicy = DQNTorchPolicy.with_updates(
     optimizer_fn=optimizers.sgd_optimizer_dqn,
     loss_fn=build_q_losses_wt_additional_logs,
-    stats_fn=log.augment_stats_fn_wt_additionnal_logs(
-        build_q_stats_wt_addtional_log
-    ),
+    stats_fn=log.augment_stats_fn_wt_additionnal_logs(my_build_q_stats),
     before_init=policy.my_setup_early_mixins,
     mixins=[
         TargetNetworkMixin,

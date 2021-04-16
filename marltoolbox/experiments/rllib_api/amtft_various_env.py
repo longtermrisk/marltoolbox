@@ -34,9 +34,15 @@ from marltoolbox.utils import (
 logger = logging.getLogger(__name__)
 
 
-def main(debug, train_n_replicates=None, filter_utilitarian=None, env=None):
+def main(
+    debug,
+    train_n_replicates=None,
+    filter_utilitarian=None,
+    env=None,
+    use_r2d2=False,
+):
     hparams = get_hyperparameters(
-        debug, train_n_replicates, filter_utilitarian, env
+        debug, train_n_replicates, filter_utilitarian, env, use_r2d2
     )
 
     if hparams["load_plot_data"] is None:
@@ -75,6 +81,7 @@ def get_hyperparameters(
     filter_utilitarian=None,
     env=None,
     reward_uncertainty=0.0,
+    use_r2d2=False,
 ):
     if debug:
         train_n_replicates = 2
@@ -92,6 +99,7 @@ def get_hyperparameters(
     exp_name, _ = log.log_in_current_day_dir("amTFT")
     hparams = {
         "debug": debug,
+        "use_r2d2": use_r2d2,
         "filter_utilitarian": filter_utilitarian
         if filter_utilitarian is not None
         else not debug,
@@ -194,10 +202,6 @@ def get_hyperparameters(
     }
 
     hparams = modify_hyperparams_for_the_selected_env(hparams)
-    hparams["plot_keys"] = amTFT.PLOT_KEYS + hparams["plot_keys"]
-    hparams["plot_assemblage_tags"] = (
-        amTFT.PLOT_ASSEMBLAGE_TAGS + hparams["plot_assemblage_tags"]
-    )
 
     return hparams
 
@@ -534,12 +538,8 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         },
     }
 
-    if "CoinGame" in hp["env_name"]:
-        rllib_config["model"] = {
-            "dim": env_config["grid_size"],
-            "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],
-            # [Channel, [Kernel, Kernel], Stride]]
-        }
+    rllib_config = _modify_config_for_coin_game(rllib_config, env_config, hp)
+    rllib_config = _modify_config_for_r2d2(rllib_config, env_config, hp)
 
     return stop, env_config, rllib_config
 
@@ -624,8 +624,9 @@ def get_policies(hp, env_config, welfare_fn, eval=False):
 
 
 def get_nested_policy_class(hp, welfare_fn):
-    NestedPolicyClass = amTFT.DEFAULT_NESTED_POLICY_SELFISH
-    CoopNestedPolicyClass = NestedPolicyClass.with_updates(
+    nested_policy_class = _select_base_policy(hp)
+
+    coop_nested_policy_class = nested_policy_class.with_updates(
         # TODO problem: this prevent to use HP searches on gamma etc.
         postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
             postprocessing.welfares_postprocessing_fn(
@@ -643,10 +644,36 @@ def get_nested_policy_class(hp, welfare_fn):
             postprocess_nstep_and_prio,
         )
     )
-    return NestedPolicyClass, CoopNestedPolicyClass
+    return nested_policy_class, coop_nested_policy_class
+
+
+def _select_base_policy(hp):
+    if hp["use_r2d2"]:
+        nested_policy_class = dqn.r2d2.R2D2TorchPolicy
+    else:
+        nested_policy_class = amTFT.DEFAULT_NESTED_POLICY_SELFISH
+    return nested_policy_class
+
+
+def _modify_config_for_coin_game(rllib_config, env_config, hp):
+    if "CoinGame" in hp["env_name"]:
+        rllib_config["model"] = {
+            "dim": env_config["grid_size"],
+            "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],
+            # [Channel, [Kernel, Kernel], Stride]]
+        }
+    return rllib_config
+
+
+def _modify_config_for_r2d2(rllib_config, env_config, hp):
+    if hp["use_r2d2"]:
+        rllib_config["model"]["use_lstm"] = True
+    return rllib_config
 
 
 def postprocess_utilitarian_results(results, env_config, hp):
+    """Reverse the changes made by preprocess_utilitarian_results"""
+
     hp_cp = copy.deepcopy(hp)
 
     if hp["filter_utilitarian"]:
@@ -814,5 +841,6 @@ def print_inequity_aversion_welfare(env_config, analysis_metrics_per_mode):
 
 
 if __name__ == "__main__":
-    debug_mode = False
-    main(debug_mode)
+    debug_mode = True
+    use_r2d2 = False
+    main(debug_mode, use_r2d2)

@@ -71,20 +71,26 @@ def main(debug: bool, env=None):
         # "num_episodes": 3 if debug else 4000 if high_coop_speed_hp else 2000,
         # "trace_length": 4 if debug else 20,
         # "lr": None,
+        # "weigth_decay": 0.03,
+        # "lola_correction_multiplier": 1,
         #
         # "gamma": 0.875,
         # "lr": 0.005 / 4,
         # "num_episodes": 3 if debug else 4000,
         # "trace_length": 4 if debug else 20,
+        # "weigth_decay": 0.03 / 8,
+        # "lola_correction_multiplier": 1 * 4,
         #
         "gamma": 0.9375,
         "lr": 0.005 / 4
         if debug
-        else tune.grid_search([0.005 / 4, 0.005 / 4 / 2, 0.005 / 4 / 2 / 2]),
-        "num_episodes": 3 if debug else tune.grid_search([4000, 8000]),
+        else tune.grid_search([0.005 / 4, 0.005 / 4 / 2]),
+        "num_episodes": 3 if debug else tune.grid_search([2000, 4000]),
         "trace_length": 4 if debug else tune.grid_search([40, 80]),
+        # "weigth_decay": 0.03 / 8 / 2,
+        # "lola_correction_multiplier": 1 * 4,
         #
-        "batch_size": 8 if debug else 512,
+        "batch_size": 8 if debug else tune.grid_search([512, 1024]),
         # "env_name": "IteratedPrisonersDilemma" if env is None else env,
         # "env_name": "IteratedAsymBoS" if env is None else env,
         "env_name": "VectorizedCoinGame" if env is None else env,
@@ -116,16 +122,18 @@ def main(debug: bool, env=None):
         # tune.grid_search([3.0 / 2, 3.0, 3.0 * 2]),
         "clip_lola_actor_norm": 10.0,
         # "clip_lola_actor_norm": tune.grid_search([10.0 / 2, 10.0, 10.0 * 2]),
-        "entropy_coeff": 0.001,
-        # "entropy_coeff": tune.grid_search([0.001/2/2, 0.001/2, 0.001]),
+        # "entropy_coeff": 0.001,
+        "entropy_coeff": 0.001
+        if debug
+        else tune.grid_search([0.001 / 2, 0.001, 0.001 * 2]),
         # "weigth_decay": 0.03,
         "weigth_decay": 0.03
         if debug
-        else tune.grid_search([0.03 / 8 / 2 / 2, 0.03 / 8 / 2, 0.03 / 8]),
+        else tune.grid_search([0.03 / 8 / 2 / 2, 0.03 / 8 / 2]),
         # "lola_correction_multiplier": 1,
         "lola_correction_multiplier": 1
         if debug
-        else tune.grid_search([1 * 4, 1 * 4 * 2, 1 * 4 * 2 * 2]),
+        else tune.grid_search([1 * 4, 1 * 4 * 2]),
         "lr_decay": True,
         "correction_reward_baseline_per_step": False,
         "use_critic": False,

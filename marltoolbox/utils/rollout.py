@@ -169,7 +169,6 @@ def internal_rollout(
                         agent_id, policy_agent_mapping(agent_id)
                     )
                     p_use_lstm = use_lstm[policy_id]
-                    # print("rollout")
                     if p_use_lstm:
                         a_action, p_state, _ = _worker_compute_action(
                             worker,

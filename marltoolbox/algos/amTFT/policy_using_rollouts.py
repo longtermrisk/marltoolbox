@@ -43,15 +43,14 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
     def _compute_action_helper(
         self, input_dict, state_batches, seq_lens, explore, timestep
     ):
-        print("self.use_opponent_policies", self.use_opponent_policies)
         # Option to overwrite action during internal rollouts
         if self.use_opponent_policies:
             if len(self.overwrite_action) > 0:
                 actions, state_out, extra_fetches = self.overwrite_action.pop(
                     0
                 )
-                # if self.verbose > 1:
-                print("overwritten actions", actions, type(actions))
+                if self.verbose > 1:
+                    print("overwritten actions", actions, type(actions))
                 return actions, state_out, extra_fetches
 
         return super()._compute_action_helper(

@@ -3,8 +3,8 @@ from ray.rllib.utils.schedules import PiecewiseSchedule
 
 from marltoolbox.envs import coin_game, ssd_mixed_motive_coin_game
 from marltoolbox.examples.rllib_api.dqn_coin_game import (
-    _get_hyperparameters,
-    _get_rllib_configs,
+    get_hyperparameters,
+    get_rllib_configs,
     _train_dqn_and_plot_logs,
 )
 from marltoolbox.examples.rllib_api.dqn_wt_welfare import (
@@ -29,11 +29,9 @@ def main(debug):
     else:
         env_class = coin_game.CoinGame
 
-    hparams = _get_hyperparameters(seeds, debug, exp_name)
+    hparams = get_hyperparameters(seeds, debug, exp_name)
 
-    rllib_config, stop_config = _get_rllib_configs(
-        hparams, env_class=env_class
-    )
+    rllib_config, stop_config = get_rllib_configs(hparams, env_class=env_class)
 
     if welfare_to_use is not None:
         rllib_config = _modify_policy_to_use_welfare(
@@ -51,7 +49,8 @@ def main(debug):
 
 
 def _add_search_to_config(rllib_config, stop_config, hp):
-    rllib_config["num_envs_per_worker"] = tune.grid_search([1, 4, 8, 16, 32])
+    rllib_config["num_envs_per_worker"] = tune.grid_search([1, 4, 8])
+    rllib_config["num_workers"] = tune.grid_search([0, 1, 2])
     rllib_config["lr"] = tune.grid_search([0.1, 0.1 * 2, 0.1 * 4])
     rllib_config["model"] = {
         "dim": 3,

@@ -37,7 +37,7 @@ def _train_pg_in_ipd(train_n_replicates):
     ray.shutdown()
     ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
 
-    rllib_config, stop_config = get_rllib_config(seeds, debug, stop_iters, tf)
+    rllib_config, stop_config = get_rllib_config(seeds, debug)
     tune_analysis = tune.run(
         PGTrainer,
         config=rllib_config,
