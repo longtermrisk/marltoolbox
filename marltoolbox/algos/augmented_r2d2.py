@@ -16,7 +16,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.torch_ops import FLOAT_MIN
-from ray.rllib.utils.torch_ops import huber_loss, sequence_mask
+from ray.rllib.utils.torch_ops import huber_loss, sequence_mask, l2_loss
 from ray.rllib.utils.typing import TensorType
 from typing import Dict
 
@@ -144,14 +144,46 @@ def my_r2d2_loss(
         td_error = q_selected - target.reshape([B, T])[:, :-1].detach()
         td_error = td_error * seq_mask
         weights = weights.reshape([B, T])[:, :-1]
-        policy._total_loss = reduce_mean_valid(weights * huber_loss(td_error))
-        policy._td_error = td_error.reshape([-1])
-        policy._loss_stats = {
-            "mean_q": reduce_mean_valid(q_selected),
-            "min_q": torch.min(q_selected),
-            "max_q": torch.max(q_selected),
-            "mean_td_error": reduce_mean_valid(td_error),
-        }
+
+        return weights, td_error, q_selected, reduce_mean_valid
+
+
+def my_r2d2_loss_wt_huber_loss(
+    policy: Policy, model, _, train_batch: SampleBatch
+) -> TensorType:
+
+    weights, td_error, q_selected, reduce_mean_valid = my_r2d2_loss(
+        policy, model, _, train_batch
+    )
+
+    policy._total_loss = reduce_mean_valid(weights * huber_loss(td_error))
+    policy._td_error = td_error.reshape([-1])
+    policy._loss_stats = {
+        "mean_q": reduce_mean_valid(q_selected),
+        "min_q": torch.min(q_selected),
+        "max_q": torch.max(q_selected),
+        "mean_td_error": reduce_mean_valid(td_error),
+    }
+
+    return policy._total_loss
+
+
+def my_r2d2_loss_wtout_huber_loss(
+    policy: Policy, model, _, train_batch: SampleBatch
+) -> TensorType:
+
+    weights, td_error, q_selected, reduce_mean_valid = my_r2d2_loss(
+        policy, model, _, train_batch
+    )
+
+    policy._total_loss = reduce_mean_valid(weights * l2_loss(td_error))
+    policy._td_error = td_error.reshape([-1])
+    policy._loss_stats = {
+        "mean_q": reduce_mean_valid(q_selected),
+        "min_q": torch.min(q_selected),
+        "max_q": torch.max(q_selected),
+        "mean_td_error": reduce_mean_valid(td_error),
+    }
 
     return policy._total_loss
 
@@ -173,7 +205,7 @@ def my_build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
 
 MyR2D2TorchPolicy = R2D2TorchPolicy.with_updates(
     optimizer_fn=optimizers.sgd_optimizer_dqn,
-    loss_fn=my_r2d2_loss,
+    loss_fn=my_r2d2_loss_wt_huber_loss,
     stats_fn=log.augment_stats_fn_wt_additionnal_logs(my_build_q_stats),
     before_init=policy.my_setup_early_mixins,
     mixins=[
@@ -181,6 +213,10 @@ MyR2D2TorchPolicy = R2D2TorchPolicy.with_updates(
         ComputeTDErrorMixin,
         policy.MyLearningRateSchedule,
     ],
+)
+
+MyR2D2TorchPolicyWtMSELoss = MyR2D2TorchPolicy.with_updates(
+    loss_fn=my_r2d2_loss_wtout_huber_loss,
 )
 
 MyAdamDQNTorchPolicy = MyR2D2TorchPolicy.with_updates(

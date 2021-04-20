@@ -1,16 +1,19 @@
 import copy
 import logging
-
-from ray.rllib.utils.threading import with_lock
-from typing import List, Union, Optional, Dict, Tuple, TYPE_CHECKING
+from typing import Dict, TYPE_CHECKING
 
 import numpy as np
+import torch
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import override
-from ray.rllib.utils.typing import TensorType, PolicyID
+from ray.rllib.utils.threading import with_lock
+from ray.rllib.utils.torch_ops import (
+    convert_to_torch_tensor,
+)
+from ray.rllib.utils.typing import PolicyID
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
@@ -39,13 +42,15 @@ class AmTFTPolicyBase(
         self.total_debit = 0
         self.n_steps_to_punish = 0
         self.observed_n_step_in_current_epi = 0
-        self._first_fake_step_played = False
+        self.last_own_algo_idx_in_eval = OWN_COOP_POLICY_IDX
         self.opp_previous_obs = None
         self.opp_new_obs = None
         self.own_previous_obs = None
         self.own_new_obs = None
         self.both_previous_raw_obs = None
         self.both_new_raw_obs = None
+        self.coop_own_rnn_state_before_last_act = None
+        self.coop_opp_rnn_state_before_last_act = None
         # notation T in the paper
         self.debit_threshold = config["debit_threshold"]
         # notation alpha in the paper
@@ -72,12 +77,15 @@ class AmTFTPolicyBase(
     def _compute_action_helper(
         self, input_dict, state_batches, seq_lens, explore, timestep
     ):
-        self._select_witch_algo_to_use()
+        state_batches = self._select_witch_algo_to_use(state_batches)
+
+        self._track_last_coop_rnn_state(state_batches)
+
         return super()._compute_action_helper(
             input_dict, state_batches, seq_lens, explore, timestep
         )
 
-    def _select_witch_algo_to_use(self):
+    def _select_witch_algo_to_use(self, state_batches):
         if (
             self.working_state == WORKING_STATES[0]
             or self.working_state == WORKING_STATES[4]
@@ -88,14 +96,17 @@ class AmTFTPolicyBase(
             or self.working_state == WORKING_STATES[3]
         ):
             self.active_algo_idx = OWN_SELFISH_POLICY_IDX
+
         elif self.working_state == WORKING_STATES[2]:
-            self._select_algo_to_use_in_eval()
+            state_batches = self._select_algo_to_use_in_eval(state_batches)
         else:
             raise ValueError(
                 f'config["working_state"] ' f"must be one of {WORKING_STATES}"
             )
 
-    def _select_algo_to_use_in_eval(self):
+        return state_batches
+
+    def _select_algo_to_use_in_eval(self, state_batches):
         if self.n_steps_to_punish == 0:
             self.active_algo_idx = OWN_COOP_POLICY_IDX
         elif self.n_steps_to_punish > 0:
@@ -103,6 +114,45 @@ class AmTFTPolicyBase(
             self.n_steps_to_punish -= 1
         else:
             raise ValueError("self.n_steps_to_punish can't be below zero")
+
+        state_batches = self._check_for_rnn_state_reset(
+            state_batches, "last_own_algo_idx_in_eval"
+        )
+
+        return state_batches
+
+    def _check_for_rnn_state_reset(self, state_batches, last_algo_idx: str):
+        if getattr(self, last_algo_idx) != self.active_algo_idx:
+            state_batches = self._get_initial_rnn_state(state_batches)
+            self._to_log["reset_rnn_state"] = self.active_algo_idx
+            setattr(self, last_algo_idx, self.active_algo_idx)
+        else:
+            if "reset_rnn_state" in self._to_log.keys():
+                self._to_log.pop("reset_rnn_state")
+        return state_batches
+
+    def _get_initial_rnn_state(self, state_batches):
+        if "model" in self.config.keys() and self.config["model"]["use_lstm"]:
+            initial_state = self.algorithms[
+                self.active_algo_idx
+            ].get_initial_state()
+            initial_state = [
+                convert_to_torch_tensor(s, self.device) for s in initial_state
+            ]
+            initial_state = [s.unsqueeze(0) for s in initial_state]
+            msg = (
+                f"self.active_algo_idx {self.active_algo_idx} "
+                f"state_batches {state_batches} reset to initial {initial_state}"
+            )
+            print(msg)
+            logger.info(msg)
+            return initial_state
+        else:
+            return state_batches
+
+    def _track_last_coop_rnn_state(self, state_batches):
+        if self.active_algo_idx == OWN_COOP_POLICY_IDX:
+            self.coop_own_rnn_state_before_last_act = state_batches
 
     @override(hierarchical.HierarchicalTorchPolicy)
     def _learn_on_batch(self, samples: SampleBatch):
@@ -146,7 +196,7 @@ class AmTFTPolicyBase(
         # observation produced by this action. But we need the
         # observation that cause the agent to play this action
         # thus the observation n-1
-        if self._first_fake_step_played:
+        if self.own_new_obs is not None:
             self.own_previous_obs = self.own_new_obs
             self.opp_previous_obs = self.opp_new_obs
             self.both_previous_raw_obs = self.both_new_raw_obs
@@ -166,20 +216,20 @@ class AmTFTPolicyBase(
         *args,
         **kwargs,
     ):
-        if self._first_fake_step_played:
-            opp_obs, raw_obs, opp_a = self._get_information_from_opponent(
-                policy_id, policy_ids, episode
-            )
+        # if self._first_fake_step_played:
+        opp_obs, raw_obs, opp_a = self._get_information_from_opponent(
+            policy_id, policy_ids, episode
+        )
 
-            # Ignored the first step in epi because the
-            # actions provided are fake (they were not played)
-            self._on_episode_step(
-                opp_obs, raw_obs, opp_a, worker, base_env, episode, env_index
-            )
+        # Ignored the first step in epi because the
+        # actions provided are fake (they were not played)
+        self._on_episode_step(
+            opp_obs, raw_obs, opp_a, worker, base_env, episode, env_index
+        )
 
-            self.observed_n_step_in_current_epi += 1
-        else:
-            self._first_fake_step_played = True
+        self.observed_n_step_in_current_epi += 1
+        # else:
+        #     self._first_fake_step_played = True
 
     def _get_information_from_opponent(self, agent_id, agent_ids, episode):
         opp_agent_id = [one_id for one_id in agent_ids if one_id != agent_id][
@@ -236,14 +286,26 @@ class AmTFTPolicyBase(
     def _is_punishment_planned(self):
         return self.n_steps_to_punish > 0
 
+    def on_episode_start(self, *args, **kwargs):
+        if self.working_state in WORKING_STATES_IN_EVALUATION:
+            self.last_own_algo_idx_in_eval = OWN_COOP_POLICY_IDX
+            self.coop_opp_rnn_state_after_last_act = self.algorithms[
+                OPP_COOP_POLICY_IDX
+            ].get_initial_state()
+
     def _simulate_action_from_cooperative_opponent(self, opp_obs):
+        self.coop_opp_rnn_state_before_last_act = (
+            self.coop_opp_rnn_state_after_last_act
+        )
         (
             coop_opp_simulated_action,
-            _,
-            self.coop_opp_extra_fetches,
-        ) = self.algorithms[OPP_COOP_POLICY_IDX].compute_actions([opp_obs])
-        # Returned a list
-        coop_opp_simulated_action = coop_opp_simulated_action[0]
+            self.coop_opp_rnn_state_after_last_act,
+            coop_opp_extra_fetches,
+        ) = self.algorithms[OPP_COOP_POLICY_IDX].compute_single_action(
+            obs=opp_obs,
+            state=self.coop_opp_rnn_state_after_last_act,
+        )
+
         return coop_opp_simulated_action
 
     def _update_total_debit(
@@ -328,7 +390,13 @@ class AmTFTPolicyBase(
             print(f"reset self.total_debit to 0 since planned punishement")
 
     def on_episode_end(self, *args, **kwargs):
-        if self.working_state not in WORKING_STATES_IN_EVALUATION:
+        self._defensive_check_observed_n_opp_moves(*args, **kwargs)
+        self._if_in_eval_reset_debit_and_punish()
+
+    def _defensive_check_observed_n_opp_moves(self, *args, **kwargs):
+        if self.working_state in WORKING_STATES_IN_EVALUATION:
+            print("args", args)
+            print("kwargs", kwargs)
             assert (
                 self.observed_n_step_in_current_epi
                 == kwargs["base_env"].get_unwrapped()[0].max_steps
@@ -338,13 +406,16 @@ class AmTFTPolicyBase(
                 f"{kwargs['base_env'].get_unwrapped()[0].max_steps} "
                 "steps per episodes."
             )
-            self.observed_n_step_in_current_epi = 0
+        self.observed_n_step_in_current_epi = 0
 
-        if self.working_state == WORKING_STATES[2]:
+    def _if_in_eval_reset_debit_and_punish(self):
+        if self.working_state in WORKING_STATES_IN_EVALUATION:
             self.total_debit = 0
             self.n_steps_to_punish = 0
             if self.verbose > 0:
-                print(f"reset self.total_debit to 0 since end of episode")
+                logger.info(
+                    "reset self.total_debit to 0 since end of " "episode"
+                )
 
     def _compute_debit(
         self,
@@ -362,6 +433,27 @@ class AmTFTPolicyBase(
         self, opp_action, coop_opp_simulated_action, worker, last_obs
     ):
         raise NotImplementedError()
+
+    def _get_last_rnn_states_before_rollouts(self):
+        if self.config["model"]["use_lstm"]:
+            return {
+                self.own_policy_id: self._squeezes_rnn_state(
+                    self.coop_own_rnn_state_before_last_act
+                ),
+                self.opp_policy_id: self.coop_opp_rnn_state_before_last_act,
+            }
+
+        else:
+            return None
+
+    @staticmethod
+    def _squeezes_rnn_state(state):
+        return [
+            s.squeeze(0)
+            if torch and isinstance(s, torch.Tensor)
+            else np.squeeze(s, 0)
+            for s in state
+        ]
 
 
 class AmTFTCallbacks(callbacks.PolicyCallbacks):

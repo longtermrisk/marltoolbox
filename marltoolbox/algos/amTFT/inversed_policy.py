@@ -11,7 +11,7 @@ class InversedAmTFTRolloutsTorchPolicy(
     if it was the opponent.
     """
 
-    def _init_for_rollout(self, config):
+    def _init(self, config):
         super()._init_for_rollout(config)
         self.ag_id_rollout_reward_to_read = self.own_policy_id
 

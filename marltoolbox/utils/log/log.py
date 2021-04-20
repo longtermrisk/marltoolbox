@@ -1,17 +1,15 @@
 import copy
 import datetime
 import logging
-import math
 import numbers
 import os
 import pickle
 import pprint
 import re
 from collections import Iterable
-from typing import Dict, Callable, TYPE_CHECKING, Optional
 
 import gym
-from scipy.special import softmax
+import torch
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import MultiAgentEpisode
@@ -19,6 +17,9 @@ from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import PolicyID, TensorType
 from ray.util.debug import log_once
+from torch.distributions import Categorical
+from typing import Dict, Callable, TYPE_CHECKING, Optional
+
 from marltoolbox.utils.log.full_epi_logger import FullEpisodeLogger
 from marltoolbox.utils.log.model_summarizer import ModelSummarizer
 
@@ -176,7 +177,7 @@ def get_logging_callbacks_class(
                         if key not in result.keys():
                             result[key] = v
                         else:
-                            raise ValueError(
+                            logger.warning(
                                 f"key:{key} already exists in result.keys(): {result.keys()}"
                             )
 
@@ -285,8 +286,7 @@ def add_entropy_to_log(train_batch, to_log):
             actions_proba_batch
         )
 
-    entropy_avg = _entropy_batch_proba_distrib(actions_proba_batch)
-    entropy_single = _entropy_proba_distrib(actions_proba_batch[-1, :])
+    entropy_avg, entropy_single = _compute_entropy_pytorch(actions_proba_batch)
     to_log[f"entropy_buffer_samples_avg"] = entropy_avg
     to_log[f"entropy_buffer_samples_single"] = entropy_single
 
@@ -299,24 +299,7 @@ def _is_cuda_tensor(tensor):
 
 def _entropy_batch_proba_distrib(proba_distrib_batch):
     assert len(proba_distrib_batch) > 0
-    entropy_batch = [
-        _entropy_proba_distrib(proba_distrib_batch[batch_idx, ...])
-        for batch_idx in range(len(proba_distrib_batch))
-    ]
-    mean_entropy = sum(entropy_batch) / len(entropy_batch)
-    return mean_entropy
-
-
-def _entropy_proba_distrib(proba_distrib):
-    return sum([_entropy_proba(proba) for proba in proba_distrib])
-
-
-def _entropy_proba(proba):
-    assert proba >= 0.0, f"proba currently is {proba}"
-    if proba == 0.0:
-        return 0.0
-    else:
-        return -proba * math.log(proba)
+    return Categorical(probs=proba_distrib_batch).entropy()
 
 
 def _add_proba_of_action_played(train_batch, to_log):
@@ -327,7 +310,7 @@ def _add_proba_of_action_played(train_batch, to_log):
 
 
 def _convert_q_values_batch_to_proba_batch(q_values_batch):
-    return softmax(q_values_batch, axis=1)
+    return torch.nn.functional.softmax(q_values_batch, dim=1)
 
 
 def _add_q_values(policy, train_batch, to_log):
@@ -346,13 +329,19 @@ def _add_q_values(policy, train_batch, to_log):
 
 def compute_entropy_from_raw_q_values(policy, q_values):
     actions_proba_batch = _apply_exploration(policy, dist_inputs=q_values)
-    if _is_cuda_tensor(actions_proba_batch):
-        actions_proba_batch = actions_proba_batch.cpu()
     actions_proba_batch = _convert_q_values_batch_to_proba_batch(
         actions_proba_batch
     )
-    entropy_avg = _entropy_batch_proba_distrib(actions_proba_batch)
-    entropy_single = _entropy_proba_distrib(actions_proba_batch[-1, :])
+    return _compute_entropy_pytorch(actions_proba_batch)
+
+
+def _compute_entropy_pytorch(actions_proba_batch):
+    entropies = _entropy_batch_proba_distrib(actions_proba_batch)
+    entropy_avg = entropies.mean()
+    entropy_single = entropies[-1]
+    if _is_cuda_tensor(actions_proba_batch):
+        entropy_avg = entropy_avg.cpu()
+        entropy_single = entropy_single.cpu()
     return entropy_avg, entropy_single
 
 

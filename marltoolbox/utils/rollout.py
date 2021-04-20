@@ -5,8 +5,7 @@
 
 import collections
 import copy
-
-from ray.rllib.evaluation.worker_set import WorkerSet
+import logging
 from typing import List
 
 from gym import wrappers as gym_wrappers
@@ -21,6 +20,8 @@ from ray.rllib.rollout import (
 from ray.rllib.utils.framework import TensorStructType
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.typing import EnvInfoDict, PolicyID
+
+logger = logging.getLogger(__name__)
 
 
 class RolloutManager(RolloutSaver):
@@ -68,6 +69,7 @@ def internal_rollout(
     video_dir=None,
     seed=None,
     explore=None,
+    last_rnn_states=None,
 ):
     """
     Can perform rollouts on the environment from inside a worker_rollout or
@@ -91,6 +93,7 @@ def internal_rollout(
     :param video_dir: (optional)
     :param seed: (optional) random seed to set for the environment by calling
     env.seed(seed)
+    :param last_rnn_states: map of policy_id to rnn_states
     :return: an instance of a RolloutManager, which contains the data about
     the rollouts performed
     """
@@ -117,6 +120,7 @@ def internal_rollout(
     if policy_map is None:
         policy_map = worker.policy_map
     state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
+    print("state_init", state_init)
     use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
     action_init = {
         p: flatten_to_single_ndarray(m.action_space.sample())
@@ -141,14 +145,18 @@ def internal_rollout(
     steps = 0
     episodes = 0
     while _keep_going(steps, num_steps, episodes, num_episodes):
+        logger.info(f"Starting epsiode {episodes} in rollout")
+        print(f"Starting epsiode {episodes} in rollout")
         mapping_cache = {}  # in case policy_agent_mapping is stochastic
         saver.begin_rollout()
-        if reset_env_before or episodes > 0:
-            obs = env.reset()
-        else:
-            obs = last_obs
-        agent_states = DefaultMapping(
-            lambda agent_id_: state_init[mapping_cache[agent_id_]]
+        obs, agent_states = _get_first_obs(
+            env,
+            reset_env_before,
+            episodes,
+            last_obs,
+            mapping_cache,
+            state_init,
+            last_rnn_states,
         )
         prev_actions = DefaultMapping(
             lambda agent_id_: action_init[mapping_cache[agent_id_]]
@@ -159,7 +167,6 @@ def internal_rollout(
         while not done and _keep_going(
             steps, num_steps, episodes, num_episodes
         ):
-
             multi_obs = obs if multiagent else {_DUMMY_AGENT_ID: obs}
             action_dict = {}
             virtual_global_timestep += 1
@@ -169,6 +176,12 @@ def internal_rollout(
                         agent_id, policy_agent_mapping(agent_id)
                     )
                     p_use_lstm = use_lstm[policy_id]
+                    # print("p_use_lstm", p_use_lstm)
+                    # print(
+                    #     agent_id,
+                    #     "agent_states[agent_id]",
+                    #     agent_states[agent_id],
+                    # )
                     if p_use_lstm:
                         a_action, p_state, _ = _worker_compute_action(
                             worker,
@@ -180,6 +193,10 @@ def internal_rollout(
                             policy_id=policy_id,
                             explore=explore,
                         )
+                        # print(
+                        #     "after rollout _worker_compute_action p_state",
+                        #     p_state,
+                        # )
                         agent_states[agent_id] = p_state
                     else:
                         a_action = _worker_compute_action(
@@ -241,6 +258,33 @@ def _keep_going(steps, num_steps, episodes, num_episodes):
     return True
 
 
+def _get_first_obs(
+    env,
+    reset_env_before,
+    episodes,
+    last_obs,
+    mapping_cache,
+    state_init,
+    last_rnn_states,
+):
+    if reset_env_before or episodes > 0:
+        obs = env.reset()
+        agent_states = DefaultMapping(
+            lambda agent_id_: state_init[mapping_cache[agent_id_]]
+        )
+    else:
+        obs = last_obs
+        if last_rnn_states is not None:
+            agent_states = DefaultMapping(
+                lambda agent_id_: last_rnn_states[mapping_cache[agent_id_]]
+            )
+        else:
+            agent_states = DefaultMapping(
+                lambda agent_id_: state_init[mapping_cache[agent_id_]]
+            )
+    return obs, agent_states
+
+
 def _worker_compute_action(
     worker,
     timestep,
@@ -258,8 +302,12 @@ def _worker_compute_action(
     """
     if state is None:
         state = []
-    preprocessed = worker.preprocessors[policy_id].transform(observation)
-    filtered_obs = worker.filters[policy_id](preprocessed, update=False)
+    # Check the preprocessor and preprocess, if necessary.
+    pp = worker.preprocessors[policy_id]
+    if type(pp).__name__ != "NoPreprocessor":
+        observation = pp.transform(observation)
+    filtered_obs = worker.filters[policy_id](observation, update=False)
+
     result = worker.get_policy(policy_id).compute_single_action(
         filtered_obs,
         state,

@@ -19,6 +19,7 @@ from ray.rllib.agents.pg import PGTrainer
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.integration.wandb import WandbLogger
 from ray.tune.logger import DEFAULT_LOGGERS
+from ray.tune.logger import SafeFallbackEncoder
 
 from marltoolbox.utils import restore, log, miscellaneous
 from marltoolbox.utils.plot import PlotHelper, PlotConfig
@@ -370,7 +371,7 @@ class SelfAndCrossPlayEvaluator:
         save_path = self.save_path.split(".")[0:-1] + ["json"]
         save_path = ".".join(save_path)
         with open(save_path, "w") as outfile:
-            json.dump(metrics, outfile)
+            json.dump(metrics, outfile, cls=SafeFallbackEncoder)
 
     def load_results(self, to_load_path):
         assert to_load_path.endswith(self.results_file_name), (

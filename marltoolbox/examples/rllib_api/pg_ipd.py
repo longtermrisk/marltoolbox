@@ -63,7 +63,6 @@ def get_rllib_config(seeds, debug=False):
         },
         "seed": tune.grid_search(seeds),
         "callbacks": log.get_logging_callbacks_class(log_full_epi=True),
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": "torch",
     }
 

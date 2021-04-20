@@ -57,6 +57,13 @@ def test_amtft_ipd():
     main(debug=True, env="IteratedPrisonersDilemma")
 
 
+def test_amtft_ipd_with_r2d2():
+    from marltoolbox.experiments.rllib_api.amtft_various_env import main
+
+    ray.shutdown()
+    main(debug=True, env="IteratedPrisonersDilemma", use_r2d2=True)
+
+
 def test_amtft_iasymbos():
     from marltoolbox.experiments.rllib_api.amtft_various_env import main
 

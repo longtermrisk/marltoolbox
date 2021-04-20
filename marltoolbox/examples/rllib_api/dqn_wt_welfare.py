@@ -12,28 +12,33 @@ def main(debug, welfare=postprocessing.WELFARE_UTILITARIAN):
 
     hparams = dqn_coin_game.get_hyperparameters(seeds, debug, exp_name)
     rllib_config, stop_config = dqn_coin_game.get_rllib_configs(hparams)
-    rllib_config = _modify_policy_to_use_welfare(rllib_config, welfare)
+    rllib_config = modify_dqn_rllib_config_to_use_welfare(
+        rllib_config, welfare
+    )
 
-    tune_analysis = dqn_coin_game._train_dqn_and_plot_logs(
+    tune_analysis = dqn_coin_game.train_dqn_and_plot_logs(
         hparams, rllib_config, stop_config
     )
 
     return tune_analysis
 
 
-def _modify_policy_to_use_welfare(rllib_config, welfare):
-    MyCoopDQNTorchPolicy = augmented_dqn.MyDQNTorchPolicy.with_updates(
-        postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
-            postprocessing.welfares_postprocessing_fn(),
-            postprocess_nstep_and_prio,
-        )
+def modify_dqn_rllib_config_to_use_welfare(rllib_config, welfare):
+    DQNTorchPolicyWtWelfare = _get_policy_class_wt_welfare_preprocessing()
+    rllib_config = modify_rllib_config_to_use_welfare(
+        rllib_config, welfare, policy_class_wt_welfare=DQNTorchPolicyWtWelfare
     )
+    return rllib_config
 
+
+def modify_rllib_config_to_use_welfare(
+    rllib_config, welfare, policy_class_wt_welfare, overwrite_reward=True
+):
     policies = rllib_config["multiagent"]["policies"]
     new_policies = {}
     for policies_id, policy_tuple in policies.items():
         new_policies[policies_id] = list(policy_tuple)
-        new_policies[policies_id][0] = MyCoopDQNTorchPolicy
+        new_policies[policies_id][0] = policy_class_wt_welfare
         if welfare == postprocessing.WELFARE_UTILITARIAN:
             new_policies[policies_id][3].update(
                 {postprocessing.ADD_UTILITARIAN_WELFARE: True}
@@ -57,12 +62,23 @@ def _modify_policy_to_use_welfare(rllib_config, welfare):
                 }
             )
     rllib_config["multiagent"]["policies"] = new_policies
-    rllib_config["callbacks"] = callbacks.merge_callbacks(
-        log.get_logging_callbacks_class(),
-        postprocessing.OverwriteRewardWtWelfareCallback,
-    )
+    if overwrite_reward:
+        rllib_config["callbacks"] = callbacks.merge_callbacks(
+            log.get_logging_callbacks_class(),
+            postprocessing.OverwriteRewardWtWelfareCallback,
+        )
 
     return rllib_config
+
+
+def _get_policy_class_wt_welfare_preprocessing():
+    DQNTorchPolicyWtWelfare = augmented_dqn.MyDQNTorchPolicy.with_updates(
+        postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
+            postprocessing.welfares_postprocessing_fn(),
+            postprocess_nstep_and_prio,
+        )
+    )
+    return DQNTorchPolicyWtWelfare
 
 
 if __name__ == "__main__":

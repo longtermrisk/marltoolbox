@@ -126,10 +126,10 @@ def build_q_losses_wt_additional_logs(
 
 
 def my_build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
-    q_stats = dqn_torch_policy.build_q_stats_wt_addtional_log(policy, batch)
+    q_stats = dqn_torch_policy.build_q_stats(policy, batch)
 
     entropy_avg, _ = log.compute_entropy_from_raw_q_values(
-        policy, policy.last_q_t.clone()
+        policy, policy.last_q_t
     )
     q_stats.update(
         {

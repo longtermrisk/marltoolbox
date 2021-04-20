@@ -5,12 +5,12 @@ import os
 import ray
 from ray import tune
 from ray.rllib.agents import dqn
-from ray.rllib.agents.dqn.dqn_torch_policy import postprocess_nstep_and_prio
+from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.tune.integration.wandb import WandbLoggerCallback
 
-from marltoolbox.algos import amTFT
+from marltoolbox.algos import amTFT, augmented_r2d2
 from marltoolbox.envs import (
     matrix_sequential_social_dilemma,
     vectorized_coin_game,
@@ -42,12 +42,13 @@ def main(
     use_r2d2=False,
 ):
     hparams = get_hyperparameters(
-        debug, train_n_replicates, filter_utilitarian, env, use_r2d2
+        debug, train_n_replicates, filter_utilitarian, env, use_r2d2=use_r2d2
     )
 
     if hparams["load_plot_data"] is None:
         ray.init(
-            num_cpus=os.cpu_count(), num_gpus=0, local_mode=hparams["debug"]
+            num_cpus=os.cpu_count(),
+            local_mode=hparams["debug"],
         )
 
         # Train
@@ -88,7 +89,7 @@ def get_hyperparameters(
         n_times_more_utilitarians_seeds = 1
     elif train_n_replicates is None:
         n_times_more_utilitarians_seeds = 4
-        train_n_replicates = 1
+        train_n_replicates = 3
     else:
         n_times_more_utilitarians_seeds = 4
 
@@ -115,6 +116,7 @@ def get_hyperparameters(
             ),
         },
         "log_n_points": 250,
+        "num_envs_per_worker": 128,
         "load_plot_data": None,
         # Example: "load_plot_data": ".../SelfAndCrossPlay_save.p",
         "load_policy_data": None,
@@ -132,50 +134,13 @@ def get_hyperparameters(
         # },
         # "load_policy_data": {
         #     "Util": [
-        #         "~/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/amTFT"
-        #         "/2021_03_28/19_38_55/utilitarian_welfare/coop"
-        #         "/DQN_VectMixedMotiveCG_06231_00000_0_seed=1616960338_2021-03-29_00-52-23/checkpoint_250/checkpoint-250",
-        #         # "~/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/amTFT"
-        #         # "/2021_03_24/18_22_47/utilitarian_welfare/coop"
-        #         # "/DQN_VectMixedMotiveCG_e1de7_00001_1_seed=1616610171_2021-03-25_00-27-29/checkpoint_250/checkpoint-250",
-        #         # "~/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/amTFT"
-        #         # "/2021_03_24/18_22_47/utilitarian_welfare/coop"
-        #         # "/DQN_VectMixedMotiveCG_e1de7_00002_2_seed=1616610172_2021-03-25_00-27-29/checkpoint_250/checkpoint-250",
-        #         ],
-        #     'IA':[
-        #         "~/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible"
-        #         "/amTFT/2021_03_28/19_38_55/inequity_aversion_welfare/coop"
-        #         "/DQN_VectMixedMotiveCG_d5a2a_00000_0_seed=1616960335_2021-03-28_21-23-26/checkpoint_250/checkpoint-250",
-        #         # "~/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible"
-        #         # "/amTFT/2021_03_24/18_22_47/inequity_aversion_welfare/coop"
-        #         # "/DQN_VectMixedMotiveCG_9cfe6_00001_1_seed=1616610168_2021-03-24_20-22-11/checkpoint_250/checkpoint-250",
-        #         # "~/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible"
-        #         # "/amTFT/2021_03_24/18_22_47/inequity_aversion_welfare/coop"
-        #         # "/DQN_VectMixedMotiveCG_9cfe6_00002_2_seed=1616610169_2021-03-24_20-22-11/checkpoint_250/checkpoint-250",
-        #         ],
-        # },
-        # "load_policy_data": {
-        #     "Util": [
-        #         "~/ray_results/amTFT"
-        #         "/2021_03_24/18_22_47/utilitarian_welfare/coop"
-        #         "/DQN_VectMixedMotiveCG_e1de7_00000_0_seed=1616610170_2021-03-25_00-27-29/checkpoint_250/checkpoint-250",
-        #         "~/ray_results/amTFT"
-        #         "/2021_03_24/18_22_47/utilitarian_welfare/coop"
-        #         "/DQN_VectMixedMotiveCG_e1de7_00001_1_seed=1616610171_2021-03-25_00-27-29/checkpoint_250/checkpoint-250",
-        #         "~/ray_results/amTFT"
-        #         "/2021_03_24/18_22_47/utilitarian_welfare/coop"
-        #         "/DQN_VectMixedMotiveCG_e1de7_00002_2_seed=1616610172_2021-03-25_00-27-29/checkpoint_250/checkpoint-250",
+        #         "/home/maxime/ray_results/amTFT/2021_04_17/11_31_45"
+        #         "/utilitarian_welfare/coop"
+        #         "/R2D2_RewardUncertaintyEnvClassWrapper_d60ef_00000_0_seed=1618651907_2021-04-17_11-32-32/checkpoint_000010/checkpoint-10",
         #     ],
-        #     'IA': [
-        #         "~/ray_results"
-        #         "/amTFT/2021_03_24/18_22_47/inequity_aversion_welfare/coop"
-        #         "/DQN_VectMixedMotiveCG_9cfe6_00000_0_seed=1616610167_2021-03-24_20-22-10/checkpoint_250/checkpoint-250",
-        #         "~/ray_results"
-        #         "/amTFT/2021_03_24/18_22_47/inequity_aversion_welfare/coop"
-        #         "/DQN_VectMixedMotiveCG_9cfe6_00001_1_seed=1616610168_2021-03-24_20-22-11/checkpoint_250/checkpoint-250",
-        #         "~/ray_results"
-        #         "/amTFT/2021_03_24/18_22_47/inequity_aversion_welfare/coop"
-        #         "/DQN_VectMixedMotiveCG_9cfe6_00002_2_seed=1616610169_2021-03-24_20-22-11/checkpoint_250/checkpoint-250",
+        #     "IA": [
+        #         "/home/maxime/ray_results/amTFT/2021_04_17/11_31_45"
+        #         "/inequity_aversion_welfare/coop/R2D2_RewardUncertaintyEnvClassWrapper_c62e7_00000_0_seed=1618651905_2021-04-17_11-32-06/checkpoint_000010/checkpoint-10",
         #     ],
         # },
         "amTFTPolicy": amTFT.AmTFTRolloutsTorchPolicy,
@@ -184,15 +149,15 @@ def get_hyperparameters(
             (postprocessing.WELFARE_UTILITARIAN, "utilitarian"),
         ],
         "jitter": 0.05,
-        "hiddens": [64],
+        "hiddens": [32],
         "gamma": 0.96,
         # If not in self play then amTFT
         # will be evaluated against a naive selfish policy or an exploiter
         "self_play": True,
         # "self_play": False, # Not tested
-        "env_name": "IteratedPrisonersDilemma" if env is None else env,
+        # "env_name": "IteratedPrisonersDilemma" if env is None else env,
         # "env_name": "IteratedAsymBoS" if env is None else env,
-        # "env_name": "CoinGame" if env is None else env,
+        "env_name": "CoinGame" if env is None else env,
         # "env_name": "AsymCoinGame" if env is None else env,
         # "env_name": "MixedMotiveCoinGame" if env is None else env,
         # "env_name": "SSDMixedMotiveCoinGame" if env is None else env,
@@ -200,6 +165,11 @@ def get_hyperparameters(
         "explore_during_evaluation": True,
         "reward_uncertainty": reward_uncertainty,
     }
+
+    if hparams["load_policy_data"] is not None:
+        hparams["train_n_replicates"] = len(
+            hparams["load_policy_data"]["Util"]
+        )
 
     hparams = modify_hyperparams_for_the_selected_env(hparams)
 
@@ -390,7 +360,9 @@ def train_for_each_welfare_function(hp):
             stop_config=stop,
             rllib_config=rllib_config,
             name=exp_name,
-            TrainerClass=dqn.DQNTrainer,
+            TrainerClass=dqn.r2d2.R2D2Trainer
+            if hp["use_r2d2"]
+            else dqn.DQNTrainer,
             plot_keys=hp["plot_keys"],
             plot_assemblage_tags=hp["plot_assemblage_tags"],
             debug=hp["debug"],
@@ -430,6 +402,8 @@ def get_rllib_config(hp, welfare_fn, eval=False):
     }
 
     env_config = get_env_config(hp)
+    env_config["bs_epi_mul"] = hp["bs_epi_mul"]
+    env_config["buf_frac"] = hp["buf_frac"]
     policies = get_policies(hp, env_config, welfare_fn, eval)
 
     selected_seeds = hp["seeds"][: hp["train_n_replicates"]]
@@ -458,8 +432,17 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         # Size of a batch sampled from replay buffer for training. Note that
         # if async_updates is set, then each worker returns gradients for a
         # batch of this size.
-        "train_batch_size": int(hp["n_steps_per_epi"] * hp["bs_epi_mul"]),
-        "training_intensity": hp["training_intensity"],
+        "train_batch_size": tune.sample_from(
+            lambda spec: int(
+                spec.config["env_config"]["max_steps"]
+                * spec.config["env_config"]["bs_epi_mul"]
+            )
+        ),
+        "training_intensity": tune.sample_from(
+            lambda spec: spec.config["num_envs_per_worker"]
+            * max(1, spec.config["num_workers"])
+            * hp["training_intensity"]
+        ),
         # Minimum env steps to optimize for per train call. This value does
         # not affect learning, only the length of iterations.
         "timesteps_per_iteration": hp["n_steps_per_epi"]
@@ -471,7 +454,7 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         "num_workers": 0,
         # LE supports only 1 env per worker only otherwise
         # several episodes would be played at the same time
-        "num_envs_per_worker": 1,
+        "num_envs_per_worker": hp["num_envs_per_worker"],
         # Callbacks that will be run during various phases of training. See the
         # `DefaultCallbacks` class and
         # `examples/custom_metrics_and_callbacks.py` for more usage
@@ -479,7 +462,8 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         "callbacks": callbacks.merge_callbacks(
             amTFT.AmTFTCallbacks,
             log.get_logging_callbacks_class(
-                log_full_epi=True, log_full_epi_interval=100
+                log_full_epi=hp["num_envs_per_worker"] == 1,
+                log_full_epi_interval=100,
             ),
         ),
         "logger_config": {
@@ -498,8 +482,15 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         # === Replay buffer ===
         # Size of the replay buffer. Note that if async_updates is set, then
         # each worker will have a replay buffer of this size.
-        "buffer_size": max(
-            int(hp["n_steps_per_epi"] * hp["n_epi"] * hp["buf_frac"]), 5
+        "buffer_size": tune.sample_from(
+            lambda spec: max(
+                int(
+                    spec.config["env_config"]["max_steps"]
+                    * spec.config["env_config"]["buf_frac"]
+                    * spec.stop["episodes_total"]
+                ),
+                5,
+            )
         ),
         # Whether to use dueling dqn
         "dueling": True,
@@ -512,12 +503,17 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         "prioritized_replay": False,
         "model": {
             # Number of hidden layers for fully connected net
-            "fcnet_hiddens": hp["hiddens"],
+            "fcnet_hiddens": [64, 64],
             # Nonlinearity for fully connected net (tanh, relu)
             "fcnet_activation": "relu",
         },
         # How many steps of the model to sample before learning starts.
-        "learning_starts": int(hp["n_steps_per_epi"] * hp["bs_epi_mul"]),
+        "learning_starts": tune.sample_from(
+            lambda spec: int(
+                spec.config["env_config"]["max_steps"]
+                * spec.config["env_config"]["bs_epi_mul"]
+            )
+        ),
         # === Exploration Settings ===
         # Default exploration behavior, iff `explore`=None is passed into
         # compute_action(s).
@@ -536,10 +532,11 @@ def get_rllib_config(hp, welfare_fn, eval=False):
             # Add constructor kwargs here (if any).
             "temperature_schedule": hp["temperature_schedule"],
         },
+        # "log_level": "DEBUG",
     }
 
     rllib_config = _modify_config_for_coin_game(rllib_config, env_config, hp)
-    rllib_config = _modify_config_for_r2d2(rllib_config, env_config, hp)
+    rllib_config = _modify_config_for_r2d2(rllib_config, hp)
 
     return stop, env_config, rllib_config
 
@@ -641,6 +638,7 @@ def get_nested_policy_class(hp, welfare_fn):
                 inequity_aversion_gamma=hp["gamma"],
                 inequity_aversion_lambda=hp["lambda"],
             ),
+            # Used by both DQN and R2D2
             postprocess_nstep_and_prio,
         )
     )
@@ -648,8 +646,10 @@ def get_nested_policy_class(hp, welfare_fn):
 
 
 def _select_base_policy(hp):
+    print("use_r2d2", hp["use_r2d2"])
     if hp["use_r2d2"]:
-        nested_policy_class = dqn.r2d2.R2D2TorchPolicy
+        print("using augmented_r2d2.MyR2D2TorchPolicy")
+        nested_policy_class = augmented_r2d2.MyR2D2TorchPolicy
     else:
         nested_policy_class = amTFT.DEFAULT_NESTED_POLICY_SELFISH
     return nested_policy_class
@@ -659,15 +659,32 @@ def _modify_config_for_coin_game(rllib_config, env_config, hp):
     if "CoinGame" in hp["env_name"]:
         rllib_config["model"] = {
             "dim": env_config["grid_size"],
-            "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],
+            "conv_filters": [[16, [3, 3], 1], [16, [3, 3], 1]],
             # [Channel, [Kernel, Kernel], Stride]]
+            "fcnet_hiddens": [64, 64],
         }
     return rllib_config
 
 
-def _modify_config_for_r2d2(rllib_config, env_config, hp):
+def _modify_config_for_r2d2(rllib_config, hp):
     if hp["use_r2d2"]:
         rllib_config["model"]["use_lstm"] = True
+        rllib_config["use_h_function"] = False
+        rllib_config["burn_in"] = 0
+        rllib_config["zero_init_states"] = False
+        if hp["debug"]:
+            rllib_config["model"]["max_seq_len"] = 2
+            rllib_config["model"]["lstm_cell_size"] = 8
+        else:
+            rllib_config["model"]["max_seq_len"] = 20
+            rllib_config["env_config"]["bs_epi_mul"] = 4
+            rllib_config["model"]["lstm_cell_size"] = 16
+            rllib_config["training_intensity"] = tune.sample_from(
+                lambda spec: spec.config["num_envs_per_worker"]
+                * hp["training_intensity"]
+                * 4
+            )
+
     return rllib_config
 
 
@@ -718,7 +735,9 @@ def evaluate_self_play_cross_play(
             env_config["players_ids"]
         ),
         tune_analysis_per_exp=tune_analysis_per_welfare,
-        TrainerClass=dqn.DQNTrainer,
+        TrainerClass=dqn.r2d2.R2D2Trainer
+        if hp_eval["use_r2d2"]
+        else dqn.DQNTrainer,
         n_self_play_per_checkpoint=hp_eval["n_self_play_per_checkpoint"],
         n_cross_play_per_checkpoint=hp_eval["n_cross_play_per_checkpoint"],
         to_load_path=hp_eval["load_plot_data"],
@@ -748,7 +767,7 @@ def evaluate_self_play_cross_play(
         y_axis_metric=f"policy_reward_mean/{env_config['players_ids'][1]}",
     )
 
-    print_inequity_aversion_welfare(env_config, analysis_metrics_per_mode)
+    # print_inequity_aversion_welfare(env_config, analysis_metrics_per_mode)
 
     return analysis_metrics_per_mode
 
@@ -769,6 +788,7 @@ def modify_hp_for_evaluation(hp: dict, eval_over_n_epi: int = 1):
     hp_eval = copy.deepcopy(hp)
     # TODO is the overwrite_reward hp useless?
     hp_eval["overwrite_reward"] = False
+    hp_eval["num_envs_per_worker"] = 1
     hp_eval["n_epi"] = eval_over_n_epi
     hp_eval["n_steps_per_epi"] = 5 if hp_eval["debug"] else 100
     hp_eval["bs_epi_mul"] = 1
@@ -792,6 +812,8 @@ def modify_hp_for_evaluation(hp: dict, eval_over_n_epi: int = 1):
 def modify_config_for_evaluation(config_eval, hp, env_config):
     config_eval["explore"] = False
     config_eval["seed"] = None
+    config_eval["num_workers"] = 0
+    assert config_eval["num_envs_per_worker"] == 1
     policies = config_eval["multiagent"]["policies"]
     for policy_id in policies.keys():
         policy_config = policies[policy_id][3]
@@ -841,6 +863,6 @@ def print_inequity_aversion_welfare(env_config, analysis_metrics_per_mode):
 
 
 if __name__ == "__main__":
-    debug_mode = True
-    use_r2d2 = False
-    main(debug_mode, use_r2d2)
+    use_r2d2 = True
+    debug_mode = False
+    main(debug_mode, use_r2d2=use_r2d2)

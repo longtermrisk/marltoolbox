@@ -22,9 +22,7 @@ def main(debug):
 
     rllib_config, stop_config = get_rllib_configs(hparams)
 
-    tune_analysis = _train_dqn_and_plot_logs(
-        hparams, rllib_config, stop_config
-    )
+    tune_analysis = train_dqn_and_plot_logs(hparams, rllib_config, stop_config)
 
     return tune_analysis
 
@@ -40,7 +38,7 @@ def get_hyperparameters(seeds, debug, exp_name):
         "n_epi": 2000,
         "buf_frac": 0.125,
         "last_exploration_temp_value": 0.1,
-        "bs_epi_mul": 1,
+        "bs_epi_mul": 4,
         "plot_keys": coin_game.PLOT_KEYS
         + aggregate_and_plot_tensorboard_data.PLOT_KEYS,
         "plot_assemblage_tags": coin_game.PLOT_ASSEMBLAGE_TAGS
@@ -59,6 +57,8 @@ def get_rllib_configs(hp, env_class=None):
         "max_steps": hp["n_steps_per_epi"],
         "grid_size": 3,
         "get_additional_info": True,
+        "buf_frac": hp["buf_frac"],
+        "bs_epi_mul": hp["bs_epi_mul"],
     }
 
     env_class = coin_game.CoinGame if env_class is None else env_class
@@ -94,11 +94,11 @@ def get_rllib_configs(hp, env_class=None):
             lambda spec: int(
                 spec.config["env_config"]["max_steps"]
                 * spec.stop["episodes_total"]
-                * hp["buf_frac"]
+                * spec.config["env_config"]["buf_frac"]
             )
         ),
         # Whether to use dueling dqn
-        "dueling": False,
+        "dueling": True,
         # Whether to use double dqn
         "double_q": True,
         # If True prioritized replay buffer will be used.
@@ -106,13 +106,18 @@ def get_rllib_configs(hp, env_class=None):
         "rollout_fragment_length": tune.sample_from(
             lambda spec: spec.config["env_config"]["max_steps"]
         ),
-        "training_intensity": 10,
+        "training_intensity": tune.sample_from(
+            lambda spec: spec.config["num_envs_per_worker"]
+            * max(spec.config["num_workers"], 1)
+            * 10
+        ),
         # Size of a batch sampled from replay buffer for training. Note that
         # if async_updates is set, then each worker returns gradients for a
         # batch of this size.
         "train_batch_size": tune.sample_from(
             lambda spec: int(
-                spec.config["env_config"]["max_steps"] * hp["bs_epi_mul"]
+                spec.config["env_config"]["max_steps"]
+                * spec.config["env_config"]["bs_epi_mul"]
             )
         ),
         "batch_mode": "complete_episodes",
@@ -162,13 +167,15 @@ def get_rllib_configs(hp, env_class=None):
         "model": {
             "dim": env_config["grid_size"],
             # [Channel, [Kernel, Kernel], Stride]]
-            "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],
+            "conv_filters": [[16, [3, 3], 1], [16, [3, 3], 1]],
+            "fcnet_hiddens": [64, 64],
         },
+        "hiddens": [32],
         "gamma": 0.96,
         "optimizer": {
             "sgd_momentum": 0.9,
         },
-        "lr": 0.1,
+        "lr": 0.2,
         "lr_schedule": tune.sample_from(
             lambda spec: [
                 (0, 0.0),
@@ -202,13 +209,16 @@ def get_rllib_configs(hp, env_class=None):
                 "log_config": True,
             },
         },
+        "num_workers": 0,
+        # "log_level": "INFO",
+        "num_envs_per_worker": 128,
     }
 
     return rllib_config, stop_config
 
 
-def _train_dqn_and_plot_logs(hp, rllib_config, stop_config):
-    ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=hp["debug"])
+def train_dqn_and_plot_logs(hp, rllib_config, stop_config):
+    ray.init(num_cpus=os.cpu_count(), local_mode=hp["debug"])
     tune_analysis = tune.run(
         DQNTrainer,
         config=rllib_config,

@@ -198,6 +198,7 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
 
     @with_lock
     def learn_on_batch(self, samples: SampleBatch):
+
         stats = self._learn_on_batch(samples)
         self._log_learning_rates()
         return stats

@@ -18,10 +18,7 @@ from marltoolbox.algos.amTFT.base import (
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
     IteratedPrisonersDilemma,
 )
-from marltoolbox.experiments.rllib_api.amtft_various_env import (
-    get_rllib_config,
-    get_hyperparameters,
-)
+from marltoolbox.experiments.rllib_api import amtft_various_env
 from marltoolbox.utils import postprocessing, log
 from test_base_policy import init_amTFT, generate_fake_discrete_actions
 
@@ -73,28 +70,38 @@ def test__select_algo_to_use_in_eval():
         policy_class=amTFT.AmTFTRolloutsTorchPolicy
     )
 
-    def assert_(working_state_idx, active_algo_idx):
+    def assert_active_algo_idx(working_state_idx, active_algo_idx):
         am_tft_policy.working_state = base_policy.WORKING_STATES[
             working_state_idx
         ]
-        am_tft_policy._select_witch_algo_to_use()
-        assert am_tft_policy.active_algo_idx == active_algo_idx
+        am_tft_policy._select_witch_algo_to_use(None)
+        assert (
+            am_tft_policy.active_algo_idx == active_algo_idx
+        ), f"{am_tft_policy.active_algo_idx} == {active_algo_idx}"
 
     am_tft_policy.use_opponent_policies = False
     am_tft_policy.n_steps_to_punish = 0
-    assert_(working_state_idx=2, active_algo_idx=base.OWN_COOP_POLICY_IDX)
+    assert_active_algo_idx(
+        working_state_idx=2, active_algo_idx=base.OWN_COOP_POLICY_IDX
+    )
     am_tft_policy.use_opponent_policies = False
     am_tft_policy.n_steps_to_punish = 1
-    assert_(working_state_idx=2, active_algo_idx=base.OWN_SELFISH_POLICY_IDX)
+    assert_active_algo_idx(
+        working_state_idx=2, active_algo_idx=base.OWN_SELFISH_POLICY_IDX
+    )
 
     am_tft_policy.use_opponent_policies = True
     am_tft_policy.performing_rollouts = True
     am_tft_policy.n_steps_to_punish_opponent = 0
-    assert_(working_state_idx=2, active_algo_idx=base.OPP_COOP_POLICY_IDX)
+    assert_active_algo_idx(
+        working_state_idx=2, active_algo_idx=base.OPP_COOP_POLICY_IDX
+    )
     am_tft_policy.use_opponent_policies = True
     am_tft_policy.performing_rollouts = True
     am_tft_policy.n_steps_to_punish_opponent = 1
-    assert_(working_state_idx=2, active_algo_idx=base.OPP_SELFISH_POLICY_IDX)
+    assert_active_algo_idx(
+        working_state_idx=2, active_algo_idx=base.OPP_SELFISH_POLICY_IDX
+    )
 
 
 def test__duration_found_or_continue_search():
@@ -196,20 +203,23 @@ def init_worker(
     debug = True
     exp_name, _ = log.log_in_current_day_dir("testing")
 
-    hparams = get_hyperparameters(
+    hparams = amtft_various_env.get_hyperparameters(
         debug,
         train_n_replicates,
         filter_utilitarian=False,
         env="IteratedPrisonersDilemma",
     )
 
-    _, _, rllib_config = get_rllib_config(
+    stop, env_config, rllib_config = amtft_various_env.get_rllib_config(
         hparams, welfare_fn=postprocessing.WELFARE_UTILITARIAN
     )
 
     rllib_config["env"] = FakeEnvWtActionAsReward
     rllib_config["env_config"]["max_steps"] = max_steps
-    rllib_config["seed"] = int(time.time())
+    rllib_config = _remove_dynamic_values_from_config(
+        rllib_config, hparams, env_config, stop
+    )
+
     for policy_id in FakeEnvWtActionAsReward({}).players_ids:
         policy_to_modify = list(
             rllib_config["multiagent"]["policies"][policy_id]
@@ -257,6 +267,30 @@ def init_worker(
     print("env setup")
 
     return worker, am_tft_policy_row, am_tft_policy_col
+
+
+def _remove_dynamic_values_from_config(
+    rllib_config, hparams, env_config, stop
+):
+    rllib_config["seed"] = int(time.time())
+    rllib_config["learning_starts"] = int(
+        rllib_config["env_config"]["max_steps"]
+        * rllib_config["env_config"]["bs_epi_mul"]
+    )
+    rllib_config["buffer_size"] = int(
+        env_config["max_steps"]
+        * env_config["buf_frac"]
+        * stop["episodes_total"]
+    )
+    rllib_config["train_batch_size"] = int(
+        env_config["max_steps"] * env_config["bs_epi_mul"]
+    )
+    rllib_config["training_intensity"] = int(
+        rllib_config["num_envs_per_worker"]
+        * rllib_config["num_workers"]
+        * hparams["training_intensity"]
+    )
+    return rllib_config
 
 
 def _get_logger_creator(exp_name):
