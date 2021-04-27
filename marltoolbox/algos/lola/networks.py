@@ -41,6 +41,7 @@ class Pnetwork:
         weigth_decay=0.01,
         use_critic=False,
         use_destabilizer_in_policy=False,
+        deactivate_critic=False,
     ):
         self.sess = sess
 
@@ -239,20 +240,26 @@ class Pnetwork:
                 shape=[None, 1], dtype=tf.float32, name="next_value"
             )
             self.next_v = tf.matmul(self.next_value, self.gamma_array_inverse)
-            if use_critic:
-                self.target = self.sample_reward_bis + self.next_v
-            else:
-                self.target = self.sample_return + self.next_v
 
-            if not use_MAE:
-                self.td_error = tf.square(self.target - self.value) / 2
+            if deactivate_critic:
+                self.loss = 0.0
+                self.td_error = 0.0
+                self.target = 0.0
             else:
-                self.td_error = tf.abs(self.target - self.value) / 2
+                if use_critic:
+                    self.target = self.sample_reward_bis + self.next_v
+                else:
+                    self.target = self.sample_return + self.next_v
 
-            if use_critic:
-                self.loss = tf.reduce_mean(self.td_error)
-            else:
-                self.loss = tf.reduce_mean(self.td_error) * 0.0
+                if not use_MAE:
+                    self.td_error = tf.square(self.target - self.value) / 2
+                else:
+                    self.td_error = tf.abs(self.target - self.value) / 2
+
+                if use_critic:
+                    self.loss = tf.reduce_mean(self.td_error)
+                else:
+                    self.loss = tf.reduce_mean(self.td_error) * 0.0
 
         self.parameters = []
         self.value_params = []
@@ -325,9 +332,12 @@ class Pnetwork:
                     entropy_coeff * self.entropy
                     + weigth_decay * self.weigths_norm
                 ) * self.loss_multiplier
-            self.updateModel = self.trainer.minimize(
-                total_loss, var_list=self.value_params
-            )
+            if deactivate_critic:
+                self.updateModel = 0.0
+            else:
+                self.updateModel = self.trainer.minimize(
+                    total_loss, var_list=self.value_params
+                )
 
         self.param_len = len(self.parameters)
 

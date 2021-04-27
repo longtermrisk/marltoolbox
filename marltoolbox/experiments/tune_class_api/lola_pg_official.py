@@ -56,9 +56,7 @@ def main(debug: bool, env=None):
     )
 
     if tune_hparams["load_plot_data"] is None:
-        ray.init(
-            num_cpus=min(os.cpu_count(), 10), num_gpus=0, local_mode=debug
-        )
+        ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
         tune_analysis_per_exp = _train(tune_hparams)
     else:
         tune_analysis_per_exp = None
@@ -101,7 +99,7 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
         "opp_model": False,
         "mem_efficient": True,
         "lr_correction": 1,
-        "bs_mul": 1 / 10 * 3 if use_best_exploiter else 1 / 10,
+        "global_lr_divider": 1 / 10 * 3 if use_best_exploiter else 1 / 10,
         "simple_net": True,
         "hidden": 32,
         "reg": 0,
@@ -130,6 +128,10 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
             ("total_reward",),
             ("entrop",),
         ],
+        "use_normalized_rewards": tune.grid_search([False, True]),
+        "use_centered_reward": tune.grid_search([False, True]),
+        "deactivate_critic_learning": tune.grid_search([False, True]),
+        "use_rolling_avg_actor_grad": tune.grid_search([False, 100]),
     }
 
     if gamma == 0.5:
@@ -175,49 +177,49 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
                 "batch_size": 8 if debug else 1024,
             }
         )
-    # elif gamma == 0.9 and tune_hparams["env_name"] == "VectorizedCoinGame":
-    #     tune_hparams.update(
-    #         {
-    #             "gamma": 0.9,
-    #             "lr": 0.005 / 2,
-    #             "num_episodes": 3 if debug else 2000,
-    #             "trace_length": 4 if debug else 40,
-    #             "weigth_decay": 0.03 / 16,
-    #             "lola_correction_multiplier": 2,
-    #             "entropy_coeff": 0.002,
-    #             "batch_size": 8 if debug else 1024,
-    #         }
-    #     )
     elif gamma == 0.9:
-        # and tune_hparams["env_name"] == \
-        #                    "AsymVectorizedCoinGame":
         tune_hparams.update(
             {
                 "gamma": 0.9,
-                "lr": 0.005 / 2
-                if debug
-                else tune.grid_search([0.005 / 4, 0.005 / 2, 0.005]),
-                "num_episodes": 3 if debug else tune.grid_search([2000, 4000]),
-                "trace_length": 4 if debug else tune.grid_search([20, 40]),
-                "weigth_decay": 0.03 / 16
-                if debug
-                else tune.grid_search([0.03 / 8, 0.03 / 16]),
-                "lola_correction_multiplier": 2
-                if debug
-                else tune.grid_search([0.5, 1, 2, 4, 8]),
-                "entropy_coeff": 0.002
-                if debug
-                else tune.grid_search([0.002, 0.002 / 2, 0.002 * 2]),
-                "batch_size": 8
-                if debug
-                else tune.grid_search(
-                    [
-                        512,
-                        1024,
-                    ]
-                ),
+                "lr": 0.005 / 2,
+                "num_episodes": 3 if debug else 2000,
+                "trace_length": 4 if debug else 40,
+                "weigth_decay": 0.03 / 16,
+                "lola_correction_multiplier": 2,
+                "entropy_coeff": 0.002,
+                "batch_size": 8 if debug else 1024,
             }
         )
+    # elif gamma == 0.9:
+    #     # and tune_hparams["env_name"] == \
+    #     #                    "AsymVectorizedCoinGame":
+    #     tune_hparams.update(
+    #         {
+    #             "gamma": 0.9,
+    #             "lr": 0.005 / 2
+    #             if debug
+    #             else tune.grid_search([0.005 / 4, 0.005 / 2, 0.005]),
+    #             "num_episodes": 3 if debug else tune.grid_search([2000, 4000]),
+    #             "trace_length": 4 if debug else tune.grid_search([20, 40]),
+    #             "weigth_decay": 0.03 / 16
+    #             if debug
+    #             else tune.grid_search([0.03 / 8, 0.03 / 16]),
+    #             "lola_correction_multiplier": 2
+    #             if debug
+    #             else tune.grid_search([0.5, 1, 2, 4, 8]),
+    #             "entropy_coeff": 0.002
+    #             if debug
+    #             else tune.grid_search([0.002, 0.002 / 2, 0.002 * 2]),
+    #             "batch_size": 8
+    #             if debug
+    #             else tune.grid_search(
+    #                 [
+    #                     512,
+    #                     1024,
+    #                 ]
+    #             ),
+    #         }
+    #     )
 
     if use_best_exploiter:
         # Add exploiter hyperparameters
