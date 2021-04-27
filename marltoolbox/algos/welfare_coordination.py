@@ -119,6 +119,7 @@ class MetaGameSolver:
         ]
 
     def _search_for_best_action(self):
+        self.tau_log = []
         for idx, welfare_set_annonced in enumerate(self.welfare_fn_sets):
             optimization_objective = self._compute_optimization_objective(
                 self.tau, welfare_set_annonced
@@ -126,26 +127,40 @@ class MetaGameSolver:
             self._keep_action_if_best(optimization_objective, idx)
 
     def _compute_optimization_objective(self, tau, welfare_set_annonced):
-        print(f"========")
-        print(f"compute objective for set {welfare_set_annonced}")
         self._compute_payoffs_for_every_opponent_action(welfare_set_annonced)
 
         opp_best_response_idx = self._get_opp_best_response_idx()
+
+        exploitability_term = tau * self._get_own_payoff(opp_best_response_idx)
+        payoffs = self._get_all_possible_payoffs_excluding_provided(
+            # excluding_idx=opp_best_response_idx
+        )
+        robustness_term = (1 - tau) * sum(payoffs) / len(payoffs)
+
+        optimization_objective = exploitability_term + robustness_term
+
+        print(f"========")
+        print(f"compute objective for set {welfare_set_annonced}")
         print(
             f"opponent best response is {opp_best_response_idx} => "
             f"{self.welfare_fn_sets[opp_best_response_idx]}"
         )
-        exploitability_term = tau * self._get_own_payoff(opp_best_response_idx)
         print("exploitability_term", exploitability_term)
-
-        payoffs = self._get_all_possible_payoffs_excluding_one(
-            excluding_idx=opp_best_response_idx
-        )
-        robustness_term = (1 - tau) * sum(payoffs) / len(payoffs)
         print("robustness_term", robustness_term)
-
-        optimization_objective = exploitability_term + robustness_term
         print("optimization_objective", optimization_objective)
+
+        self.tau_log.append(
+            {
+                "welfare_set_annonced": welfare_set_annonced,
+                "opp_best_response_idx": opp_best_response_idx,
+                "opp_best_response_set": self.welfare_fn_sets[
+                    opp_best_response_idx
+                ],
+                "robustness_term": robustness_term,
+                "optimization_objective": optimization_objective,
+            }
+        )
+
         return optimization_objective
 
     def _compute_payoffs_for_every_opponent_action(self, welfare_set_annonced):
@@ -204,13 +219,15 @@ class MetaGameSolver:
         ]
         return opp_payoffs.index(max(opp_payoffs))
 
-    def _get_all_possible_payoffs_excluding_one(self, excluding_idx):
+    def _get_all_possible_payoffs_excluding_provided(self, excluding_idx=()):
         own_payoffs = []
         for welfare_set_idx, _ in enumerate(self.welfare_fn_sets):
-            if welfare_set_idx != excluding_idx:
+            if welfare_set_idx not in excluding_idx:
                 own_payoff = self._get_own_payoff(welfare_set_idx)
                 own_payoffs.append(own_payoff)
-        assert len(own_payoffs) == len(self.welfare_fn_sets) - 1
+        assert len(own_payoffs) == len(self.welfare_fn_sets) - len(
+            excluding_idx
+        )
         return own_payoffs
 
     def _get_own_payoff(self, idx):
@@ -230,6 +247,7 @@ class MetaGameSolver:
         if optimization_objective > self.best_objective:
             self.best_objective = optimization_objective
             self.selected_pure_policy_idx = idx
+            # self._to_log[f"tau_{self.tau}"] = self.tau_log[idx]
 
 
 class WelfareCoordinationTorchPolicy(
@@ -285,9 +303,9 @@ class WelfareCoordinationTorchPolicy(
 
     @policy_checkpoints.setter
     def policy_checkpoints(self, value):
-        msg = f"ignoring set self.policy_checkpoints to value {value}"
-        print(msg)
-        logger.warning(msg)
+        logger.warning(
+            f"ignoring setting self.policy_checkpoints to value {value}"
+        )
 
     @override(population.PopulationOfIdenticalAlgo)
     def set_algo_to_use(self):
@@ -313,7 +331,16 @@ class WelfareCoordinationTorchPolicy(
         if not self._welfare_chosen_for_epi:
             # Called only by one agent, not by both
             self._coordinate_on_welfare_to_use_for_epi(worker)
-        self.set_algo_to_use()
+        super().on_episode_start(
+            *args,
+            worker,
+            policy,
+            policy_id,
+            policy_ids,
+            **kwargs,
+        )
+        assert self._welfare_set_annonced
+        assert self._welfare_chosen_for_epi
 
     @staticmethod
     def _annonce_welfare_sets(
@@ -360,19 +387,35 @@ class WelfareCoordinationTorchPolicy(
             if isinstance(policy, WelfareCoordinationTorchPolicy):
                 if len(policy._intersection_of_welfare_sets) > 0:
                     if welfare_to_play is None:
-                        print(
-                            "policy._welfare_set_in_use",
-                            policy._welfare_set_in_use,
-                        )
                         welfare_to_play = random.choice(
                             tuple(policy._welfare_set_in_use)
                         )
                     policy._welfare_in_use = welfare_to_play
+                    msg = (
+                        "Policies coordinated "
+                        "to play for the next epi: "
+                        f"_welfare_set_in_use={policy._welfare_set_in_use}"
+                        f"and selected: policy._welfare_in_use={policy._welfare_in_use}"
+                    )
+                    logger.info(msg)
+                    print(msg)
                 else:
                     policy._welfare_in_use = random.choice(
                         tuple(policy._welfare_set_in_use)
                     )
+                    msg = (
+                        "Policies did NOT coordinate "
+                        "to play for the next epi: "
+                        f"_welfare_set_in_use={policy._welfare_set_in_use}"
+                        f"and selected: policy._welfare_in_use={policy._welfare_in_use}"
+                    )
+                    logger.info(msg)
+                    print(msg)
                 policy._welfare_chosen_for_epi = True
+                policy._to_log["welfare_in_use"] = policy._welfare_in_use
+                policy._to_log[
+                    "welfare_set_in_use"
+                ] = policy._welfare_set_in_use
 
     def on_episode_end(
         self,
@@ -380,4 +423,35 @@ class WelfareCoordinationTorchPolicy(
         **kwargs,
     ):
         self._welfare_chosen_for_epi = False
-        self.algorithms[self.active_algo_idx].on_episode_end(*args, **kwargs)
+        if hasattr(self.algorithms[self.active_algo_idx], "on_episode_end"):
+            self.algorithms[self.active_algo_idx].on_episode_end(
+                *args, **kwargs
+            )
+
+    @property
+    @override(population.PopulationOfIdenticalAlgo)
+    def to_log(self):
+        to_log = {
+            "meta_policy": self._to_log,
+            "nested_policy": {
+                f"policy_{algo_idx}": algo.to_log
+                for algo_idx, algo in enumerate(self.algorithms)
+                if hasattr(algo, "to_log")
+            },
+        }
+        return to_log
+
+    @to_log.setter
+    @override(population.PopulationOfIdenticalAlgo)
+    def to_log(self, value):
+        if value == {}:
+            for algo in self.algorithms:
+                if hasattr(algo, "to_log"):
+                    algo.to_log = {}
+
+        self._to_log = value
+
+    def _keep_action_if_best(self, optimization_objective, idx):
+        super()._keep_action_if_best(optimization_objective, idx)
+        if optimization_objective > self.best_objective:
+            self._to_log[f"tau_{self.tau}"] = self.tau_log[idx]

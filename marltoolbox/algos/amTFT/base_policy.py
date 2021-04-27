@@ -144,7 +144,7 @@ class AmTFTPolicyBase(
                 f"self.active_algo_idx {self.active_algo_idx} "
                 f"state_batches {state_batches} reset to initial {initial_state}"
             )
-            print(msg)
+            # print(msg)
             logger.info(msg)
             return initial_state
         else:

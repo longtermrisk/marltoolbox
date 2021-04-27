@@ -18,7 +18,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import PolicyID, TensorType
 from ray.util.debug import log_once
 from torch.distributions import Categorical
-from typing import Dict, Callable, TYPE_CHECKING, Optional
+from typing import Dict, Callable, TYPE_CHECKING, Optional, List
 
 from marltoolbox.utils.log.full_epi_logger import FullEpisodeLogger
 from marltoolbox.utils.log.model_summarizer import ModelSummarizer
@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 def get_logging_callbacks_class(
     log_env_step: bool = True,
     log_from_policy: bool = True,
+    log_from_policy_in_evaluation: bool = False,
     log_full_epi: bool = False,
     log_full_epi_interval: int = 100,
     log_ful_epi_one_hot_obs: bool = True,
@@ -83,6 +84,8 @@ def get_logging_callbacks_class(
             env_index: Optional[int] = None,
             **kwargs,
         ):
+            if log_from_policy_in_evaluation:
+                self._update_epi_info_wt_to_log(worker, episode)
             if log_env_step:
                 self._add_env_info_to_custom_metrics(worker, episode)
             if log_full_epi:
@@ -161,10 +164,28 @@ def get_logging_callbacks_class(
             def exec_in_each_policy(worker):
                 return worker.foreach_policy(function_to_exec)
 
-            # to_log_list = trainer.workers.foreach_policy(function_to_exec)
             to_log_list_list = trainer.workers.foreach_worker(
                 exec_in_each_policy
             )
+            self._unroll_into_logs(result, to_log_list_list)
+
+        def _update_epi_info_wt_to_log(
+            self, worker, episode: MultiAgentEpisode
+        ):
+            """
+            Add logs from every policies (from policy.to_log:dict)
+            to the info (to be plotted in Tensorboard).
+            To be called from the on_episode_end callback.
+            """
+
+            for policy_id, policy in worker.policy_map.items():
+                to_log = get_log_from_policy(policy, policy_id)
+                episode._agent_to_last_info[policy_id].update(to_log)
+
+        @staticmethod
+        def _unroll_into_logs(
+            dict_: Dict, to_log_list_list: List[List[Dict]]
+        ) -> Dict:
             for worker_idx, to_log_list in enumerate(to_log_list_list):
                 for to_log in to_log_list:
                     for k, v in to_log.items():
@@ -174,12 +195,13 @@ def get_logging_callbacks_class(
                         else:
                             key = k
 
-                        if key not in result.keys():
-                            result[key] = v
+                        if key not in dict_.keys():
+                            dict_[key] = v
                         else:
                             logger.warning(
-                                f"key:{key} already exists in result.keys(): {result.keys()}"
+                                f"key:{key} already exists in result.keys()"
                             )
+            return dict_
 
     return LoggingCallbacks
 

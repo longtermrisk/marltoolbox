@@ -46,7 +46,7 @@ def modify_rllib_config_to_use_welfare(
         elif welfare == postprocessing.WELFARE_INEQUITY_AVERSION:
             add_ia_w = True
             ia_alpha = 0.0
-            ia_beta = 0.5
+            ia_beta = 0.5 / 2
             ia_gamma = 0.96
             ia_lambda = 0.96
             inequity_aversion_parameters = (

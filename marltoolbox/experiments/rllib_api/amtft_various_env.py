@@ -27,8 +27,9 @@ from marltoolbox.utils import (
     postprocessing,
     miscellaneous,
     plot,
-    self_and_cross_perf,
     callbacks,
+    cross_play,
+    config_helper,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,7 +90,7 @@ def get_hyperparameters(
         n_times_more_utilitarians_seeds = 1
     elif train_n_replicates is None:
         n_times_more_utilitarians_seeds = 4
-        train_n_replicates = 3
+        train_n_replicates = 4
     else:
         n_times_more_utilitarians_seeds = 4
 
@@ -116,7 +117,7 @@ def get_hyperparameters(
             ),
         },
         "log_n_points": 250,
-        "num_envs_per_worker": 128,
+        "num_envs_per_worker": 16,
         "load_plot_data": None,
         # Example: "load_plot_data": ".../SelfAndCrossPlay_save.p",
         "load_policy_data": None,
@@ -149,7 +150,7 @@ def get_hyperparameters(
             (postprocessing.WELFARE_UTILITARIAN, "utilitarian"),
         ],
         "jitter": 0.05,
-        "hiddens": [32],
+        "hiddens": [64],
         "gamma": 0.96,
         # If not in self play then amTFT
         # will be evaluated against a naive selfish policy or an exploiter
@@ -157,10 +158,11 @@ def get_hyperparameters(
         # "self_play": False, # Not tested
         # "env_name": "IteratedPrisonersDilemma" if env is None else env,
         # "env_name": "IteratedAsymBoS" if env is None else env,
-        "env_name": "CoinGame" if env is None else env,
+        # "env_name": "IteratedBoS" if env is None else env,
+        # "env_name": "CoinGame" if env is None else env,
         # "env_name": "AsymCoinGame" if env is None else env,
         # "env_name": "MixedMotiveCoinGame" if env is None else env,
-        # "env_name": "SSDMixedMotiveCoinGame" if env is None else env,
+        "env_name": "SSDMixedMotiveCoinGame" if env is None else env,
         "overwrite_reward": True,
         "explore_during_evaluation": True,
         "reward_uncertainty": reward_uncertainty,
@@ -200,13 +202,10 @@ def modify_hyperparams_for_the_selected_env(hp):
         amTFT.PLOT_ASSEMBLAGE_TAGS
         + aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS
     )
-    mul_temp = 1.0
 
     hp["punishment_multiplier"] = 3.0
     hp["buf_frac"] = 0.125
-    hp["training_intensity"] = 10
-    # hp["rollout_length"] = 40
-    # hp["n_rollout_replicas"] = 20
+    hp["training_intensity"] = 1 if hp["debug"] else 40
     hp["rollout_length"] = 4
     hp["n_rollout_replicas"] = 5
 
@@ -216,56 +215,56 @@ def modify_hyperparams_for_the_selected_env(hp):
 
         hp["n_steps_per_epi"] = 20 if hp["debug"] else 100
         hp["n_epi"] = 10 if hp["debug"] else 4000
+        hp["eval_over_n_epi"] = 1
         hp["base_lr"] = 0.1
-        hp["bs_epi_mul"] = 1
+        hp["bs_epi_mul"] = 4
         hp["both_players_can_pick_the_same_coin"] = False
         hp["sgd_momentum"] = 0.9
 
         hp["lambda"] = 0.96
         hp["alpha"] = 0.0
-        hp["beta"] = 0.5
+        hp["beta"] = 0.5 / 2
 
-        hp["debit_threshold"] = 30.0
+        hp["debit_threshold"] = 3.0
         hp["jitter"] = 0.02
         hp["filter_utilitarian"] = False
 
-        hp["target_network_update_freq"] = 100 * hp["n_steps_per_epi"]
-        hp["last_exploration_temp_value"] = 0.03 * mul_temp
+        hp["buf_frac"] = 0.5
+        hp["target_network_update_freq"] = 30 * hp["n_steps_per_epi"]
+        hp["last_exploration_temp_value"] = 0.003
 
-        hp["temperature_schedule"] = PiecewiseSchedule(
-            endpoints=[
-                (0, 2.0 * mul_temp),
-                (
-                    int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.20),
-                    0.5 * mul_temp,
-                ),
-                (
-                    int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.60),
-                    hp["last_exploration_temp_value"],
-                ),
-            ],
-            outside_value=hp["last_exploration_temp_value"],
-            framework="torch",
-        )
+        hp["temperature_steps_config"] = [
+            (0, 2.0),
+            (0.2, 0.5),
+            (0.6, hp["last_exploration_temp_value"]),
+        ]
+        hp["lr_steps_config"] = [
+            (0, 0.0),
+            (0.05, 1.0),
+            (0.25, 0.5),
+            (1.0, 1e-9),
+        ]
 
         if "AsymCoinGame" in hp["env_name"]:
             hp["x_limits"] = (-0.5, 3.0)
-            hp["y_limits"] = (-1.1, 0.6)
+            hp["y_limits"] = (-0.8, 0.8)
             hp["env_class"] = vectorized_coin_game.AsymVectorizedCoinGame
+        elif "SSDMixedMotiveCoinGame" in hp["env_name"]:
+            hp["x_limits"] = (-0.1, 1.5)
+            hp["y_limits"] = (-0.1, 1.5)
+            hp["env_class"] = ssd_mixed_motive_coin_game.SSDMixedMotiveCoinGame
+            hp["temperature_steps_config"] = [
+                (0, 0.75),
+                (0.2, 0.45),
+                (0.9, hp["last_exploration_temp_value"]),
+            ]
+            hp["both_players_can_pick_the_same_coin"] = True
         elif "MixedMotiveCoinGame" in hp["env_name"]:
-            if "SSDMixedMotiveCoinGame" in hp["env_name"]:
-                hp["debit_threshold"] = 3.0
-                hp["x_limits"] = (-0.25, 1.0)
-                hp["y_limits"] = (-0.25, 1.5)
-                hp[
-                    "env_class"
-                ] = ssd_mixed_motive_coin_game.SSDMixedMotiveCoinGame
-            else:
-                hp["x_limits"] = (-2.0, 2.0)
-                hp["y_limits"] = (-0.5, 3.0)
-                hp[
-                    "env_class"
-                ] = vectorized_mixed_motive_coin_game.VectMixedMotiveCG
+            hp["x_limits"] = (-2.0, 2.0)
+            hp["y_limits"] = (-0.5, 3.0)
+            hp[
+                "env_class"
+            ] = vectorized_mixed_motive_coin_game.VectMixedMotiveCG
             hp["both_players_can_pick_the_same_coin"] = True
         else:
             hp["x_limits"] = (-0.5, 0.6)
@@ -279,9 +278,10 @@ def modify_hyperparams_for_the_selected_env(hp):
         ] += matrix_sequential_social_dilemma.PLOT_ASSEMBLAGE_TAGS
 
         hp["base_lr"] = 0.03
-        hp["bs_epi_mul"] = 1
-        hp["n_steps_per_epi"] = 20
-        hp["n_epi"] = 10 if hp["debug"] else 800
+        hp["bs_epi_mul"] = 4
+        hp["n_steps_per_epi"] = 10 if hp["debug"] else 20
+        hp["n_epi"] = 5 if hp["debug"] else 800
+        hp["eval_over_n_epi"] = 5
         hp["lambda"] = 0.96
         hp["alpha"] = 0.0
         hp["beta"] = 1.0
@@ -290,23 +290,18 @@ def modify_hyperparams_for_the_selected_env(hp):
         hp["debit_threshold"] = 10.0
 
         hp["target_network_update_freq"] = 30 * hp["n_steps_per_epi"]
-        hp["last_exploration_temp_value"] = 0.1 * mul_temp
+        hp["last_exploration_temp_value"] = 0.1
 
-        hp["temperature_schedule"] = PiecewiseSchedule(
-            endpoints=[
-                (0, 2.0 * mul_temp),
-                (
-                    int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.33),
-                    0.5 * mul_temp,
-                ),
-                (
-                    int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.66),
-                    hp["last_exploration_temp_value"],
-                ),
-            ],
-            outside_value=hp["last_exploration_temp_value"],
-            framework="torch",
-        )
+        hp["temperature_steps_config"] = [
+            (0, 2.0),
+            (0.33, 0.5),
+            (0.66, hp["last_exploration_temp_value"]),
+        ]
+        hp["lr_steps_config"] = [
+            (0, 0.0),
+            (0.05, 1.0),
+            (1.0, 1e-9),
+        ]
 
         if "IteratedPrisonersDilemma" in hp["env_name"]:
             hp["filter_utilitarian"] = False
@@ -321,14 +316,13 @@ def modify_hyperparams_for_the_selected_env(hp):
             hp["y_limits"] = (-0.1, 4.1)
             hp["utilitarian_filtering_threshold"] = 3.2
             hp["env_class"] = matrix_sequential_social_dilemma.IteratedAsymBoS
+        elif "IteratedBoS" in hp["env_name"]:
+            hp["x_limits"] = (-0.1, 4.1)
+            hp["y_limits"] = (-0.1, 4.1)
+            hp["utilitarian_filtering_threshold"] = 2.5
+            hp["env_class"] = matrix_sequential_social_dilemma.IteratedBoS
         else:
             raise NotImplementedError(f'hp["env_name"]: {hp["env_name"]}')
-
-    hp["lr_schedule"] = [
-        (0, 0.0),
-        (int(hp["n_steps_per_epi"] * hp["n_epi"] * 0.05), hp["base_lr"]),
-        (int(hp["n_steps_per_epi"] * hp["n_epi"]), hp["base_lr"] / 1e9),
-    ]
 
     hp["plot_axis_scale_multipliers"] = (
         (1 / hp["n_steps_per_epi"]),  # for x axis
@@ -339,6 +333,9 @@ def modify_hyperparams_for_the_selected_env(hp):
         env_class=hp["env_class"],
         reward_uncertainty_std=hp["reward_uncertainty"],
     )
+
+    hp["temperature_schedule"] = config_helper.get_temp_scheduler()
+    hp["lr_schedule"] = config_helper.get_lr_scheduler()
 
     return hp
 
@@ -397,13 +394,15 @@ def preprocess_utilitarian_config(hp):
 
 
 def get_rllib_config(hp, welfare_fn, eval=False):
-    stop = {
+    stop_config = {
         "episodes_total": hp["n_epi"],
     }
 
     env_config = get_env_config(hp)
     env_config["bs_epi_mul"] = hp["bs_epi_mul"]
     env_config["buf_frac"] = hp["buf_frac"]
+    env_config["temperature_steps_config"] = hp["temperature_steps_config"]
+    env_config["lr_steps_config"] = hp["lr_steps_config"]
     policies = get_policies(hp, env_config, welfare_fn, eval)
 
     selected_seeds = hp["seeds"][: hp["train_n_replicates"]]
@@ -463,7 +462,6 @@ def get_rllib_config(hp, welfare_fn, eval=False):
             amTFT.AmTFTCallbacks,
             log.get_logging_callbacks_class(
                 log_full_epi=hp["num_envs_per_worker"] == 1,
-                log_full_epi_interval=100,
             ),
         ),
         "logger_config": {
@@ -503,7 +501,7 @@ def get_rllib_config(hp, welfare_fn, eval=False):
         "prioritized_replay": False,
         "model": {
             # Number of hidden layers for fully connected net
-            "fcnet_hiddens": [64, 64],
+            "fcnet_hiddens": [64],
             # Nonlinearity for fully connected net (tanh, relu)
             "fcnet_activation": "relu",
         },
@@ -532,13 +530,18 @@ def get_rllib_config(hp, welfare_fn, eval=False):
             # Add constructor kwargs here (if any).
             "temperature_schedule": hp["temperature_schedule"],
         },
+        "optimizer": {
+            "sgd_momentum": hp["sgd_momentum"],
+        },
         # "log_level": "DEBUG",
     }
 
     rllib_config = _modify_config_for_coin_game(rllib_config, env_config, hp)
-    rllib_config = _modify_config_for_r2d2(rllib_config, hp)
+    rllib_config, stop_config = _modify_config_for_r2d2(
+        rllib_config, hp, stop_config, eval
+    )
 
-    return stop, env_config, rllib_config
+    return stop_config, env_config, rllib_config
 
 
 def get_env_config(hp):
@@ -580,9 +583,9 @@ def get_policies(hp, env_config, welfare_fn, eval=False):
             "debit_threshold": hp["debit_threshold"],
             "rollout_length": min(hp["n_steps_per_epi"], hp["rollout_length"]),
             "n_rollout_replicas": hp["n_rollout_replicas"],
-            "optimizer": {
-                "sgd_momentum": hp["sgd_momentum"],
-            },
+            # "optimizer": {
+            #     "sgd_momentum": hp["sgd_momentum"],
+            # },
             "nested_policies": [
                 {"Policy_class": CoopNestedPolicyClass, "config_update": {}},
                 {"Policy_class": NestedPolicyClass, "config_update": {}},
@@ -638,7 +641,6 @@ def get_nested_policy_class(hp, welfare_fn):
                 inequity_aversion_gamma=hp["gamma"],
                 inequity_aversion_lambda=hp["lambda"],
             ),
-            # Used by both DQN and R2D2
             postprocess_nstep_and_prio,
         )
     )
@@ -646,7 +648,6 @@ def get_nested_policy_class(hp, welfare_fn):
 
 
 def _select_base_policy(hp):
-    print("use_r2d2", hp["use_r2d2"])
     if hp["use_r2d2"]:
         print("using augmented_r2d2.MyR2D2TorchPolicy")
         nested_policy_class = augmented_r2d2.MyR2D2TorchPolicy
@@ -657,16 +658,17 @@ def _select_base_policy(hp):
 
 def _modify_config_for_coin_game(rllib_config, env_config, hp):
     if "CoinGame" in hp["env_name"]:
+        rllib_config["hiddens"] = [32]
         rllib_config["model"] = {
             "dim": env_config["grid_size"],
-            "conv_filters": [[16, [3, 3], 1], [16, [3, 3], 1]],
+            "conv_filters": [[64, [3, 3], 1], [64, [3, 3], 1]],
             # [Channel, [Kernel, Kernel], Stride]]
             "fcnet_hiddens": [64, 64],
         }
     return rllib_config
 
 
-def _modify_config_for_r2d2(rllib_config, hp):
+def _modify_config_for_r2d2(rllib_config, hp, stop_config, eval=False):
     if hp["use_r2d2"]:
         rllib_config["model"]["use_lstm"] = True
         rllib_config["use_h_function"] = False
@@ -679,13 +681,14 @@ def _modify_config_for_r2d2(rllib_config, hp):
             rllib_config["model"]["max_seq_len"] = 20
             rllib_config["env_config"]["bs_epi_mul"] = 4
             rllib_config["model"]["lstm_cell_size"] = 16
-            rllib_config["training_intensity"] = tune.sample_from(
-                lambda spec: spec.config["num_envs_per_worker"]
-                * hp["training_intensity"]
-                * 4
-            )
+            if "CoinGame" in hp["env_name"]:
+                rllib_config["training_intensity"] = tune.sample_from(
+                    lambda spec: spec.config["num_envs_per_worker"] * 40
+                )
+                if not eval:
+                    stop_config["episodes_total"] = 8000
 
-    return rllib_config
+    return rllib_config, stop_config
 
 
 def postprocess_utilitarian_results(results, env_config, hp):
@@ -714,7 +717,7 @@ def postprocess_utilitarian_results(results, env_config, hp):
 
 
 def config_and_evaluate_cross_play(tune_analysis_per_welfare, hp):
-    config_eval, env_config, stop, hp_eval = generate_eval_config(hp)
+    config_eval, env_config, stop, hp_eval = _generate_eval_config(hp)
     return evaluate_self_play_cross_play(
         tune_analysis_per_welfare, config_eval, env_config, stop, hp_eval
     )
@@ -724,7 +727,7 @@ def evaluate_self_play_cross_play(
     tune_analysis_per_welfare, config_eval, env_config, stop, hp_eval
 ):
     exp_name = os.path.join(hp_eval["exp_name"], "eval")
-    evaluator = self_and_cross_perf.SelfAndCrossPlayEvaluator(
+    evaluator = cross_play.evaluator.SelfAndCrossPlayEvaluator(
         exp_name=exp_name,
         local_mode=hp_eval["debug"],
     )
@@ -735,7 +738,7 @@ def evaluate_self_play_cross_play(
             env_config["players_ids"]
         ),
         tune_analysis_per_exp=tune_analysis_per_welfare,
-        TrainerClass=dqn.r2d2.R2D2Trainer
+        rllib_trainer_class=dqn.r2d2.R2D2Trainer
         if hp_eval["use_r2d2"]
         else dqn.DQNTrainer,
         n_self_play_per_checkpoint=hp_eval["n_self_play_per_checkpoint"],
@@ -772,16 +775,16 @@ def evaluate_self_play_cross_play(
     return analysis_metrics_per_mode
 
 
-def generate_eval_config(hp):
-    hp_eval = modify_hp_for_evaluation(hp)
+def _generate_eval_config(hp):
+    hp_eval = modify_hp_for_evaluation(hp, hp["eval_over_n_epi"])
     fake_welfare_function = postprocessing.WELFARE_INEQUITY_AVERSION
-    stop, env_config, rllib_config = get_rllib_config(
+    stop_config, env_config, rllib_config = get_rllib_config(
         hp_eval, fake_welfare_function, eval=True
     )
-    config_eval = modify_config_for_evaluation(
-        rllib_config, hp_eval, env_config
+    config_eval, stop_config = modify_config_for_evaluation(
+        rllib_config, hp_eval, env_config, stop_config
     )
-    return config_eval, env_config, stop, hp_eval
+    return config_eval, env_config, stop_config, hp_eval
 
 
 def modify_hp_for_evaluation(hp: dict, eval_over_n_epi: int = 1):
@@ -790,7 +793,9 @@ def modify_hp_for_evaluation(hp: dict, eval_over_n_epi: int = 1):
     hp_eval["overwrite_reward"] = False
     hp_eval["num_envs_per_worker"] = 1
     hp_eval["n_epi"] = eval_over_n_epi
-    hp_eval["n_steps_per_epi"] = 5 if hp_eval["debug"] else 100
+    if hp_eval["debug"]:
+        hp_eval["n_epi"] = 1
+        hp_eval["n_steps_per_epi"] = 5
     hp_eval["bs_epi_mul"] = 1
     hp_eval["plot_axis_scale_multipliers"] = (
         # for x axis
@@ -809,11 +814,16 @@ def modify_hp_for_evaluation(hp: dict, eval_over_n_epi: int = 1):
     return hp_eval
 
 
-def modify_config_for_evaluation(config_eval, hp, env_config):
+def modify_config_for_evaluation(config_eval, hp, env_config, stop_config):
     config_eval["explore"] = False
     config_eval["seed"] = None
     config_eval["num_workers"] = 0
-    assert config_eval["num_envs_per_worker"] == 1
+    assert (
+        config_eval["num_envs_per_worker"] == 1
+    ), f'num_envs_per_worker {config_eval["num_envs_per_worker"]}'
+    assert (
+        stop_config["episodes_total"] <= 20
+    ), f'episodes_total {stop_config["episodes_total"]}'
     policies = config_eval["multiagent"]["policies"]
     for policy_id in policies.keys():
         policy_config = policies[policy_id][3]
@@ -843,11 +853,11 @@ def modify_config_for_evaluation(config_eval, hp, env_config):
             policies[policy_id][3]["debit_threshold"] = 0.5
             policies[policy_id][3]["last_k"] = hp["n_steps_per_epi"] - 1
 
-    return config_eval
+    return config_eval, stop_config
 
 
 def print_inequity_aversion_welfare(env_config, analysis_metrics_per_mode):
-    plotter = self_and_cross_perf.SelfAndCrossPlayPlotter()
+    plotter = cross_play.evaluator.SelfAndCrossPlayPlotter()
     plotter._reset(
         x_axis_metric=f"nested_policy/{env_config['players_ids'][0]}/worker_0/"
         f"policy_0/sum_over_epi_inequity_aversion_welfare",
@@ -864,5 +874,5 @@ def print_inequity_aversion_welfare(env_config, analysis_metrics_per_mode):
 
 if __name__ == "__main__":
     use_r2d2 = True
-    debug_mode = False
+    debug_mode = True
     main(debug_mode, use_r2d2=use_r2d2)

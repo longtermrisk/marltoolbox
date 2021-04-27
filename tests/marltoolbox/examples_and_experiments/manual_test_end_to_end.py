@@ -4,7 +4,7 @@
 import ray
 
 from marltoolbox.utils import postprocessing
-from marltoolbox.utils.miscellaneous import check_learning_achieved
+from marltoolbox.utils.tune_analysis import check_learning_achieved
 
 
 def print_metrics_available(tune_analysis):

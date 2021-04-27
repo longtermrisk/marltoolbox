@@ -5,8 +5,7 @@ from ray import tune
 from ray.rllib.agents.pg import PGTrainer
 
 from marltoolbox.examples.rllib_api.pg_ipd import get_rllib_config
-from marltoolbox.utils import log, miscellaneous, restore
-from marltoolbox.utils import self_and_cross_perf
+from marltoolbox.utils import log, miscellaneous, restore, cross_play
 from marltoolbox.utils.miscellaneous import get_random_seeds
 
 
@@ -15,7 +14,7 @@ def _init_evaluator():
 
     rllib_config, stop_config = get_rllib_config(seeds=get_random_seeds(1))
 
-    evaluator = self_and_cross_perf.SelfAndCrossPlayEvaluator(
+    evaluator = cross_play.evaluator.SelfAndCrossPlayEvaluator(
         exp_name=exp_name,
     )
     evaluator.define_the_experiment_to_run(

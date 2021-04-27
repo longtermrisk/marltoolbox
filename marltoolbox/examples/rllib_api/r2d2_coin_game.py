@@ -6,6 +6,8 @@ from ray.rllib.agents import dqn
 from ray.tune.integration.wandb import WandbLogger
 from ray.tune.logger import DEFAULT_LOGGERS
 from ray.rllib.agents.dqn.r2d2_torch_policy import postprocess_nstep_and_prio
+from ray.rllib.utils.schedules import PiecewiseSchedule
+
 from marltoolbox.examples.rllib_api import dqn_coin_game, dqn_wt_welfare
 from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
 from marltoolbox.utils import log, miscellaneous, postprocessing
@@ -16,11 +18,11 @@ from marltoolbox.envs import coin_game, ssd_mixed_motive_coin_game
 def main(debug):
     """Train R2D2 agent in the Coin Game environment"""
 
-    env = "CoinGame"
-    # env = "SSDMixedMotiveCoinGame"
+    # env = "CoinGame"
+    env = "SSDMixedMotiveCoinGame"
     # welfare_to_use = None
-    # welfare_to_use = postprocessing.WELFARE_UTILITARIAN
-    welfare_to_use = postprocessing.WELFARE_INEQUITY_AVERSION
+    welfare_to_use = postprocessing.WELFARE_UTILITARIAN
+    # welfare_to_use = postprocessing.WELFARE_INEQUITY_AVERSION
 
     rllib_config, stop_config, hparams = _get_config_and_hp_for_training(
         debug, env, welfare_to_use
@@ -85,6 +87,7 @@ def _adapt_configs_for_r2d2(rllib_config, stop_config, hp):
     rllib_config["model"]["use_lstm"] = True
     rllib_config["burn_in"] = 0
     rllib_config["zero_init_states"] = False
+    rllib_config["use_h_function"] = False
 
     rllib_config = _replace_class_of_policies_by(
         augmented_r2d2.MyR2D2TorchPolicy,
@@ -92,22 +95,115 @@ def _adapt_configs_for_r2d2(rllib_config, stop_config, hp):
     )
 
     if not hp["debug"]:
-        rllib_config["use_h_function"] = tune.grid_search([True, False])
-        rllib_config["env_config"]["training_intensity"] = tune.grid_search(
-            [20, 40, 60]
-        )
-        rllib_config["lr"] = (
-            0.2 if hp["debug"] else tune.grid_search([0.1, 0.2, 0.4])
-        )
-        rllib_config["training_intensity"] = tune.sample_from(
-            lambda spec: spec.config["num_envs_per_worker"]
-            * spec.config["env_config"]["training_intensity"]
-            * max(1, spec.config["num_workers"])
-        )
-        rllib_config["model"]["lstm_cell_size"] = tune.grid_search([4, 16, 64])
+        # rllib_config["env_config"]["training_intensity"] = 40
+        # rllib_config["lr"] = 0.1
+        # rllib_config["training_intensity"] = tune.sample_from(
+        #     lambda spec: spec.config["num_envs_per_worker"]
+        #     * spec.config["env_config"]["training_intensity"]
+        #     * max(1, spec.config["num_workers"])
+        # )
+        stop_config["episodes_total"] = 8000
+        rllib_config["model"]["lstm_cell_size"] = 16
         rllib_config["model"]["max_seq_len"] = 20
-        rllib_config["env_config"]["buf_frac"] = tune.grid_search(
-            [0.125, 0.25, 0.5]
+        # rllib_config["env_config"]["buf_frac"] = 0.5
+        # rllib_config["hiddens"] = [32]
+        # rllib_config["model"]["fcnet_hiddens"] = [64, 64]
+        # rllib_config["model"]["conv_filters"] = tune.grid_search(
+        #     [
+        #         [[32, [3, 3], 1], [32, [3, 3], 1]],
+        #         [[64, [3, 3], 1], [64, [3, 3], 1]],
+        #     ]
+        # )
+
+        rllib_config["env_config"]["temp_ratio"] = (
+            1.0 if hp["debug"] else tune.grid_search([0.75, 1.0])
+        )
+        rllib_config["env_config"]["interm_temp_ratio"] = (
+            1.0 if hp["debug"] else tune.grid_search([0.75, 1.0])
+        )
+        rllib_config["env_config"]["last_exploration_t"] = (
+            0.6 if hp["debug"] else tune.grid_search([0.9, 0.99])
+        )
+        rllib_config["env_config"]["last_exploration_temp_value"] = (
+            1.0 if hp["debug"] else 0.003
+        )
+        rllib_config["env_config"]["interm_exploration_t"] = (
+            0.2 if hp["debug"] else tune.grid_search([0.2, 0.6])
+        )
+        rllib_config["exploration_config"][
+            "temperature_schedule"
+        ] = tune.sample_from(
+            lambda spec: PiecewiseSchedule(
+                endpoints=[
+                    (0, 1.0 * spec.config["env_config"]["temp_ratio"]),
+                    (
+                        int(
+                            spec.config["env_config"]["max_steps"]
+                            * spec.stop["episodes_total"]
+                            * spec.config["env_config"]["interm_exploration_t"]
+                        ),
+                        0.6
+                        * spec.config["env_config"]["temp_ratio"]
+                        * spec.config["env_config"]["interm_temp_ratio"],
+                    ),
+                    (
+                        int(
+                            spec.config["env_config"]["max_steps"]
+                            * spec.stop["episodes_total"]
+                            * spec.config["env_config"]["last_exploration_t"]
+                        ),
+                        spec.config["env_config"][
+                            "last_exploration_temp_value"
+                        ],
+                    ),
+                ],
+                outside_value=spec.config["env_config"][
+                    "last_exploration_temp_value"
+                ],
+                framework="torch",
+            )
+        )
+
+        # rllib_config["env_config"]["bs_epi_mul"] = (
+        #     4 if hp["debug"] else tune.grid_search([4, 8, 16])
+        # )
+        rllib_config["env_config"]["interm_lr_ratio"] = (
+            0.5
+            if hp["debug"]
+            else tune.grid_search([0.5 * 3, 0.5, 0.5 / 3, 0.5 / 9])
+        )
+        rllib_config["env_config"]["interm_lr_t"] = (
+            0.5 if hp["debug"] else tune.grid_search([0.25, 0.5, 0.75])
+        )
+        rllib_config["lr"] = 0.1 if hp["debug"] else 0.1
+        rllib_config["lr_schedule"] = tune.sample_from(
+            lambda spec: [
+                (0, 0.0),
+                (
+                    int(
+                        spec.config["env_config"]["max_steps"]
+                        * spec.stop["episodes_total"]
+                        * 0.05
+                    ),
+                    spec.config.lr,
+                ),
+                (
+                    int(
+                        spec.config["env_config"]["max_steps"]
+                        * spec.stop["episodes_total"]
+                        * spec.config["env_config"]["interm_lr_t"]
+                    ),
+                    spec.config.lr
+                    * spec.config["env_config"]["interm_lr_ratio"],
+                ),
+                (
+                    int(
+                        spec.config["env_config"]["max_steps"]
+                        * spec.stop["episodes_total"]
+                    ),
+                    spec.config.lr / 1e9,
+                ),
+            ]
         )
     else:
         rllib_config["model"]["max_seq_len"] = 2

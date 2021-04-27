@@ -33,7 +33,7 @@ class Qnetwork:
         with tf.variable_scope(myScope):
             self.input_place = tf.placeholder(shape=[5], dtype=tf.int32)
             if simple_net:
-                self.p_act = tf.Variable(tf.random_normal([5, 1], stddev=1.0))
+                self.p_act = tf.Variable(tf.random_normal([5, 1], stddev=3.0))
             else:
                 act = tf.nn.tanh(
                     layers.fully_connected(
@@ -158,11 +158,11 @@ def corrections_func(mainQN, corrections, gamma, pseudo, reg):
     mainQN[1].delta += tf.multiply(second_order1, mainQN[1].lr_correction)
 
 
-class LOLAExact(tune.Trainable):
+class LOLAExactTrainer(tune.Trainable):
     def _init_lola(
         self,
-        env_name,
         *,
+        env_name="AsymBoS",
         num_episodes=50,
         trace_length=200,
         simple_net=True,
@@ -178,7 +178,7 @@ class LOLAExact(tune.Trainable):
         **kwargs,
     ):
 
-        print("args not used:", kwargs)
+        # print("args not used:", kwargs)
 
         self.num_episodes = num_episodes
         self.trace_length = trace_length
@@ -202,7 +202,7 @@ class LOLAExact(tune.Trainable):
             if env_name == "IPD":
                 self.payout_mat_1 = np.array([[-1.0, 0.0], [-3.0, -2.0]])
                 self.payout_mat_2 = self.payout_mat_1.T
-            elif env_name == "AsymmetricIteratedBoS":
+            elif env_name == "AsymBoS":
                 self.payout_mat_1 = np.array([[+4.0, 0.0], [0.0, +2.0]])
                 self.payout_mat_2 = np.array([[+1.0, 0.0], [0.0, +2.0]])
             else:
@@ -241,7 +241,6 @@ class LOLAExact(tune.Trainable):
     # TODO add something to not load and create everything when only evaluating with RLLib
 
     def setup(self, config):
-        print("_init_lola", config)
         self._init_lola(**config)
 
     def step(self):
@@ -383,7 +382,9 @@ class LOLAExact(tune.Trainable):
 
     def compute_actions(self, policy_id: str, obs_batch: list):
         # because of the LSTM
-        assert len(obs_batch) == 1
+        assert (
+            len(obs_batch) == 1
+        ), f"{len(obs_batch)} == 1. obs_batch: {obs_batch}"
 
         for single_obs in obs_batch:
             agent_to_use = self._get_agent_to_use(policy_id)

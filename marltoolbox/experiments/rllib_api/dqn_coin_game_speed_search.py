@@ -1,4 +1,5 @@
 from ray import tune
+from ray.rllib.utils.schedules import PiecewiseSchedule
 
 from marltoolbox.envs import coin_game, ssd_mixed_motive_coin_game
 from marltoolbox.examples.rllib_api import dqn_coin_game
@@ -14,10 +15,10 @@ def main(debug):
     exp_name, _ = log.log_in_current_day_dir("DQN_CG_speed_search")
 
     env = "CoinGame"
-    # env = "SSDMixedMotiveCoinGame"
-    # welfare_to_use = None
-    # welfare_to_use = postprocessing.WELFARE_UTILITARIAN
-    welfare_to_use = postprocessing.WELFARE_INEQUITY_AVERSION
+    env = "SSDMixedMotiveCoinGame"
+    welfare_to_use = None
+    welfare_to_use = postprocessing.WELFARE_UTILITARIAN
+    # welfare_to_use = postprocessing.WELFARE_INEQUITY_AVERSION
 
     if "SSDMixedMotiveCoinGame" in env:
         env_class = ssd_mixed_motive_coin_game.SSDMixedMotiveCoinGame
@@ -46,83 +47,103 @@ def main(debug):
 
 
 def _add_search_to_config(rllib_config, stop_config, hp):
-    # rllib_config["num_gpus"] = 0.33
-    # rllib_config["num_gpus_per_worker"] = 0.33
-    rllib_config["num_envs_per_worker"] = tune.grid_search([128, 64, 32, 16])
-    rllib_config["lr"] = 0.2 if hp["debug"] else 0.2
-    # rllib_config["env_config"]["max_steps"] = 10 if hp["debug"] else 100
-    rllib_config["num_workers"] = (
-        0 if hp["debug"] else tune.grid_search([0, 3, 9])
-    )
-    stop_config["episodes_total"] = (
-        10 if hp["debug"] else tune.grid_search([2000, 4000])
-    )
-    # rllib_config["model"] = {
-    #     "dim": 3,
-    #     "conv_filters": [[16, [3, 3], 1], [16, [3, 3], 1]],
-    #     "fcnet_hiddens": [64, 64],
-    # }
-    # rllib_config["hiddens"] = [32]
-    # rllib_config["env_config"].update(
-    #     {
-    #         "max_steps": 100,
-    #         "grid_size": 3,
-    #         "temp_mid_step": 0.6,
-    #         "bs_epi_mul": 4 if hp["debug"] else 4,
-    #     }
+    assert hp["last_exploration_temp_value"] == 0.01
+
+    stop_config["episodes_total"] = 10 if hp["debug"] else 8000
+    # rllib_config["lr"] = 0.1
+    # rllib_config["env_config"]["training_intensity"] = (
+    #     20 if hp["debug"] else 40
     # )
     # rllib_config["training_intensity"] = tune.sample_from(
     #     lambda spec: spec.config["num_envs_per_worker"]
-    #     * max(1, spec.config["num_workers"])
-    #     * 10
+    #     * max(spec.config["num_workers"], 1)
+    #     * spec.config["env_config"]["training_intensity"]
     # )
-
-    # rllib_config["exploration_config"] = {
-    #     # The Exploration class to use. In the simplest case,
-    #     # this is the name (str) of any class present in the
-    #     # `rllib.utils.exploration` package.
-    #     # You can also provide the python class directly or
-    #     # the full location of your class (e.g.
-    #     # "ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy").
-    #     # "type": exploration.SoftQSchedule,
-    #     "type": exploration.SoftQSchedule,
-    #     # Add constructor kwargs here (if any).
-    #     "temperature_schedule": tune.sample_from(
-    #         lambda spec: PiecewiseSchedule(
-    #             endpoints=[
-    #                 (0, 2.0),
-    #                 (
-    #                     int(
-    #                         spec.config["env_config"]["max_steps"]
-    #                         * spec.stop["episodes_total"]
-    #                         * 0.20
-    #                     ),
-    #                     0.5,
+    # rllib_config["env_config"]["temp_ratio"] = (
+    #     1.0 if hp["debug"] else tune.grid_search([1.0, 0.5, 2.0])
+    # )
+    # rllib_config["env_config"]["interm_temp_ratio"] = (
+    #     1.0 if hp["debug"] else tune.grid_search([1.0, 5.0, 2.0, 3.0, 10.0])
+    # )
+    # rllib_config["env_config"]["last_exploration_t"] = (
+    #     0.6 if hp["debug"] else 0.9
+    # )
+    # rllib_config["env_config"]["last_exploration_temp_value"] = (
+    #     1.0 if hp["debug"] else 0.003
+    # )
+    # rllib_config["exploration_config"][
+    #     "temperature_schedule"
+    # ] = tune.sample_from(
+    #     lambda spec: PiecewiseSchedule(
+    #         endpoints=[
+    #             (0, 0.5 * spec.config["env_config"]["temp_ratio"]),
+    #             (
+    #                 int(
+    #                     spec.config["env_config"]["max_steps"]
+    #                     * spec.stop["episodes_total"]
+    #                     * 0.20
     #                 ),
-    #                 (
-    #                     int(
-    #                         spec.config["env_config"]["max_steps"]
-    #                         * spec.stop["episodes_total"]
-    #                         * spec.config["env_config"]["temp_mid_step"]
-    #                     ),
-    #                     hp["last_exploration_temp_value"],
+    #                 0.1
+    #                 * spec.config["env_config"]["temp_ratio"]
+    #                 * spec.config["env_config"]["interm_temp_ratio"],
+    #             ),
+    #             (
+    #                 int(
+    #                     spec.config["env_config"]["max_steps"]
+    #                     * spec.stop["episodes_total"]
+    #                     * spec.config["env_config"]["last_exploration_t"]
     #                 ),
-    #             ],
-    #             outside_value=hp["last_exploration_temp_value"],
-    #             framework="torch",
-    #         )
-    #     ),
-    # }
-    # rllib_config["train_batch_size"] = tune.sample_from(
-    #     lambda spec: int(
-    #         spec.config["env_config"]["max_steps"]
-    #         * spec.config["env_config"]["bs_epi_mul"]
+    #                 spec.config["env_config"]["last_exploration_temp_value"],
+    #             ),
+    #         ],
+    #         outside_value=spec.config["env_config"][
+    #             "last_exploration_temp_value"
+    #         ],
+    #         framework="torch",
     #     )
     # )
+
+    rllib_config["env_config"]["bs_epi_mul"] = (
+        4 if hp["debug"] else tune.grid_search([4, 8, 16])
+    )
+    rllib_config["env_config"]["interm_lr_ratio"] = (
+        0.5 if hp["debug"] else tune.grid_search([0.5 * 3, 0.5, 0.5 / 3])
+    )
+    rllib_config["lr"] = (
+        0.1 if hp["debug"] else tune.grid_search([0.1, 0.2, 0.4])
+    )
+    rllib_config["lr_schedule"] = tune.sample_from(
+        lambda spec: [
+            (0, 0.0),
+            (
+                int(
+                    spec.config["env_config"]["max_steps"]
+                    * spec.stop["episodes_total"]
+                    * 0.05
+                ),
+                spec.config.lr,
+            ),
+            (
+                int(
+                    spec.config["env_config"]["max_steps"]
+                    * spec.stop["episodes_total"]
+                    * 0.5
+                ),
+                spec.config.lr * spec.config["env_config"]["interm_lr_ratio"],
+            ),
+            (
+                int(
+                    spec.config["env_config"]["max_steps"]
+                    * spec.stop["episodes_total"]
+                ),
+                spec.config.lr / 1e9,
+            ),
+        ]
+    )
 
     return rllib_config, stop_config
 
 
 if __name__ == "__main__":
-    debug_mode = False
+    debug_mode = True
     main(debug_mode)

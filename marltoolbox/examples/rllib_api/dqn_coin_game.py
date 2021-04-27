@@ -35,9 +35,9 @@ def get_hyperparameters(seeds, debug, exp_name):
         "debug": debug,
         "exp_name": exp_name,
         "n_steps_per_epi": 100,
-        "n_epi": 2000,
-        "buf_frac": 0.125,
-        "last_exploration_temp_value": 0.1,
+        "n_epi": 4000,
+        "buf_frac": 0.5,
+        "last_exploration_temp_value": 0.003,
         "bs_epi_mul": 4,
         "plot_keys": coin_game.PLOT_KEYS
         + aggregate_and_plot_tensorboard_data.PLOT_KEYS,
@@ -109,7 +109,7 @@ def get_rllib_configs(hp, env_class=None):
         "training_intensity": tune.sample_from(
             lambda spec: spec.config["num_envs_per_worker"]
             * max(spec.config["num_workers"], 1)
-            * 10
+            * 40
         ),
         # Size of a batch sampled from replay buffer for training. Note that
         # if async_updates is set, then each worker returns gradients for a
@@ -140,20 +140,20 @@ def get_rllib_configs(hp, env_class=None):
             "temperature_schedule": tune.sample_from(
                 lambda spec: PiecewiseSchedule(
                     endpoints=[
-                        (0, 2.0),
+                        (0, 1.0),
                         (
                             int(
                                 spec.config["env_config"]["max_steps"]
                                 * spec.stop["episodes_total"]
                                 * 0.20
                             ),
-                            0.5,
+                            0.45,
                         ),
                         (
                             int(
                                 spec.config["env_config"]["max_steps"]
                                 * spec.stop["episodes_total"]
-                                * 0.60
+                                * 0.9
                             ),
                             hp["last_exploration_temp_value"],
                         ),
@@ -167,7 +167,7 @@ def get_rllib_configs(hp, env_class=None):
         "model": {
             "dim": env_config["grid_size"],
             # [Channel, [Kernel, Kernel], Stride]]
-            "conv_filters": [[16, [3, 3], 1], [16, [3, 3], 1]],
+            "conv_filters": [[64, [3, 3], 1], [64, [3, 3], 1]],
             "fcnet_hiddens": [64, 64],
         },
         "hiddens": [32],
@@ -175,7 +175,7 @@ def get_rllib_configs(hp, env_class=None):
         "optimizer": {
             "sgd_momentum": 0.9,
         },
-        "lr": 0.2,
+        "lr": 0.1,
         "lr_schedule": tune.sample_from(
             lambda spec: [
                 (0, 0.0),
@@ -209,9 +209,9 @@ def get_rllib_configs(hp, env_class=None):
                 "log_config": True,
             },
         },
+        "num_envs_per_worker": 16,
         "num_workers": 0,
         # "log_level": "INFO",
-        "num_envs_per_worker": 128,
     }
 
     return rllib_config, stop_config

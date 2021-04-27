@@ -12,7 +12,7 @@ class InversedAmTFTRolloutsTorchPolicy(
     """
 
     def _init(self, config):
-        super()._init_for_rollout(config)
+        super()._init(config)
         self.ag_id_rollout_reward_to_read = self.own_policy_id
 
     @override(base_policy.AmTFTPolicyBase)

@@ -21,6 +21,7 @@ from ray.rllib.agents.dqn.dqn_torch_policy import (
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.tune.integration.wandb import WandbLoggerCallback
 
+import utils.restore
 from marltoolbox.algos.lola.train_cg_tune_class_API import LOLAPGCG
 from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
@@ -325,7 +326,11 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
     )
 
     if tune_hp["load_population"] is None:
-        lvl0_checkpoints = miscellaneous.extract_checkpoints(results_list_lvl0)
+        lvl0_checkpoints = (
+            utils.restore.extract_checkpoints_from_tune_analysis(
+                results_list_lvl0
+            )
+        )
     else:
         lvl0_checkpoints = tune_hp["load_population"]
     lvl0_policy_id = env_config["players_ids"][lvl0_policy_idx]

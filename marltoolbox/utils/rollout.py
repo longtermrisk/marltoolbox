@@ -120,7 +120,6 @@ def internal_rollout(
     if policy_map is None:
         policy_map = worker.policy_map
     state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
-    print("state_init", state_init)
     use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
     action_init = {
         p: flatten_to_single_ndarray(m.action_space.sample())
@@ -145,8 +144,8 @@ def internal_rollout(
     steps = 0
     episodes = 0
     while _keep_going(steps, num_steps, episodes, num_episodes):
-        logger.info(f"Starting epsiode {episodes} in rollout")
-        print(f"Starting epsiode {episodes} in rollout")
+        # logger.info(f"Starting epsiode {episodes} in rollout")
+        # print(f"Starting epsiode {episodes} in rollout")
         mapping_cache = {}  # in case policy_agent_mapping is stochastic
         saver.begin_rollout()
         obs, agent_states = _get_first_obs(

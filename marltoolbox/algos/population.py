@@ -150,6 +150,10 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
         **kwargs,
     ):
         self.set_algo_to_use()
+        self.algorithms[self.active_algo_idx].on_episode_start(
+            *args,
+            **kwargs,
+        )
 
 
 def modify_config_to_use_population(

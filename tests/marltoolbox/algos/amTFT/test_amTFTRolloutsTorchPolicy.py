@@ -254,7 +254,12 @@ def init_worker(
         rllib_config["multiagent"]["policies"][policy_id] = tuple(
             policy_to_modify
         )
+    rllib_config["exploration_config"]["temperature_schedule"] = rllib_config[
+        "exploration_config"
+    ]["temperature_schedule"].func(rllib_config)
+    import ray
 
+    ray.tune.sample
     dqn_trainer = DQNTrainer(
         rllib_config, logger_creator=_get_logger_creator(exp_name)
     )
