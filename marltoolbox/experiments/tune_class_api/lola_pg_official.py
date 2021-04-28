@@ -90,8 +90,8 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
         #
         # "env_name": "IteratedPrisonersDilemma" if env is None else env,
         # "env_name": "IteratedAsymBoS" if env is None else env,
-        # "env_name": "VectorizedCoinGame" if env is None else env,
-        "env_name": "AsymVectorizedCoinGame" if env is None else env,
+        "env_name": "VectorizedCoinGame" if env is None else env,
+        # "env_name": "AsymVectorizedCoinGame" if env is None else env,
         # "env_name": "VectorizedMixedMotiveCoinGame" if env is None else env,
         "pseudo": False,
         "grid_size": 3,
@@ -128,6 +128,10 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
             ("total_reward",),
             ("entrop",),
         ],
+        # "use_normalized_rewards": False,
+        # "use_centered_reward": False,
+        # "deactivate_critic_learning": True,
+        # "use_rolling_avg_actor_grad": False,
         "use_normalized_rewards": tune.grid_search([False, True]),
         "use_centered_reward": tune.grid_search([False, True]),
         "deactivate_critic_learning": tune.grid_search([False, True]),
@@ -182,12 +186,21 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
             {
                 "gamma": 0.9,
                 "lr": 0.005 / 2,
+                # "lr": tune.grid_search(
+                #     [0.005 / 2, 0.005 / 2 * 3, 0.005 / 2 * 3 * 3]
+                # ),
                 "num_episodes": 3 if debug else 2000,
                 "trace_length": 4 if debug else 40,
                 "weigth_decay": 0.03 / 16,
                 "lola_correction_multiplier": 2,
                 "entropy_coeff": 0.002,
                 "batch_size": 8 if debug else 1024,
+                # "batch_size": 8 if debug else tune.grid_search(
+                #     [
+                #         512,
+                #         1024,
+                #     ]
+                # ),
             }
         )
     # elif gamma == 0.9:
@@ -620,5 +633,5 @@ def lola_pg_classify_fn(player_1_reward, player_2_reward):
 
 
 if __name__ == "__main__":
-    debug_mode = True
+    debug_mode = False
     main(debug_mode)

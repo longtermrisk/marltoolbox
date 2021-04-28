@@ -329,10 +329,11 @@ def modify_hyperparams_for_the_selected_env(hp):
         (1 / hp["n_steps_per_epi"]),
     )  # for y axis
 
-    hp["env_class"] = add_RewardUncertaintyEnvClassWrapper(
-        env_class=hp["env_class"],
-        reward_uncertainty_std=hp["reward_uncertainty"],
-    )
+    if hp["reward_uncertainty"] != 0.0:
+        hp["env_class"] = add_RewardUncertaintyEnvClassWrapper(
+            env_class=hp["env_class"],
+            reward_uncertainty_std=hp["reward_uncertainty"],
+        )
 
     hp["temperature_schedule"] = config_helper.get_temp_scheduler()
     hp["lr_schedule"] = config_helper.get_lr_scheduler()
@@ -583,9 +584,9 @@ def get_policies(hp, env_config, welfare_fn, eval=False):
             "debit_threshold": hp["debit_threshold"],
             "rollout_length": min(hp["n_steps_per_epi"], hp["rollout_length"]),
             "n_rollout_replicas": hp["n_rollout_replicas"],
-            # "optimizer": {
-            #     "sgd_momentum": hp["sgd_momentum"],
-            # },
+            "optimizer": {
+                "sgd_momentum": hp["sgd_momentum"],
+            },
             "nested_policies": [
                 {"Policy_class": CoopNestedPolicyClass, "config_update": {}},
                 {"Policy_class": NestedPolicyClass, "config_update": {}},

@@ -239,14 +239,20 @@ class LOLAPGCG(tune.Trainable):
         self.use_centered_reward = use_centered_reward
         self.deactivate_critic = deactivate_critic
         self.use_rolling_avg_actor_grad = use_rolling_avg_actor_grad
+        print("self.deactivate_critic", self.deactivate_critic)
+        print("self.use_normalized_rewards", self.use_normalized_rewards)
+        print("self.use_centered_reward", self.use_centered_reward)
+        print(
+            "self.use_rolling_avg_actor_grad", self.use_rolling_avg_actor_grad
+        )
 
         global_lr_divider_mul = 1.0
         if self.use_normalized_rewards:
-            global_lr_divider_mul = 1.0
+            global_lr_divider_mul = 10.0
         elif self.use_centered_reward:
-            global_lr_divider_mul = 1.0
+            global_lr_divider_mul = 10.0
         elif self.use_rolling_avg_actor_grad:
-            global_lr_divider_mul = 1.0
+            global_lr_divider_mul = 1 / 20.0
 
         self.global_lr_divider = global_lr_divider * global_lr_divider_mul
         self.global_lr_divider_original = (
@@ -578,6 +584,11 @@ class LOLAPGCG(tune.Trainable):
         pow_series = np.arange(self.trace_length)
         discount = np.array([pow(self.gamma, item) for item in pow_series])
 
+        reward_mean_p0 = np.array(trainBatch0[2]).mean()
+        reward_mean_p1 = np.array(trainBatch1[2]).mean()
+        reward_std_p0 = np.array(trainBatch0[2]).std()
+        reward_std_p1 = np.array(trainBatch1[2]).std()
+
         (
             sample_return0,
             sample_reward0,
@@ -632,34 +643,6 @@ class LOLAPGCG(tune.Trainable):
                 },
             )
 
-        # if self.opp_model:
-        #     ## update local clones
-        #     update_clone = [
-        #         self.mainPN_clone[0].update,
-        #         self.mainPN_clone[1].update,
-        #     ]
-        #     feed_dict = {
-        #         self.mainPN_clone[0].state_input: state_input1,
-        #         self.mainPN_clone[0].actions: actions1,
-        #         self.mainPN_clone[0].sample_return: sample_return1,
-        #         self.mainPN_clone[0].sample_reward: sample_reward1,
-        #         self.mainPN_clone[1].state_input: state_input0,
-        #         self.mainPN_clone[1].actions: actions0,
-        #         self.mainPN_clone[1].sample_return: sample_return0,
-        #         self.mainPN_clone[1].sample_reward: sample_reward0,
-        #         self.mainPN_clone[0].gamma_array: np.reshape(
-        #             discount, [1, -1]
-        #         ),
-        #         self.mainPN_clone[1].gamma_array: np.reshape(
-        #             discount, [1, -1]
-        #         ),
-        #         self.mainPN_clone[0].is_training: True,
-        #         self.mainPN_clone[1].is_training: True,
-        #     }
-        #     num_loops = 50 if self.timestep == 0 else 1
-        #     for _ in range(num_loops):
-        #         self.sess.run(update_clone, feed_dict=feed_dict)
-
         if self.lr_decay:
             lr_decay = (self.num_episodes - self.timestep) / self.num_episodes
         else:
@@ -692,25 +675,6 @@ class LOLAPGCG(tune.Trainable):
             self.mainPN[0].is_training: True,
             self.mainPN[1].is_training: True,
         }
-        # if self.opp_model:
-        #     feed_dict.update(
-        #         {
-        #             self.mainPN_clone[0].state_input: state_input1,
-        #             self.mainPN_clone[0].actions: actions1,
-        #             self.mainPN_clone[0].sample_return: sample_return1,
-        #             self.mainPN_clone[0].sample_reward: sample_reward1,
-        #             self.mainPN_clone[1].state_input: state_input0,
-        #             self.mainPN_clone[1].actions: actions0,
-        #             self.mainPN_clone[1].sample_return: sample_return0,
-        #             self.mainPN_clone[1].sample_reward: sample_reward0,
-        #             self.mainPN_clone[0].gamma_array: np.reshape(
-        #                 discount, [1, -1]
-        #             ),
-        #             self.mainPN_clone[1].gamma_array: np.reshape(
-        #                 discount, [1, -1]
-        #             ),
-        #         }
-        #     )
 
         lola_training_list = [
             self.mainPN[0].value,
@@ -863,10 +827,24 @@ class LOLAPGCG(tune.Trainable):
             pg_expl_parameters_norm,
             pg_expl_update_sum,
             pg_expl_actor_grad_sum,
+            reward_mean_p0,
+            reward_mean_p1,
+            reward_std_p0,
+            reward_std_p1,
+            sample_return0,
+            sample_return1,
+            sample_reward0,
+            sample_reward1,
+            values,
+            values_1,
+            player_1_target,
+            player_2_target,
         )
         return to_report
 
     def compute_centered_discounted_r(self, rewards, discount):
+        rewards = self._preprocess_rewards(rewards)
+
         sample_return = np.reshape(
             get_monte_carlo(
                 rewards, self.y, self.trace_length, self.batch_size
@@ -1098,6 +1076,18 @@ class LOLAPGCG(tune.Trainable):
         pg_expl_parameters_norm,
         pg_expl_update_sum,
         pg_expl_actor_grad_sum,
+        reward_mean_p0,
+        reward_mean_p1,
+        reward_std_p0,
+        reward_std_p1,
+        sample_return0,
+        sample_return1,
+        sample_reward0,
+        sample_reward1,
+        values,
+        values_1,
+        player_1_target,
+        player_2_target,
     ):
         rlog = np.sum(self.rList[-self.summary_len :], 0)
 
@@ -1125,6 +1115,10 @@ class LOLAPGCG(tune.Trainable):
         last_info.pop("available_actions", None)
 
         training_info = {
+            "reward_mean_p0": reward_mean_p0,
+            "reward_mean_p1": reward_mean_p1,
+            "reward_std_p0": reward_std_p0,
+            "reward_std_p1": reward_std_p1,
             "player_1_loss": player_1_loss,
             "player_2_loss": player_2_loss,
             "v_0_log": v_0_log,
@@ -1145,16 +1139,18 @@ class LOLAPGCG(tune.Trainable):
             / self.num_episodes,
         }
         # Logging distribution (can be a speed bottleneck)
-        # training_info.update({
-        #     "sample_return0": sample_return0,
-        #     "sample_return1": sample_return1,
-        #     "sample_reward0": sample_reward0,
-        #     "sample_reward1": sample_reward1,
-        #     "player_1_values": values,
-        #     "player_2_values": values_1,
-        #     "player_1_target": player_1_target,
-        #     "player_2_target": player_2_target,
-        # })
+        training_info.update(
+            {
+                "sample_return0": sample_return0,
+                "sample_return1": sample_return1,
+                "sample_reward0": sample_reward0,
+                "sample_reward1": sample_reward1,
+                "player_1_values": values,
+                "player_2_values": values_1,
+                "player_1_target": player_1_target,
+                "player_2_target": player_2_target,
+            }
+        )
 
         # self.update1_list.clear()
         # self.update2_list.clear()

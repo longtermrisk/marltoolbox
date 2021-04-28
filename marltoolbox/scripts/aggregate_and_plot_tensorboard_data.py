@@ -64,6 +64,7 @@ PLOT_KEYS = [
     "timers",
     "ms",
     "throughput",
+    "temperature",
 ]
 
 PLOT_ASSEMBLAGE_TAGS = [
@@ -94,6 +95,7 @@ PLOT_ASSEMBLAGE_TAGS = [
     ("ms",),
     ("throughput",),
     ("_lr",),
+    ("temperature",),
 ]
 
 

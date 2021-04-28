@@ -117,6 +117,11 @@ def get_logging_callbacks_class(
                 self._update_train_result_wt_to_log(
                     trainer, result, function_to_exec=get_log_from_policy
                 )
+                self._update_train_result_wt_to_log(
+                    trainer,
+                    result,
+                    function_to_exec=get_explore_temperature_from_policy,
+                )
             if log_weights:
                 if not hasattr(self, "on_train_result_counter"):
                     self.on_train_result_counter = 0
@@ -124,23 +129,9 @@ def get_logging_callbacks_class(
                     self._update_train_result_wt_to_log(
                         trainer,
                         result,
-                        function_to_exec=self._get_weights_from_policy,
+                        function_to_exec=get_weights_from_policy,
                     )
                 self.on_train_result_counter += 1
-
-        @staticmethod
-        def _get_weights_from_policy(
-            policy: Policy, policy_id: PolicyID
-        ) -> dict:
-            """Gets the to_log var from a policy and rename its keys, adding the policy_id as a prefix."""
-            to_log = {}
-            weights = policy.get_weights()
-
-            for k, v in weights.items():
-                if isinstance(v, Iterable):
-                    to_log[f"{policy_id}/{k}"] = v
-
-            return to_log
 
         @staticmethod
         def _add_env_info_to_custom_metrics(worker, episode):
@@ -216,6 +207,33 @@ def get_log_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
         for k, v in policy.to_log.items():
             to_log[f"{k}/{policy_id}"] = v
         policy.to_log = {}
+    return to_log
+
+
+def get_explore_temperature_from_policy(
+    policy: Policy, policy_id: PolicyID
+) -> dict:
+    """
+    It is exist get the temperature from the exploration policy of a Policy
+    """
+    to_log = {}
+    if hasattr(policy, "exploration"):
+        exploration_obj = policy.exploration
+        if hasattr(exploration_obj, "temperature"):
+            to_log[f"{policy_id}/temperature"] = exploration_obj.temperature
+
+    return to_log
+
+
+def get_weights_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
+    """Gets the to_log var from a policy and rename its keys, adding the policy_id as a prefix."""
+    to_log = {}
+    weights = policy.get_weights()
+
+    for k, v in weights.items():
+        if isinstance(v, Iterable):
+            to_log[f"{policy_id}/{k}"] = v
+
     return to_log
 
 

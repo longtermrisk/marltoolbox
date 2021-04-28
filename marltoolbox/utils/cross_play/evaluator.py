@@ -161,14 +161,16 @@ class SelfAndCrossPlayEvaluator:
         self.policies_ids_sorted = sorted(
             list(self.evaluation_config["multiagent"]["policies"].keys())
         )
-        self.policies_to_load_from_checkpoint = sorted(
-            [
-                policy_id
-                for policy_id in self.policies_ids_sorted
-                if self._is_policy_to_load(
-                    policy_id, policies_to_load_from_checkpoint
-                )
-            ]
+        self.policies_to_load_from_checkpoint = tuple(
+            sorted(
+                [
+                    policy_id
+                    for policy_id in self.policies_ids_sorted
+                    if self._is_policy_to_load(
+                        policy_id, policies_to_load_from_checkpoint
+                    )
+                ]
+            )
         )
 
         self.experiment_defined = True
@@ -503,9 +505,11 @@ class SelfAndCrossPlayEvaluator:
         return pair_of_group_names
 
     def _get_id_of_pair_of_group_names(self, pair_of_group_names):
-        sorted_pair_of_group_names = sorted(list(pair_of_group_names.values()))
-        id_of_pair_of_group_names = "".join(sorted_pair_of_group_names)
-        # id_of_pair_of_group_names = "".join(pair_of_group_names)
+        ordered_pair_of_group_names = [
+            pair_of_group_names[policy_id]
+            for policy_id in self.policies_to_load_from_checkpoint
+        ]
+        id_of_pair_of_group_names = "".join(ordered_pair_of_group_names)
         return id_of_pair_of_group_names
 
     def _find_and_group_results_for_one_group_pair_id(

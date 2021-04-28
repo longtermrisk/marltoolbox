@@ -94,6 +94,9 @@ class SelfAndCrossPlayPlotter:
         ordered_group_pair_name = []
         for metric in (self.x_axis_metric, self.y_axis_metric):
             for policy_id, one_group_name in group_pair_name.items():
+                print(
+                    "_order_group_names policy_id in metric", policy_id, metric
+                )
                 if policy_id in metric:
                     ordered_group_pair_name.append(one_group_name)
                     group_pair_name.pop(policy_id)

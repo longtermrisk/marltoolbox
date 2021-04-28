@@ -101,7 +101,7 @@ class Pnetwork:
             self.sample_reward_bis = tf.placeholder(
                 shape=[None, trace_length],
                 dtype=tf.float32,
-                name="sample_reward",
+                name="sample_reward_bis",
             )
 
             self.j = tf.placeholder(shape=[None], dtype=tf.float32, name="j")
