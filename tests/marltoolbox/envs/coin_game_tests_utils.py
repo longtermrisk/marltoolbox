@@ -180,9 +180,9 @@ def helper_test_multi_ple_episodes(
                 step_i = 0
 
 
-def helper_assert_info(**kwargs):
+def helper_assert_info(repetitions=10, **kwargs):
     if "batch_size" in kwargs.keys():
-        for _ in range(10):
+        for _ in range(repetitions):
             batch_deltas = np.random.randint(
                 0, kwargs["max_steps"] - 1, size=kwargs["batch_size"]
             )
@@ -207,6 +207,7 @@ def helper_assert_info_one_time(
     blue_own,
     check_obs_fn,
     overwrite_pos_fn,
+    c_red_coin=None,
     batch_deltas=None,
     blue_coop_fraction=None,
     red_coop_fraction=None,
@@ -230,6 +231,7 @@ def helper_assert_info_one_time(
             p_blue_pos,
             c_red_pos,
             c_blue_pos,
+            c_red_coin,
         )
 
         for _ in range(n_steps):
@@ -289,6 +291,7 @@ def helper_assert_info_one_time(
                 p_blue_pos,
                 c_red_pos,
                 c_blue_pos,
+                c_red_coin,
             )
 
 
@@ -408,6 +411,7 @@ def _overwrite_pos_helper(
     p_blue_pos,
     c_red_pos,
     c_blue_pos,
+    c_red_coin,
 ):
     if batch_deltas is not None:
         overwrite_pos_fn(
@@ -419,6 +423,7 @@ def _overwrite_pos_helper(
             p_blue_pos,
             c_red_pos,
             c_blue_pos,
+            c_red_coin=c_red_coin,
         )
     else:
         overwrite_pos_fn(
@@ -427,4 +432,9 @@ def _overwrite_pos_helper(
             p_blue_pos[step_i],
             c_red_pos[step_i],
             c_blue_pos[step_i],
+            c_red_coin=c_red_coin,
         )
+
+
+def shift_consistently(list_, step_i, n_steps_in_epi, batch_deltas):
+    return [list_[(step_i + delta) % n_steps_in_epi] for delta in batch_deltas]

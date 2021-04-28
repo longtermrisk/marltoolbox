@@ -2,25 +2,23 @@ import copy
 import random
 
 import numpy as np
-from flaky import flaky
 
+from marltoolbox.envs.vectorized_mixed_motive_coin_game import (
+    VectMixedMotiveCG,
+)
+from test_coin_game import (
+    assert_obs_is_symmetrical,
+    assert_obs_is_not_symmetrical,
+)
 from coin_game_tests_utils import (
     check_custom_obs,
+    assert_logger_buffer_size,
     helper_test_reset,
     helper_test_step,
     init_several_envs,
     helper_test_multiple_steps,
     helper_test_multi_ple_episodes,
     helper_assert_info,
-    shift_consistently,
-)
-from marltoolbox.envs.vectorized_coin_game import (
-    VectorizedCoinGame,
-    AsymVectorizedCoinGame,
-)
-from test_coin_game import (
-    assert_obs_is_symmetrical,
-    assert_obs_is_not_symmetrical,
 )
 
 
@@ -35,7 +33,7 @@ def init_my_envs(
     same_obs_for_each_player=True,
 ):
     return init_several_envs(
-        classes=(VectorizedCoinGame, AsymVectorizedCoinGame),
+        classes=(VectMixedMotiveCG,),
         max_steps=max_steps,
         grid_size=grid_size,
         batch_size=batch_size,
@@ -45,7 +43,9 @@ def init_my_envs(
 
 
 def check_obs(obs, batch_size, grid_size):
-    check_custom_obs(obs, grid_size, batch_size=batch_size)
+    check_custom_obs(
+        obs, grid_size, n_in_2_and_above=2.0, batch_size=batch_size
+    )
 
 
 def test_reset():
@@ -109,29 +109,24 @@ def overwrite_pos(
     assert len(p_blue_pos) == n_steps_in_epi
     assert len(c_red_pos) == n_steps_in_epi
     assert len(c_blue_pos) == n_steps_in_epi
-    env.red_coin = [
-        0 if c_red_pos[(step_i + delta) % n_steps_in_epi] is None else 1
-        for delta in batch_deltas
-    ]
-    coin_pos = [
-        c_blue_pos[(step_i + delta) % n_steps_in_epi]
-        if c_red_pos[(step_i + delta) % n_steps_in_epi] is None
-        else c_red_pos[(step_i + delta) % n_steps_in_epi]
-        for delta in batch_deltas
-    ]
 
-    env.red_pos = shift_consistently(
-        p_red_pos, step_i, n_steps_in_epi, batch_deltas
-    )
-    env.blue_pos = shift_consistently(
-        p_blue_pos, step_i, n_steps_in_epi, batch_deltas
-    )
-    env.coin_pos = coin_pos
+    env.red_pos = [
+        p_red_pos[(step_i + delta) % n_steps_in_epi] for delta in batch_deltas
+    ]
+    env.blue_pos = [
+        p_blue_pos[(step_i + delta) % n_steps_in_epi] for delta in batch_deltas
+    ]
+    env.red_coin_pos = [
+        c_red_pos[(step_i + delta) % n_steps_in_epi] for delta in batch_deltas
+    ]
+    env.blue_coin_pos = [
+        c_blue_pos[(step_i + delta) % n_steps_in_epi] for delta in batch_deltas
+    ]
 
     env.red_pos = np.array(env.red_pos)
     env.blue_pos = np.array(env.blue_pos)
-    env.coin_pos = np.array(env.coin_pos)
-    env.red_coin = np.array(env.red_coin)
+    env.red_coin_pos = np.array(env.red_coin_pos)
+    env.blue_coin_pos = np.array(env.blue_coin_pos)
 
 
 def test_logged_info_no_picking():
@@ -140,35 +135,10 @@ def test_logged_info_no_picking():
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    c_blue_pos = [None, None, None, None]
+    c_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-
     envs = init_my_envs(max_steps, batch_size, grid_size)
-
-    helper_assert_info(
-        n_steps=n_steps,
-        batch_size=batch_size,
-        p_red_act=p_red_act,
-        p_blue_act=p_blue_act,
-        envs=envs,
-        grid_size=grid_size,
-        max_steps=max_steps,
-        p_red_pos=p_red_pos,
-        p_blue_pos=p_blue_pos,
-        c_red_pos=c_red_pos,
-        c_blue_pos=c_blue_pos,
-        check_obs_fn=check_obs,
-        overwrite_pos_fn=overwrite_pos,
-        red_speed=0.0,
-        blue_speed=0.0,
-        red_own=None,
-        blue_own=None,
-    )
-
-    envs = init_my_envs(
-        max_steps, batch_size, grid_size, players_can_pick_same_coin=False
-    )
 
     helper_assert_info(
         n_steps=n_steps,
@@ -197,10 +167,9 @@ def test_logged_info__red_pick_red_all_the_time():
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    c_blue_pos = [None, None, None, None]
+    c_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-
     envs = init_my_envs(max_steps, batch_size, grid_size)
 
     helper_assert_info(
@@ -217,33 +186,9 @@ def test_logged_info__red_pick_red_all_the_time():
         c_blue_pos=c_blue_pos,
         check_obs_fn=check_obs,
         overwrite_pos_fn=overwrite_pos,
-        red_speed=1.0,
+        red_speed=0.0,
         blue_speed=0.0,
-        red_own=1.0,
-        blue_own=None,
-    )
-
-    envs = init_my_envs(
-        max_steps, batch_size, grid_size, players_can_pick_same_coin=False
-    )
-
-    helper_assert_info(
-        n_steps=n_steps,
-        batch_size=batch_size,
-        p_red_act=p_red_act,
-        p_blue_act=p_blue_act,
-        envs=envs,
-        grid_size=grid_size,
-        max_steps=max_steps,
-        p_red_pos=p_red_pos,
-        p_blue_pos=p_blue_pos,
-        c_red_pos=c_red_pos,
-        c_blue_pos=c_blue_pos,
-        check_obs_fn=check_obs,
-        overwrite_pos_fn=overwrite_pos,
-        red_speed=1.0,
-        blue_speed=0.0,
-        red_own=1.0,
+        red_own=None,
         blue_own=None,
     )
 
@@ -254,10 +199,9 @@ def test_logged_info__blue_pick_red_all_the_time():
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    c_blue_pos = [None, None, None, None]
+    c_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-
     envs = init_my_envs(max_steps, batch_size, grid_size)
 
     helper_assert_info(
@@ -275,33 +219,9 @@ def test_logged_info__blue_pick_red_all_the_time():
         check_obs_fn=check_obs,
         overwrite_pos_fn=overwrite_pos,
         red_speed=0.0,
-        blue_speed=1.0,
+        blue_speed=0.0,
         red_own=None,
-        blue_own=0.0,
-    )
-
-    envs = init_my_envs(
-        max_steps, batch_size, grid_size, players_can_pick_same_coin=False
-    )
-
-    helper_assert_info(
-        n_steps=n_steps,
-        batch_size=batch_size,
-        p_red_act=p_red_act,
-        p_blue_act=p_blue_act,
-        envs=envs,
-        grid_size=grid_size,
-        max_steps=max_steps,
-        p_red_pos=p_red_pos,
-        p_blue_pos=p_blue_pos,
-        c_red_pos=c_red_pos,
-        c_blue_pos=c_blue_pos,
-        check_obs_fn=check_obs,
-        overwrite_pos_fn=overwrite_pos,
-        red_speed=0.0,
-        blue_speed=1.0,
-        red_own=None,
-        blue_own=0.0,
+        blue_own=None,
     )
 
 
@@ -310,11 +230,10 @@ def test_logged_info__blue_pick_blue_all_the_time():
     p_blue_pos = [[1, 0], [1, 0], [1, 0], [1, 0]]
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
-    c_red_pos = [None, None, None, None]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-
     envs = init_my_envs(max_steps, batch_size, grid_size)
 
     helper_assert_info(
@@ -332,33 +251,9 @@ def test_logged_info__blue_pick_blue_all_the_time():
         check_obs_fn=check_obs,
         overwrite_pos_fn=overwrite_pos,
         red_speed=0.0,
-        blue_speed=1.0,
+        blue_speed=0.0,
         red_own=None,
-        blue_own=1.0,
-    )
-
-    envs = init_my_envs(
-        max_steps, batch_size, grid_size, players_can_pick_same_coin=False
-    )
-
-    helper_assert_info(
-        n_steps=n_steps,
-        batch_size=batch_size,
-        p_red_act=p_red_act,
-        p_blue_act=p_blue_act,
-        envs=envs,
-        grid_size=grid_size,
-        max_steps=max_steps,
-        p_red_pos=p_red_pos,
-        p_blue_pos=p_blue_pos,
-        c_red_pos=c_red_pos,
-        c_blue_pos=c_blue_pos,
-        check_obs_fn=check_obs,
-        overwrite_pos_fn=overwrite_pos,
-        red_speed=0.0,
-        blue_speed=1.0,
-        red_own=None,
-        blue_own=1.0,
+        blue_own=None,
     )
 
 
@@ -367,11 +262,10 @@ def test_logged_info__red_pick_blue_all_the_time():
     p_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
-    c_red_pos = [None, None, None, None]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-
     envs = init_my_envs(max_steps, batch_size, grid_size)
 
     helper_assert_info(
@@ -388,33 +282,9 @@ def test_logged_info__red_pick_blue_all_the_time():
         c_blue_pos=c_blue_pos,
         check_obs_fn=check_obs,
         overwrite_pos_fn=overwrite_pos,
-        red_speed=1.0,
+        red_speed=0.0,
         blue_speed=0.0,
-        red_own=0.0,
-        blue_own=None,
-    )
-
-    envs = init_my_envs(
-        max_steps, batch_size, grid_size, players_can_pick_same_coin=False
-    )
-
-    helper_assert_info(
-        n_steps=n_steps,
-        batch_size=batch_size,
-        p_red_act=p_red_act,
-        p_blue_act=p_blue_act,
-        envs=envs,
-        grid_size=grid_size,
-        max_steps=max_steps,
-        p_red_pos=p_red_pos,
-        p_blue_pos=p_blue_pos,
-        c_red_pos=c_red_pos,
-        c_blue_pos=c_blue_pos,
-        check_obs_fn=check_obs,
-        overwrite_pos_fn=overwrite_pos,
-        red_speed=1.0,
-        blue_speed=0.0,
-        red_own=0.0,
+        red_own=None,
         blue_own=None,
     )
 
@@ -424,11 +294,10 @@ def test_logged_info__red_pick_blue_all_the_time_wt_difference_in_actions():
     p_blue_pos = [[0, 0], [0, 0], [0, 1], [0, 1]]
     p_red_act = [0, 1, 2, 3]
     p_blue_act = [0, 1, 2, 3]
-    c_red_pos = [None, None, None, None]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     c_blue_pos = [[1, 1], [1, 2], [2, 0], [0, 0]]
     max_steps, batch_size, grid_size = 4, 4, 3
     n_steps = max_steps
-
     envs = init_my_envs(max_steps, batch_size, grid_size)
 
     helper_assert_info(
@@ -445,33 +314,9 @@ def test_logged_info__red_pick_blue_all_the_time_wt_difference_in_actions():
         c_blue_pos=c_blue_pos,
         check_obs_fn=check_obs,
         overwrite_pos_fn=overwrite_pos,
-        red_speed=1.0,
+        red_speed=0.0,
         blue_speed=0.0,
-        red_own=0.0,
-        blue_own=None,
-    )
-
-    envs = init_my_envs(
-        max_steps, batch_size, grid_size, players_can_pick_same_coin=False
-    )
-
-    helper_assert_info(
-        n_steps=n_steps,
-        batch_size=batch_size,
-        p_red_act=p_red_act,
-        p_blue_act=p_blue_act,
-        envs=envs,
-        grid_size=grid_size,
-        max_steps=max_steps,
-        p_red_pos=p_red_pos,
-        p_blue_pos=p_blue_pos,
-        c_red_pos=c_red_pos,
-        c_blue_pos=c_blue_pos,
-        check_obs_fn=check_obs,
-        overwrite_pos_fn=overwrite_pos,
-        red_speed=1.0,
-        blue_speed=0.0,
-        red_own=0.0,
+        red_own=None,
         blue_own=None,
     )
 
@@ -481,11 +326,10 @@ def test_logged_info__both_pick_blue_all_the_time():
     p_blue_pos = [[1, 0], [1, 0], [1, 0], [1, 0]]
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
-    c_red_pos = [None, None, None, None]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
-
     envs = init_my_envs(max_steps, batch_size, grid_size)
 
     helper_assert_info(
@@ -515,7 +359,7 @@ def test_logged_info__both_pick_red_all_the_time():
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    c_blue_pos = [None, None, None, None]
+    c_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
     envs = init_my_envs(max_steps, batch_size, grid_size)
@@ -547,7 +391,7 @@ def test_logged_info__both_pick_red_half_the_time():
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
     c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
-    c_blue_pos = [None, None, None, None]
+    c_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
     envs = init_my_envs(max_steps, batch_size, grid_size)
@@ -566,10 +410,10 @@ def test_logged_info__both_pick_red_half_the_time():
         c_blue_pos=c_blue_pos,
         check_obs_fn=check_obs,
         overwrite_pos_fn=overwrite_pos,
-        red_speed=0.5,
-        blue_speed=0.5,
-        red_own=1.0,
-        blue_own=0.0,
+        red_speed=0.0,
+        blue_speed=0.0,
+        red_own=None,
+        blue_own=None,
     )
 
 
@@ -578,7 +422,7 @@ def test_logged_info__both_pick_blue_half_the_time():
     p_blue_pos = [[1, 0], [1, 0], [0, 0], [0, 0]]
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
-    c_red_pos = [None, None, None, None]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
@@ -598,10 +442,10 @@ def test_logged_info__both_pick_blue_half_the_time():
         c_blue_pos=c_blue_pos,
         check_obs_fn=check_obs,
         overwrite_pos_fn=overwrite_pos,
-        red_speed=0.5,
-        blue_speed=0.5,
-        red_own=0.0,
-        blue_own=1.0,
+        red_speed=0.0,
+        blue_speed=0.0,
+        red_own=None,
+        blue_own=None,
     )
 
 
@@ -610,7 +454,103 @@ def test_logged_info__both_pick_blue():
     p_blue_pos = [[1, 0], [1, 0], [0, 0], [0, 0]]
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
-    c_red_pos = [None, None, None, None]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
+    c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
+    max_steps, batch_size, grid_size = 4, 28, 3
+    n_steps = max_steps
+    envs = init_my_envs(max_steps, batch_size, grid_size)
+
+    helper_assert_info(
+        n_steps=n_steps,
+        batch_size=batch_size,
+        p_red_act=p_red_act,
+        p_blue_act=p_blue_act,
+        envs=envs,
+        grid_size=grid_size,
+        max_steps=max_steps,
+        p_red_pos=p_red_pos,
+        p_blue_pos=p_blue_pos,
+        c_red_pos=c_red_pos,
+        c_blue_pos=c_blue_pos,
+        check_obs_fn=check_obs,
+        overwrite_pos_fn=overwrite_pos,
+        red_speed=0.0,
+        blue_speed=0.0,
+        red_own=None,
+        blue_own=None,
+    )
+
+
+def test_logged_info__pick_half_the_time_half_blue_half_red():
+    p_red_pos = [[0, 0], [0, 0], [1, 0], [1, 0]]
+    p_blue_pos = [[1, 0], [1, 0], [0, 0], [0, 0]]
+    p_red_act = [0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0]
+    c_red_pos = [[1, 1], [0, 0], [1, 1], [0, 0]]
+    c_blue_pos = [[0, 0], [1, 1], [0, 0], [1, 1]]
+    max_steps, batch_size, grid_size = 4, 28, 3
+    n_steps = max_steps
+    envs = init_my_envs(max_steps, batch_size, grid_size)
+
+    helper_assert_info(
+        n_steps=n_steps,
+        batch_size=batch_size,
+        p_red_act=p_red_act,
+        p_blue_act=p_blue_act,
+        envs=envs,
+        grid_size=grid_size,
+        max_steps=max_steps,
+        p_red_pos=p_red_pos,
+        p_blue_pos=p_blue_pos,
+        c_red_pos=c_red_pos,
+        c_blue_pos=c_blue_pos,
+        check_obs_fn=check_obs,
+        overwrite_pos_fn=overwrite_pos,
+        red_speed=0.0,
+        blue_speed=0.0,
+        red_own=None,
+        blue_own=None,
+    )
+
+
+def test_logged_info__pick_slowly_red_coin():
+    p_red_pos = [[1, 0], [0, 0], [0, 0], [0, 0]]
+    p_blue_pos = [[1, 0], [0, 0], [0, 0], [0, 0]]
+    p_red_act = [0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0]
+    c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
+    c_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
+    max_steps, batch_size, grid_size = 4, 28, 3
+    n_steps = max_steps
+    envs = init_my_envs(max_steps, batch_size, grid_size)
+
+    helper_assert_info(
+        n_steps=n_steps,
+        batch_size=batch_size,
+        p_red_act=p_red_act,
+        p_blue_act=p_blue_act,
+        envs=envs,
+        grid_size=grid_size,
+        max_steps=max_steps,
+        p_red_pos=p_red_pos,
+        p_blue_pos=p_blue_pos,
+        c_red_pos=c_red_pos,
+        c_blue_pos=c_blue_pos,
+        check_obs_fn=check_obs,
+        overwrite_pos_fn=overwrite_pos,
+        red_speed=0.25,
+        blue_speed=0.25,
+        red_own=1.0,
+        blue_own=0.0,
+    )
+
+
+def test_logged_info__pick_slowly_blue_coin():
+    p_red_pos = [[1, 0], [0, 0], [0, 0], [0, 0]]
+    p_blue_pos = [[1, 0], [0, 0], [0, 0], [0, 0]]
+    p_red_act = [0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
@@ -631,19 +571,19 @@ def test_logged_info__both_pick_blue():
         check_obs_fn=check_obs,
         overwrite_pos_fn=overwrite_pos,
         red_speed=0.25,
-        blue_speed=0.5,
+        blue_speed=0.25,
         red_own=0.0,
         blue_own=1.0,
     )
 
 
-def test_logged_info__pick_half_the_time_half_blue_half_red():
-    p_red_pos = [[0, 0], [0, 0], [1, 0], [1, 0]]
-    p_blue_pos = [[1, 0], [1, 0], [0, 0], [0, 0]]
+def test_logged_info__pick_quickly_red_coin():
+    p_red_pos = [[1, 0], [0, 0], [1, 0], [1, 0]]
+    p_blue_pos = [[1, 0], [0, 0], [1, 0], [1, 0]]
     p_red_act = [0, 0, 0, 0]
     p_blue_act = [0, 0, 0, 0]
-    c_red_pos = [[1, 1], None, [1, 1], None]
-    c_blue_pos = [None, [1, 1], None, [1, 1]]
+    c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
+    c_blue_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
     max_steps, batch_size, grid_size = 4, 28, 3
     n_steps = max_steps
     envs = init_my_envs(max_steps, batch_size, grid_size)
@@ -662,8 +602,104 @@ def test_logged_info__pick_half_the_time_half_blue_half_red():
         c_blue_pos=c_blue_pos,
         check_obs_fn=check_obs,
         overwrite_pos_fn=overwrite_pos,
-        red_speed=0.5,
-        blue_speed=0.5,
+        red_speed=0.75,
+        blue_speed=0.75,
+        red_own=1.0,
+        blue_own=0.0,
+    )
+
+
+def test_logged_info__pick_quickly_blue_coin():
+    p_red_pos = [[1, 0], [0, 0], [1, 0], [1, 0]]
+    p_blue_pos = [[1, 0], [0, 0], [1, 0], [1, 0]]
+    p_red_act = [0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0]
+    c_red_pos = [[0, 0], [0, 0], [0, 0], [0, 0]]
+    c_blue_pos = [[1, 1], [1, 1], [1, 1], [1, 1]]
+    max_steps, batch_size, grid_size = 4, 28, 3
+    n_steps = max_steps
+    envs = init_my_envs(max_steps, batch_size, grid_size)
+
+    helper_assert_info(
+        n_steps=n_steps,
+        batch_size=batch_size,
+        p_red_act=p_red_act,
+        p_blue_act=p_blue_act,
+        envs=envs,
+        grid_size=grid_size,
+        max_steps=max_steps,
+        p_red_pos=p_red_pos,
+        p_blue_pos=p_blue_pos,
+        c_red_pos=c_red_pos,
+        c_blue_pos=c_blue_pos,
+        check_obs_fn=check_obs,
+        overwrite_pos_fn=overwrite_pos,
+        red_speed=0.75,
+        blue_speed=0.75,
+        red_own=0.0,
+        blue_own=1.0,
+    )
+
+
+def test_logged_info__pick_slowly_mixed_coin():
+    p_red_pos = [[1, 0], [0, 0], [0, 0], [1, 0]]
+    p_blue_pos = [[1, 0], [0, 0], [0, 0], [1, 0]]
+    p_red_act = [0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0]
+    c_red_pos = [[1, 1], [1, 1], [0, 0], [0, 0]]
+    c_blue_pos = [[0, 0], [0, 0], [1, 1], [1, 1]]
+    max_steps, batch_size, grid_size = 4, 28, 3
+    n_steps = max_steps
+    envs = init_my_envs(max_steps, batch_size, grid_size)
+
+    helper_assert_info(
+        n_steps=n_steps,
+        batch_size=batch_size,
+        p_red_act=p_red_act,
+        p_blue_act=p_blue_act,
+        envs=envs,
+        grid_size=grid_size,
+        max_steps=max_steps,
+        p_red_pos=p_red_pos,
+        p_blue_pos=p_blue_pos,
+        c_red_pos=c_red_pos,
+        c_blue_pos=c_blue_pos,
+        check_obs_fn=check_obs,
+        overwrite_pos_fn=overwrite_pos,
+        red_speed=0.50,
+        blue_speed=0.50,
+        red_own=0.5,
+        blue_own=0.5,
+    )
+
+
+def test_logged_info__pick_quickly_mixed_coin():
+    p_red_pos = [[1, 0], [1, 0], [1, 0], [1, 0]]
+    p_blue_pos = [[1, 0], [1, 0], [1, 0], [1, 0]]
+    p_red_act = [0, 0, 0, 0]
+    p_blue_act = [0, 0, 0, 0]
+    c_red_pos = [[1, 1], [1, 1], [0, 0], [0, 0]]
+    c_blue_pos = [[0, 0], [0, 0], [1, 1], [1, 1]]
+    max_steps, batch_size, grid_size = 4, 28, 3
+    n_steps = max_steps
+    envs = init_my_envs(max_steps, batch_size, grid_size)
+
+    helper_assert_info(
+        n_steps=n_steps,
+        batch_size=batch_size,
+        p_red_act=p_red_act,
+        p_blue_act=p_blue_act,
+        envs=envs,
+        grid_size=grid_size,
+        max_steps=max_steps,
+        p_red_pos=p_red_pos,
+        p_blue_pos=p_blue_pos,
+        c_red_pos=c_red_pos,
+        c_blue_pos=c_blue_pos,
+        check_obs_fn=check_obs,
+        overwrite_pos_fn=overwrite_pos,
+        red_speed=1.0,
+        blue_speed=1.0,
         red_own=0.5,
         blue_own=0.5,
     )
@@ -763,27 +799,27 @@ def test_observations_are_invariant_to_the_player_trained_wt_step():
     p_blue_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     c_red_pos = [
         [1, 1],
-        None,
+        [0, 0],
         [0, 1],
-        None,
-        None,
+        [0, 0],
+        [0, 0],
         [2, 2],
         [0, 0],
-        None,
-        None,
+        [0, 0],
+        [0, 0],
         [2, 1],
     ]
     c_blue_pos = [
-        None,
+        [0, 0],
         [1, 1],
-        None,
+        [0, 0],
         [0, 1],
         [2, 2],
-        None,
-        None,
+        [0, 0],
+        [0, 0],
         [0, 0],
         [2, 1],
-        None,
+        [0, 0],
     ]
     max_steps, batch_size, grid_size = 10, 52, 3
     n_steps = max_steps
@@ -869,27 +905,27 @@ def test_observations_are_invariant_to_the_player_trained_wt_reset():
     p_blue_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     c_red_pos = [
         [1, 1],
-        None,
+        [0, 0],
         [0, 1],
-        None,
-        None,
+        [0, 0],
+        [0, 0],
         [2, 2],
         [0, 0],
-        None,
-        None,
+        [0, 0],
+        [0, 0],
         [2, 1],
     ]
     c_blue_pos = [
-        None,
+        [0, 0],
         [1, 1],
-        None,
+        [0, 0],
         [0, 1],
         [2, 2],
-        None,
-        None,
+        [0, 0],
+        [0, 0],
         [0, 0],
         [2, 1],
-        None,
+        [0, 0],
     ]
     max_steps, batch_size, grid_size = 10, 52, 3
     n_steps = max_steps
@@ -965,27 +1001,27 @@ def test_observations_are_not_invariant_to_the_player_trained_wt_step():
     p_blue_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     c_red_pos = [
         [1, 1],
-        None,
+        [0, 0],
         [0, 1],
-        None,
-        None,
+        [0, 0],
+        [0, 0],
         [2, 2],
         [0, 0],
-        None,
-        None,
+        [0, 0],
+        [0, 0],
         [2, 1],
     ]
     c_blue_pos = [
-        None,
+        [0, 0],
         [1, 1],
-        None,
+        [0, 0],
         [0, 1],
         [2, 2],
-        None,
-        None,
+        [0, 0],
+        [0, 0],
         [0, 0],
         [2, 1],
-        None,
+        [0, 0],
     ]
     max_steps, batch_size, grid_size = 10, 52, 3
     n_steps = max_steps
@@ -1073,27 +1109,27 @@ def test_observations_are_not_invariant_to_the_player_trained_wt_reset():
     p_blue_act = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     c_red_pos = [
         [1, 1],
-        None,
+        [0, 0],
         [0, 1],
-        None,
-        None,
+        [0, 0],
+        [0, 0],
         [2, 2],
         [0, 0],
-        None,
-        None,
+        [0, 0],
+        [0, 0],
         [2, 1],
     ]
     c_blue_pos = [
-        None,
+        [0, 0],
         [1, 1],
-        None,
+        [0, 0],
         [0, 1],
         [2, 2],
-        None,
-        None,
+        [0, 0],
+        [0, 0],
         [0, 0],
         [2, 1],
-        None,
+        [0, 0],
     ]
     max_steps, batch_size, grid_size = 10, 52, 3
     n_steps = max_steps
@@ -1138,64 +1174,3 @@ def test_observations_are_not_invariant_to_the_player_trained_wt_reset():
 
             if step_i == max_steps:
                 break
-
-
-@flaky(max_runs=4, min_passes=1)
-def test_who_pick_is_random():
-    size = 100
-    p_red_pos = [[1, 0], [1, 0], [1, 0], [1, 0]] * size
-    p_blue_pos = [[1, 0], [1, 0], [1, 0], [1, 0]] * size
-    p_red_act = [0, 0, 0, 0] * size
-    p_blue_act = [0, 0, 0, 0] * size
-    c_red_pos = [[1, 1], [1, 1], [1, 1], [1, 1]] * size
-    c_blue_pos = [None, None, None, None] * size
-    max_steps, batch_size, grid_size = int(4 * size), 28, 3
-    n_steps = max_steps
-
-    envs = init_my_envs(max_steps, batch_size, grid_size)
-
-    helper_assert_info(
-        n_steps=n_steps,
-        batch_size=batch_size,
-        p_red_act=p_red_act,
-        p_blue_act=p_blue_act,
-        envs=envs,
-        grid_size=grid_size,
-        max_steps=max_steps,
-        p_red_pos=p_red_pos,
-        p_blue_pos=p_blue_pos,
-        c_red_pos=c_red_pos,
-        c_blue_pos=c_blue_pos,
-        check_obs_fn=check_obs,
-        overwrite_pos_fn=overwrite_pos,
-        red_speed=1.0,
-        blue_speed=1.0,
-        red_own=1.0,
-        blue_own=0.0,
-    )
-
-    envs = init_my_envs(
-        max_steps, batch_size, grid_size, players_can_pick_same_coin=False
-    )
-
-    helper_assert_info(
-        n_steps=n_steps,
-        batch_size=batch_size,
-        p_red_act=p_red_act,
-        p_blue_act=p_blue_act,
-        envs=envs,
-        grid_size=grid_size,
-        max_steps=max_steps,
-        p_red_pos=p_red_pos,
-        p_blue_pos=p_blue_pos,
-        c_red_pos=c_red_pos,
-        c_blue_pos=c_blue_pos,
-        check_obs_fn=check_obs,
-        overwrite_pos_fn=overwrite_pos,
-        red_speed=0.5,
-        blue_speed=0.5,
-        red_own=1.0,
-        blue_own=0.0,
-        repetitions=1,
-        delta_err=0.05,
-    )

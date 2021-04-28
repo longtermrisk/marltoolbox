@@ -74,7 +74,7 @@ def test_multiple_episodes():
     )
 
 
-def overwrite_pos(env, p_red_pos, p_blue_pos, c_red_pos, c_blue_pos):
+def overwrite_pos(env, p_red_pos, p_blue_pos, c_red_pos, c_blue_pos, **kwargs):
     assert c_red_pos is None or c_blue_pos is None
     if c_red_pos is None:
         env.red_coin = 0

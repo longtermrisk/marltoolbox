@@ -75,9 +75,14 @@ def test_multiple_episodes():
 
 
 def overwrite_pos(
-    env, p_red_pos, p_blue_pos, c_red_pos, c_blue_pos, c_red_coin=True
+    env,
+    p_red_pos,
+    p_blue_pos,
+    c_red_pos,
+    c_blue_pos,
+    **kwargs,
 ):
-    env.red_coin = c_red_coin
+    env.red_coin = True
     env.red_pos = p_red_pos
     env.blue_pos = p_blue_pos
     env.red_coin_pos = c_red_pos
