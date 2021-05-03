@@ -37,6 +37,8 @@ def sample_utility(batch_size, utility_type, num_values=6, num_items=3, random_s
             u[:, 1] = 0
             u = torch.from_numpy(u)
         elif utility_type.startswith('skew'):
+            # skew_val defined skew for all items aat once
+            # (preference for certain items on average stronger than for others)
             skew_val = float(utility_type.split('_')[1])
             
             zero_skew_item_i = (num_items-1) / 2
@@ -53,6 +55,7 @@ def sample_utility(batch_size, utility_type, num_values=6, num_items=3, random_s
             item_utilities = [random_state.choice(num_values, (batch_size, 1), replace=True, p=item_probs[item_i]) for item_i in range(num_items)]
             u = torch.from_numpy(np.concatenate(item_utilities, 1))
         else:
+            print(utility_type)
             raise NotImplementedError
     return u
 
