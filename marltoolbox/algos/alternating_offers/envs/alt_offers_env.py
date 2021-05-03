@@ -72,39 +72,23 @@ class AltOffersEnvMemory(object):
         self.env_state = alt_offers_env
         max_batch_size = self.env_state.max_batch_size
 
-        self.proposal_0 = torch.zeros(
-            max_batch_size, 3
-        ).long()  # binding proposal
+        self.proposal_0 = torch.zeros(max_batch_size, 3).long()  # binding proposal
         self.proposal_1 = torch.zeros(max_batch_size, 3).long()
-        self.message_0 = torch.zeros(
-            max_batch_size, msg_len
-        ).long()  # cheap utterance
+        self.message_0 = torch.zeros(max_batch_size, msg_len).long()  # cheap utterance
         self.message_1 = torch.zeros(max_batch_size, msg_len).long()
-        self.hidden_state_0 = torch.zeros(
-            max_batch_size, hidden_embedding_sizes[0]
-        )
-        self.hidden_state_1 = torch.zeros(
-            max_batch_size, hidden_embedding_sizes[1]
-        )
-        self.cell_state_0 = torch.zeros(
-            max_batch_size, hidden_embedding_sizes[0]
-        )
-        self.cell_state_1 = torch.zeros(
-            max_batch_size, hidden_embedding_sizes[1]
-        )
+        self.hidden_state_0 = torch.zeros(max_batch_size, hidden_embedding_sizes[0])
+        self.hidden_state_1 = torch.zeros(max_batch_size, hidden_embedding_sizes[1])
+        self.cell_state_0 = torch.zeros(max_batch_size, hidden_embedding_sizes[0])
+        self.cell_state_1 = torch.zeros(max_batch_size, hidden_embedding_sizes[1])
 
         self.enable_arbitrator = enable_arbitrator
         if self.enable_arbitrator:
             self.arb_hidden_state = torch.zeros(
                 max_batch_size, hidden_embedding_sizes[2]
             )
-            self.arb_cell_state = torch.zeros(
-                max_batch_size, hidden_embedding_sizes[2]
-            )
+            self.arb_cell_state = torch.zeros(max_batch_size, hidden_embedding_sizes[2])
 
-        self.sieve = AliveSieve(
-            batch_size=max_batch_size, enable_cuda=enable_cuda
-        )
+        self.sieve = AliveSieve(batch_size=max_batch_size, enable_cuda=enable_cuda)
 
         self.enable_binding_comm = enable_binding_comm
         self.enable_cheap_comm = enable_cheap_comm
@@ -121,9 +105,7 @@ class AltOffersEnvMemory(object):
             own_message = self.message_0 if agent == 0 else self.message_1
             opponent_message = self.message_1 if agent == 0 else self.message_0
         else:
-            own_message = self.type_constr.LongTensor(
-                self.sieve.batch_size, 3
-            ).fill_(
+            own_message = self.type_constr.LongTensor(self.sieve.batch_size, 3).fill_(
                 0
             )  # zero fillers
             opponent_message = self.type_constr.LongTensor(
@@ -138,13 +120,9 @@ class AltOffersEnvMemory(object):
         if self.enable_binding_comm:
             agent = self.env_state.get_agent()
             own_proposal = self.proposal_0 if agent == 0 else self.proposal_1
-            opponent_proposal = (
-                self.proposal_1 if agent == 0 else self.proposal_0
-            )
+            opponent_proposal = self.proposal_1 if agent == 0 else self.proposal_0
         else:
-            own_proposal = self.type_constr.LongTensor(
-                self.sieve.batch_size, 3
-            ).fill_(
+            own_proposal = self.type_constr.LongTensor(self.sieve.batch_size, 3).fill_(
                 0
             )  # zero fillers
             opponent_proposal = self.type_constr.LongTensor(
@@ -154,9 +132,7 @@ class AltOffersEnvMemory(object):
 
     def get_agent_states(self):
         agent = self.env_state.get_agent()
-        hidden_state = (
-            self.hidden_state_0 if agent == 0 else self.hidden_state_1
-        )
+        hidden_state = self.hidden_state_0 if agent == 0 else self.hidden_state_1
         cell_state = self.cell_state_0 if agent == 0 else self.cell_state_1
         return hidden_state, cell_state
 
@@ -205,9 +181,7 @@ class AltOffersEnvMemory(object):
         3) cur_num_turns - num of turns of each game, real if ended and maximum if in progress
         """
         t = self.env_state.t  # timestep
-        self.sieve.mark_dead(
-            response
-        )  # if a proposal was accepted, remove the game
+        self.sieve.mark_dead(response)  # if a proposal was accepted, remove the game
         self.sieve.mark_dead(
             t + 1 >= self.env_state.N
         )  # if the time is out for a game, also remove the game
@@ -310,14 +284,10 @@ def calc_rewards(
         return rewards_final
 
     cur_proposal = (
-        env_agents_state.proposal_0
-        if agent == 0
-        else env_agents_state.proposal_1
+        env_agents_state.proposal_0 if agent == 0 else env_agents_state.proposal_1
     )
     prev_proposal = (
-        env_agents_state.proposal_0
-        if agent == 1
-        else env_agents_state.proposal_1
+        env_agents_state.proposal_0 if agent == 1 else env_agents_state.proposal_1
     )  # on previous turn
 
     # checking if the proposed distribution of items falls outside the range permissible by the pool (then return zero rewards)
@@ -333,9 +303,7 @@ def calc_rewards(
     proposer = 1 - agent  # agent on the previous turn
     acceptor = agent
     proposal = torch.zeros(batch_size, 2, 3).long()
-    proposal[
-        :, proposer
-    ] = prev_proposal  # proposal is for the player who proposed
+    proposal[:, proposer] = prev_proposal  # proposal is for the player who proposed
     if not enable_overflow:
         proposal[:, acceptor] = (
             s.pool - prev_proposal
@@ -360,9 +328,7 @@ def calc_rewards(
             max_agreement_r = 0.0  # the maximum an agent can obtain given that an agreement was not reached on some items
             if not enable_overflow:
                 raw_rewards[player_i] = (
-                    s.utilities[b, player_i]
-                    .cpu()
-                    .dot(proposal[b, player_i].cpu())
+                    s.utilities[b, player_i].cpu().dot(proposal[b, player_i].cpu())
                 )
             else:
                 for item_i in range(3):
@@ -430,20 +396,12 @@ def calc_rewards(
                         redist_amount = rewards_final["player1_after_arb"][
                             b
                         ]  # take away what agent 1 has
-                        rewards_final["player0_arb_induced_part"][
-                            b
-                        ] = redist_amount
-                        rewards_final["player1_arb_induced_part"][
-                            b
-                        ] = -redist_amount
+                        rewards_final["player0_arb_induced_part"][b] = redist_amount
+                        rewards_final["player1_arb_induced_part"][b] = -redist_amount
                     elif favor_decision[b] == 0:
                         redist_amount = rewards_final["player0_after_arb"][b]
-                        rewards_final["player0_arb_induced_part"][
-                            b
-                        ] = -redist_amount
-                        rewards_final["player1_arb_induced_part"][
-                            b
-                        ] = redist_amount
+                        rewards_final["player0_arb_induced_part"][b] = -redist_amount
+                        rewards_final["player1_arb_induced_part"][b] = redist_amount
                     else:
                         raise Exception
                 # if we first redistribute raw rewards and then then normalize them:
@@ -467,15 +425,15 @@ def calc_rewards(
                         rewards_final["player0_arb_induced_part"][b] = (
                             max_r - rewards_final["player0_share_of_max"][b]
                         )  # => =max_r
-                        rewards_final["player1_arb_induced_part"][
-                            b
-                        ] = -rewards_final["player1_share_of_max"][
+                        rewards_final["player1_arb_induced_part"][b] = -rewards_final[
+                            "player1_share_of_max"
+                        ][
                             b
                         ]  # => =0
                     elif favored_i == 1:
-                        rewards_final["player0_arb_induced_part"][
-                            b
-                        ] = -rewards_final["player0_share_of_max"][
+                        rewards_final["player0_arb_induced_part"][b] = -rewards_final[
+                            "player0_share_of_max"
+                        ][
                             b
                         ]  # => =0
                         rewards_final["player1_arb_induced_part"][b] = (

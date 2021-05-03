@@ -6,9 +6,7 @@
 import time
 
 
-def render_action(
-    s, prop, msg, response, enable_binding_comm, enable_cheap_comm
-):
+def render_action(s, prop, msg, response, enable_binding_comm, enable_cheap_comm):
     """Params: timestep, state object, proposal with long type, acc/rej
     acc/rej response is of size (batch_size, 1)
     proposal is of size (batch_size, 3)
@@ -72,19 +70,15 @@ def get_step_log(training):
     log_data = {
         "episodes": training.episodes_completed,
         "orig_reward_0": (
-            training.rewards_sum["player0_share_of_max"]
-            / training.processed_games_sum
+            training.rewards_sum["player0_share_of_max"] / training.processed_games_sum
         ).item(),
         "orig_reward_1": (
-            training.rewards_sum["player1_share_of_max"]
-            / training.processed_games_sum
+            training.rewards_sum["player1_share_of_max"] / training.processed_games_sum
         ).item(),
         "orig_welfare": (
-            training.rewards_sum["sum_share_of_max"]
-            / training.processed_games_sum
+            training.rewards_sum["sum_share_of_max"] / training.processed_games_sum
         ).item(),
-        "avg_steps": float(training.num_turns_accum)
-        / training.processed_games_sum,
+        "avg_steps": float(training.num_turns_accum) / training.processed_games_sum,
         "games_sec": int(training.processed_games_sum / time_since_last),
         "elapsed": time.time() - training.start_time,
         "argmaxp_response_0": float(
@@ -111,13 +105,9 @@ def get_step_log(training):
             training.agent_forward_stats[1]["prop_matches_argmax_count"]
         )
         / training.agent_forward_stats[1]["prop_stochastic_draws"],
-        "response_entropy_0": float(
-            training.agent_forward_stats[0]["response_entropy"]
-        )
+        "response_entropy_0": float(training.agent_forward_stats[0]["response_entropy"])
         / training.agent_forward_stats[0]["response_stochastic_draws"],
-        "response_entropy_1": float(
-            training.agent_forward_stats[1]["response_entropy"]
-        )
+        "response_entropy_1": float(training.agent_forward_stats[1]["response_entropy"])
         / training.agent_forward_stats[1]["response_stochastic_draws"],
         "utt_entropy_0": safe_div(
             float(training.agent_forward_stats[0]["utt_entropy"]),
@@ -127,21 +117,13 @@ def get_step_log(training):
             float(training.agent_forward_stats[1]["utt_entropy"]),
             training.agent_forward_stats[1]["utt_stochastic_draws"],
         ),
-        "prop_entropy_0": float(
-            training.agent_forward_stats[0]["prop_entropy"]
-        )
+        "prop_entropy_0": float(training.agent_forward_stats[0]["prop_entropy"])
         / training.agent_forward_stats[0]["prop_stochastic_draws"],
-        "prop_entropy_1": float(
-            training.agent_forward_stats[1]["prop_entropy"]
-        )
+        "prop_entropy_1": float(training.agent_forward_stats[1]["prop_entropy"])
         / training.agent_forward_stats[1]["prop_stochastic_draws"],
-        "response_prob_0": float(
-            training.agent_forward_stats[0]["response_prob"]
-        )
+        "response_prob_0": float(training.agent_forward_stats[0]["response_prob"])
         / training.agent_forward_stats[0]["response_stochastic_draws"],
-        "response_prob_1": float(
-            training.agent_forward_stats[1]["response_prob"]
-        )
+        "response_prob_1": float(training.agent_forward_stats[1]["response_prob"])
         / training.agent_forward_stats[1]["response_stochastic_draws"],
         "entropy_loss_by_agent_0": training.entropy_loss_by_agent_accum[0]
         / training.processed_games_sum,
