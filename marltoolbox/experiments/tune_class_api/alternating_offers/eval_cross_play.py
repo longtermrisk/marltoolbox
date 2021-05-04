@@ -14,7 +14,7 @@ from marltoolbox.algos.alternating_offers.alt_offers_training import (
     run_episode,
 )
 from marltoolbox.algos.alternating_offers.envs.alt_offers_env import AltOffersEnv
-from marltoolbox.examples.tune_class_api.alternating_offers.cond_params import (
+from marltoolbox.experiments.tune_class_api.alternating_offers.cond_params import (
     cond_params_iter,
     cond_params_iter_pop_training,
     default_cond_params,

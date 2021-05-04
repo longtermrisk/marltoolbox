@@ -8,7 +8,7 @@ import copy
 
 from marltoolbox.algos.alternating_offers.alt_offers_training import AltOffersTraining
 from marltoolbox.utils import miscellaneous, log
-from marltoolbox.examples.tune_class_api.alternating_offers.cond_params import (
+from marltoolbox.experiments.tune_class_api.alternating_offers.cond_params import (
     cond_params_iter,
     cond_params_iter_pop_training,
     default_cond_params,
@@ -45,29 +45,31 @@ config = {
     #     'repetition_i': tune.grid_search(list(range(0, 5))),
     #     'match_mode': tune.grid_search(['custom_vs_custom_1', 'custom_vs_custom_2', 'default_vs_custom', 'custom_vs_default']),
     #     'cond_params': tune.grid_search(list(cond_params_iter())),
-    "name": "cross_play_20K_episodes_binding",
-    "communication_mode": tune.grid_search(["binding"]),
-    "repetition_i": tune.grid_search(list(range(0, 5))),
-    "match_mode": tune.grid_search(
-        [
-            "custom_vs_custom_1",
-            "custom_vs_custom_2",
-            "default_vs_custom",
-            "custom_vs_default",
-        ]
-    ),
-    "cond_params": tune.grid_search(list(cond_params_iter())),
+    
+#     "name": "cross_play_20K_episodes_binding",
+#     "communication_mode": tune.grid_search(["binding"]),
+#     "repetition_i": tune.grid_search(list(range(0, 5))),
+#     "match_mode": tune.grid_search(
+#         [
+#             "custom_vs_custom_1",
+#             "custom_vs_custom_2",
+#             "default_vs_custom",
+#             "custom_vs_default",
+#         ]
+#     ),
+#     "cond_params": tune.grid_search(list(cond_params_iter())),
+    
     # #     'name': 'cross_play_20K_episodes_best_response_fixed_agent_0',
     #     'name': 'cross_play_20K_episodes_best_response_fixed_agent_1',
     #     'communication_mode': tune.grid_search(['binding']),
     #     'repetition_i': tune.grid_search(list(range(0, 5))),
     #     'match_mode': tune.grid_search(['custom_vs_custom_1',]),
     #     'cond_params': tune.grid_search(list(cond_params_iter())),
-    #     'name': 'tmp',
-    #     'communication_mode': tune.grid_search(['binding']),
-    #     'repetition_i': tune.grid_search(list(range(0, 1))),
-    #     'match_mode': tune.grid_search(['custom_vs_custom_1',]),
-    #     'cond_params': tune.grid_search(list(cond_params_iter())[:1]),
+        'name': 'tmp',
+        'communication_mode': tune.grid_search(['binding']),
+        'repetition_i': tune.grid_search(list(range(0, 1))),
+        'match_mode': tune.grid_search(['custom_vs_custom_1',]),
+        'cond_params': tune.grid_search(list(cond_params_iter())[:1]),
     #     'name': 'population_experiments',
     #     'communication_mode': tune.grid_search(['binding']),
     #     'repetition_i': tune.grid_search(list(range(0, 5))),

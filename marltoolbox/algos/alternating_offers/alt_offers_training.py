@@ -25,10 +25,10 @@ from marltoolbox.algos.alternating_offers.envs.alt_offers_env import (
     calc_rewards,
 )
 from marltoolbox.algos.alternating_offers.envs.alt_offers_env_sieve import SievePlayback
-from marltoolbox.examples.tune_class_api.alternating_offers.cond_params import (
-    cond_params_iter,
-    round_cond_params,
-)
+# from marltoolbox.examples.tune_class_api.alternating_offers.cond_params import (
+#     cond_params_iter,
+#     round_cond_params,
+# )  # for training with frozen agents
 
 from ray import tune
 
