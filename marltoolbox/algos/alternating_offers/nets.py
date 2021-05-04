@@ -3,11 +3,14 @@
 # https://github.com/asappresearch/emergent-comms-negotiation
 ##########
 
-import numpy as np
 import torch
-import torch.nn.functional as F
-from torch import nn
+from torch import nn, autograd
 from torch.autograd import Variable
+import torch.nn.functional as F
+import numpy as np
+
+
+eps = 1e-6
 
 
 class NumberSequenceEncoder(nn.Module):
@@ -18,9 +21,7 @@ class NumberSequenceEncoder(nn.Module):
         self.embedding = nn.Embedding(
             num_values, embedding_size
         )  # learnable lookup table for lookup of each of num_values elements
-        self.lstm = nn.LSTMCell(
-            input_size=embedding_size, hidden_size=embedding_size
-        )
+        self.lstm = nn.LSTMCell(input_size=embedding_size, hidden_size=embedding_size)
 
     def forward(self, x):
         batch_size = x.size()[0]
@@ -31,16 +32,8 @@ class NumberSequenceEncoder(nn.Module):
         x = self.embedding(x)
         type_constr = torch.cuda if x.is_cuda else torch
         state = (
-            Variable(
-                type_constr.FloatTensor(batch_size, self.embedding_size).fill_(
-                    0
-                )
-            ),
-            Variable(
-                type_constr.FloatTensor(batch_size, self.embedding_size).fill_(
-                    0
-                )
-            ),
+            Variable(type_constr.FloatTensor(batch_size, self.embedding_size).fill_(0)),
+            Variable(type_constr.FloatTensor(batch_size, self.embedding_size).fill_(0)),
         )  # hidden state, cell state - initialized with zeros to form a clean-slate LSTM
         for s in range(seq_len):
             state = self.lstm(
@@ -54,7 +47,7 @@ class TermPolicy(nn.Module):
         super().__init__()
         self.h1 = nn.Linear(embedding_size, 1)
 
-    def forward(self, thoughtvector, testing, eps=1e-8):
+    def forward(self, thoughtvector, testing):
         logits = self.h1(thoughtvector)
         response_probs = torch.clamp(
             F.sigmoid(logits), eps, 1 - eps
@@ -65,12 +58,8 @@ class TermPolicy(nn.Module):
 
         log_g = None
         if not testing:
-            a = torch.bernoulli(
-                response_probs
-            )  # sample a decision for the batch elems
-            g = a.detach() * response_probs + (1 - a.detach()) * (
-                1 - response_probs
-            )
+            a = torch.bernoulli(response_probs)  # sample a decision for the batch elems
+            g = a.detach() * response_probs + (1 - a.detach()) * (1 - response_probs)
             log_g = g.log()
             a = a.data
         else:
@@ -109,7 +98,7 @@ class ProposalPolicy(nn.Module):
             self.fcs.append(fc)
             self.__setattr__("h1_%s" % i, fc)
 
-    def forward(self, x, testing, eps=1e-8):
+    def forward(self, x, testing):
         batch_size = x.size()[0]
         nodes = []
         entropy = 0
@@ -142,7 +131,9 @@ class ProposalPolicy(nn.Module):
             if log_g is not None:
                 nodes.append(log_g)
             #             probs = probs + eps
-            entropy += (-probs * probs.log()).sum()
+            entropy += (
+                -probs * probs.log()
+            ).sum()  # probs are from softmax so there's the required sum from the entropy formula
             proposal[:, i] = a[:, 0]
 
         return nodes, proposal, entropy, matches_argmax_count, stochastic_draws
@@ -161,7 +152,7 @@ class ProposalReprPolicy(nn.Module):
             self.fcs.append(fc)
             self.__setattr__("h1_%s" % i, fc)
 
-    def forward(self, x, hidden_proposal, testing, eps=1e-8):
+    def forward(self, x, hidden_proposal, testing):
         batch_size = x.size()[0]
         nodes = []
         entropy = 0
@@ -182,9 +173,7 @@ class ProposalReprPolicy(nn.Module):
 
         for i in range(self.num_items):
             cur_item_hidden_proposal = hidden_proposal_onehot[:, i, :]
-            logits = self.fcs[i](
-                torch.cat([x, cur_item_hidden_proposal], dim=1)
-            )
+            logits = self.fcs[i](torch.cat([x, cur_item_hidden_proposal], dim=1))
             probs = torch.clamp(F.softmax(logits), eps, 1 - eps)
 
             _, res_greedy = probs.data.max(1)
@@ -206,7 +195,9 @@ class ProposalReprPolicy(nn.Module):
             if log_g is not None:
                 nodes.append(log_g)
             #             probs = probs + eps
-            entropy += (-probs * probs.log()).sum()
+            entropy += (
+                -probs * probs.log()
+            ).sum()  # probs are from softmax so there's the required sum from the entropy formula
             proposal[:, i] = a[:, 0]
 
         return nodes, proposal, entropy, matches_argmax_count, stochastic_draws
@@ -218,7 +209,7 @@ class RedistributionPolicy(nn.Module):
         self.enable_redist = nn.Linear(embedding_size, 1)
         self.favor_first_player = nn.Linear(embedding_size, 1)
 
-    def forward(self, thoughtvector, testing, mid_move_indices, eps=1e-8):
+    def forward(self, thoughtvector, testing, mid_move_indices):
         enable_probs = torch.clamp(
             F.sigmoid(self.enable_redist(thoughtvector)), eps, 1 - eps
         )
@@ -314,9 +305,7 @@ class AgentModel(nn.Module):
         #         self.combined_net = nn.Sequential(nn.Linear(19, hidden_embedding_size), nn.ReLU(), nn.Linear(hidden_embedding_size, hidden_embedding_size), nn.ReLU())
 
         self.response_policy = TermPolicy(embedding_size=hidden_embedding_size)
-        self.proposal_policy = ProposalPolicy(
-            embedding_size=hidden_embedding_size
-        )
+        self.proposal_policy = ProposalPolicy(embedding_size=hidden_embedding_size)
         if self.enable_cheap_comm:
             self.proposal_repr_policy = ProposalReprPolicy(
                 embedding_size=hidden_embedding_size
@@ -505,9 +494,7 @@ class ArbitratorModel(nn.Module):
         prop_encoded[
             mid_move_indices, :
         ] = 0  # no access to the proposal if game hasn't ended
-        msg_encoded[
-            final_move_indices, :
-        ] = 0  # the final message doesn't get through
+        msg_encoded[final_move_indices, :] = 0  # the final message doesn't get through
 
         if self.share_utilities:
             input_tens = [
@@ -555,14 +542,10 @@ class ArbitratorModel(nn.Module):
         ) = self.redist_policy(
             h_t, testing=deterministic, mid_move_indices=mid_move_indices
         )
-        forward_stats["enable_probs"] = (
-            forward_stats["enable_probs"].sum().item()
-        )
+        forward_stats["enable_probs"] = forward_stats["enable_probs"].sum().item()
         forward_stats["enable_decision"] = enable_decision.sum().item()
         forward_stats["enable_entropy"] = enable_entropy.item()
-        forward_stats["favor_probs"] = (
-            forward_stats["favor_probs"].sum().item()
-        )
+        forward_stats["favor_probs"] = forward_stats["favor_probs"].sum().item()
         forward_stats["favor_decision"] = favor_decision.sum().item()
         forward_stats["favor_entropy"] = favor_entropy.item()
         nodes = [enable_logprob, favor_logprob]

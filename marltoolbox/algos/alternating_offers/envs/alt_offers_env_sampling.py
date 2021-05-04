@@ -3,13 +3,11 @@
 # https://github.com/asappresearch/emergent-comms-negotiation
 ##########
 
-import numpy as np
 import torch
+import numpy as np
 
 
-def sample_items(
-    batch_size, num_values=6, num_items=3, random_state=np.random
-):
+def sample_items(batch_size, num_values=6, num_items=3, random_state=np.random):
     pool = torch.from_numpy(
         random_state.choice(num_values, (batch_size, num_items), replace=True)
     )
@@ -23,47 +21,35 @@ def sample_utility(
     while u.sum() == 0:
         if utility_type == "uniform":
             u = torch.from_numpy(
-                random_state.choice(
-                    num_values, (batch_size, num_items), replace=True
-                )
+                random_state.choice(num_values, (batch_size, num_items), replace=True)
             )
         elif utility_type == "1_5_only":
             u = torch.from_numpy(
-                random_state.choice(
-                    [1, 5], (batch_size, num_items), replace=True
-                )
+                random_state.choice([1, 5], (batch_size, num_items), replace=True)
             )
         elif utility_type == "3_4_5_only":
             u = torch.from_numpy(
-                random_state.choice(
-                    [3, 4, 5], (batch_size, num_items), replace=True
-                )
+                random_state.choice([3, 4, 5], (batch_size, num_items), replace=True)
             )
         elif utility_type == "max_on_0":
-            u = random_state.choice(
-                num_values, (batch_size, num_items), replace=True
-            )
+            u = random_state.choice(num_values, (batch_size, num_items), replace=True)
             u[:, 0] = 5
             u = torch.from_numpy(u)
         elif utility_type == "min_on_0":
-            u = random_state.choice(
-                num_values, (batch_size, num_items), replace=True
-            )
+            u = random_state.choice(num_values, (batch_size, num_items), replace=True)
             u[:, 0] = 0
             u = torch.from_numpy(u)
         elif utility_type == "max_on_1":
-            u = random_state.choice(
-                num_values, (batch_size, num_items), replace=True
-            )
+            u = random_state.choice(num_values, (batch_size, num_items), replace=True)
             u[:, 1] = 5
             u = torch.from_numpy(u)
         elif utility_type == "min_on_1":
-            u = random_state.choice(
-                num_values, (batch_size, num_items), replace=True
-            )
+            u = random_state.choice(num_values, (batch_size, num_items), replace=True)
             u[:, 1] = 0
             u = torch.from_numpy(u)
         elif utility_type.startswith("skew"):
+            # skew_val defined skew for all items aat once
+            # (preference for certain items on average stronger than for others)
             skew_val = float(utility_type.split("_")[1])
 
             zero_skew_item_i = (num_items - 1) / 2
@@ -90,15 +76,13 @@ def sample_utility(
 
             item_utilities = [
                 random_state.choice(
-                    num_values,
-                    (batch_size, 1),
-                    replace=True,
-                    p=item_probs[item_i],
+                    num_values, (batch_size, 1), replace=True, p=item_probs[item_i]
                 )
                 for item_i in range(num_items)
             ]
             u = torch.from_numpy(np.concatenate(item_utilities, 1))
         else:
+            print(utility_type)
             raise NotImplementedError
     return u
 
@@ -114,10 +98,7 @@ def sample_N(batch_size, random_state=np.random):
 def generate_batch(batch_size, utility_types, random_state=np.random):
     """Sample game parameters (items, utilities, the maximum duration of the game)"""
     pool = sample_items(
-        batch_size=batch_size,
-        num_values=6,
-        num_items=3,
-        random_state=random_state,
+        batch_size=batch_size, num_values=6, num_items=3, random_state=random_state
     )
     utilities = []
     utilities.append(

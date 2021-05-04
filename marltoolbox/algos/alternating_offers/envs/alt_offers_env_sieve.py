@@ -45,9 +45,7 @@ class AliveSieve(object):
         self.batch_size = (
             self.alive_mask.int().sum()
         )  # reduce batch size and only limit it to alive_idxes to reduce computation
-        self.alive_mask = self.type_constr.ByteTensor(
-            self.batch_size.item()
-        ).fill_(1)
+        self.alive_mask = self.type_constr.ByteTensor(self.batch_size.item()).fill_(1)
         self.alive_idxes = self._mask_to_idxes(self.alive_mask)
 
     def all_dead(self):
@@ -76,11 +74,7 @@ class SievePlayback(object):
     def __iter__(self):
         batch_size = self.alive_masks[0].size()[0]
         global_idxes = (
-            self.type_constr.ByteTensor(batch_size)
-            .fill_(1)
-            .nonzero()
-            .long()
-            .view(-1)
+            self.type_constr.ByteTensor(batch_size).fill_(1).nonzero().long().view(-1)
         )
         T = len(self.alive_masks)
         for t in range(T):

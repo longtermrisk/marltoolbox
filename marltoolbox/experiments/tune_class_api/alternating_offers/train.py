@@ -8,9 +8,7 @@ import datetime
 from ray import tune
 import os
 
-from marltoolbox.algos.alternating_offers.alt_offers_training import (
-    AltOffersTraining,
-)
+from marltoolbox.algos.alternating_offers.alt_offers_training import AltOffersTraining
 from marltoolbox.utils import miscellaneous, log
 
 
@@ -19,6 +17,8 @@ def main():
     print(config)
 
     if config["enable_cuda"]:
+        # double backward that is needed for the arbitration was not available on GPU
+        # so lately I have just been testing the code for CPU training
         raise NotImplementedError
 
     # each logical step of training contains several episodes, each episode is a batch of games
@@ -43,9 +43,7 @@ def main():
     log.save_metrics(analysis, exp_name_expanded, "metrics.pickle")
     log.pprint_saved_metrics(
         os.path.join(
-            os.path.expanduser("~/ray_results"),
-            exp_name_expanded,
-            "metrics.pickle",
+            os.path.expanduser("~/ray_results"), exp_name_expanded, "metrics.pickle"
         )
     )
     best_checkpoints = miscellaneous.extract_checkpoints(analysis)
