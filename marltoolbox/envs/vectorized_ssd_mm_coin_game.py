@@ -2,6 +2,7 @@ import copy
 import logging
 from collections import Iterable
 
+import gym
 import numpy as np
 from numba import jit, prange
 from ray.rllib.utils import override
@@ -23,6 +24,16 @@ PLOT_ASSEMBLAGE_TAGS = vectorized_coin_game.PLOT_ASSEMBLAGE_TAGS
 class VectSSDMixedMotiveCG(
     vectorized_coin_game.VectorizedCoinGame,
 ):
+    def __init__(self, config: dict = {}):
+        super().__init__(config)
+
+        self.OBSERVATION_SPACE = gym.spaces.Box(
+            low=0,
+            high=1,
+            shape=(self.grid_size, self.grid_size, 6),
+            dtype="uint8",
+        )
+
     @override(vectorized_coin_game.VectorizedCoinGame)
     def _load_config(self, config):
         super()._load_config(config)
@@ -122,7 +133,12 @@ class VectSSDMixedMotiveCG(
 
         if self.output_additional_info:
             self._accumulate_info(
-                red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue
+                red_pick_any,
+                red_pick_red,
+                blue_pick_any,
+                blue_pick_blue,
+                picked_red_coop,
+                picked_blue_coop,
             )
 
         obs = self._apply_optional_invariance_to_the_player_trained(
@@ -150,6 +166,67 @@ class VectSSDMixedMotiveCG(
             "blue_pick_own": self.blue_pick_own,
         }
         return copy.deepcopy(env_save_state)
+
+    @override(vectorized_coin_game.VectorizedCoinGame)
+    def _init_info(self):
+        super()._init_info()
+        self.picked_red_coop = []
+        self.picked_blue_coop = []
+
+    @override(vectorized_coin_game.VectorizedCoinGame)
+    def _reset_info(self):
+        super()._reset_info()
+        self.picked_red_coop.clear()
+        self.picked_blue_coop.clear()
+
+    @override(vectorized_coin_game.VectorizedCoinGame)
+    def _accumulate_info(
+        self,
+        red_pick_any,
+        red_pick_red,
+        blue_pick_any,
+        blue_pick_blue,
+        picked_red_coop,
+        picked_blue_coop,
+    ):
+        super()._accumulate_info(
+            red_pick_any, red_pick_red, blue_pick_any, blue_pick_blue
+        )
+        self.picked_red_coop.append(picked_red_coop)
+        self.picked_blue_coop.append(picked_blue_coop)
+
+    @override(vectorized_coin_game.VectorizedCoinGame)
+    def _get_episode_info(self):
+        """
+        Output the following information:
+        pick_speed is the fraction of steps during which the player picked a
+        coin.
+        pick_own_color is the fraction of coins picked by the player which have
+        the same color as the player.
+        """
+        n_steps_played = len(self.red_pick) * self.batch_size
+        player_red_info, player_blue_info = super()._get_episode_info(
+            n_steps_played=n_steps_played
+        )
+        n_coop = sum(self.picked_blue_coop) + sum(self.picked_red_coop)
+
+        if len(self.red_pick) > 0:
+            red_pick = sum(self.red_pick)
+            player_red_info["red_coop_speed"] = (
+                sum(self.picked_red_coop) / n_steps_played
+            )
+            if red_pick > 0:
+                player_red_info["red_coop_fraction"] = n_coop / red_pick
+
+        if len(self.blue_pick) > 0:
+            blue_pick = sum(self.blue_pick)
+            player_blue_info["blue_coop_speed"] = (
+                sum(self.picked_blue_coop) / n_steps_played
+            )
+            if blue_pick > 0:
+                player_blue_info["blue_coop_fraction"] = n_coop / blue_pick
+
+        return player_red_info, player_blue_info
 
 
 @jit(nopython=True)
@@ -237,7 +314,7 @@ def compute_reward(
             if red_coin[i] and _same_pos(blue_pos[i], red_coin_pos[i]):
                 # Red coin is a coop coin
                 generate[i] = True
-                reward_red[i] += 1.2
+                reward_red[i] += 2.0
                 red_pick_any += 1
                 red_pick_red += 1
                 blue_pick_any += 1
@@ -252,7 +329,7 @@ def compute_reward(
             if not red_coin[i] and _same_pos(red_pos[i], blue_coin_pos[i]):
                 # Blue coin is a coop coin
                 generate[i] = True
-                reward_blue[i] += 2.0
+                reward_blue[i] += 3.0
                 red_pick_any += 1
                 blue_pick_any += 1
                 blue_pick_blue += 1

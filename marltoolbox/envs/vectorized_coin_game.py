@@ -28,6 +28,7 @@ class VectorizedCoinGame(coin_game.CoinGame):
 
         self.batch_size = config.get("batch_size", 1)
         self.force_vectorized = config.get("force_vectorize", False)
+        self.punishment_helped = config.get("punishment_helped", False)
         assert (
             self.grid_size == 3
         ), "hardcoded in the generate_state numba function"
@@ -35,7 +36,7 @@ class VectorizedCoinGame(coin_game.CoinGame):
     @override(coin_game.CoinGame)
     def _randomize_color_and_player_positions(self):
         # Reset coin color and the players and coin positions
-        self.red_coin = np.random.randint(2, size=self.batch_size)
+        self.red_coin = np.random.randint(low=0, high=2, size=self.batch_size)
         self.red_pos = np.random.randint(
             self.grid_size, size=(self.batch_size, 2)
         )
@@ -55,7 +56,7 @@ class VectorizedCoinGame(coin_game.CoinGame):
     @override(coin_game.CoinGame)
     def _generate_coin(self):
         generate = np.ones(self.batch_size, dtype=bool)
-        self.coin_pos = generate_coin_wt_numba_optimization(
+        self.coin_pos, self.red_coin = generate_coin_wt_numba_optimization(
             self.batch_size,
             generate,
             self.red_coin,
@@ -78,6 +79,7 @@ class VectorizedCoinGame(coin_game.CoinGame):
 
         obs = self._apply_optional_invariance_to_the_player_trained(obs)
         obs, _ = self._optional_unvectorize(obs)
+        # print("env nonzero obs", np.nonzero(obs[0]))
         return obs
 
     def _optional_unvectorize(self, obs, rewards=None):
@@ -89,7 +91,11 @@ class VectorizedCoinGame(coin_game.CoinGame):
 
     @override(coin_game.CoinGame)
     def step(self, actions: Iterable):
-
+        # print("step")
+        # print("env self.red_coin", self.red_coin)
+        # print("env self.red_pos", self.red_pos)
+        # print("env self.blue_pos", self.blue_pos)
+        # print("env self.coin_pos", self.coin_pos)
         actions = self._from_RLLib_API_to_list(actions)
         self.step_count_in_current_episode += 1
 
@@ -115,6 +121,7 @@ class VectorizedCoinGame(coin_game.CoinGame):
             self.asymmetric,
             self.max_steps,
             self.both_players_can_pick_the_same_coin,
+            self.punishment_helped,
         )
 
         if self.output_additional_info:
@@ -126,14 +133,23 @@ class VectorizedCoinGame(coin_game.CoinGame):
             observation
         )
         obs, rewards = self._optional_unvectorize(obs, rewards)
-
+        # print("env actions", actions)
+        # print("env rewards", rewards)
+        # print("env self.red_coin", self.red_coin)
+        # print("env self.red_pos", self.red_pos)
+        # print("env self.blue_pos", self.blue_pos)
+        # print("env self.coin_pos", self.coin_pos)
+        # print("env nonzero obs", np.nonzero(obs[0]))
         return self._to_RLLib_API(obs, rewards)
 
     @override(coin_game.CoinGame)
-    def _get_episode_info(self):
-        return super()._get_episode_info(
-            n_steps_played=len(self.red_pick) * self.batch_size
+    def _get_episode_info(self, n_steps_played=None):
+        n_steps_played = (
+            n_steps_played
+            if n_steps_played is not None
+            else len(self.red_pick) * self.batch_size
         )
+        return super()._get_episode_info(n_steps_played=n_steps_played)
 
     @override(coin_game.CoinGame)
     def _from_RLLib_API_to_list(self, actions):
@@ -194,6 +210,7 @@ def vectorized_step_wt_numba_optimization(
     asymmetric: bool,
     max_steps: int,
     both_players_can_pick_the_same_coin: bool,
+    punishment_helped: bool,
 ):
     red_pos, blue_pos = move_players(
         batch_size, actions, red_pos, blue_pos, grid_size
@@ -214,9 +231,10 @@ def vectorized_step_wt_numba_optimization(
         red_coin,
         asymmetric,
         both_players_can_pick_the_same_coin,
+        punishment_helped,
     )
 
-    coin_pos = generate_coin_wt_numba_optimization(
+    coin_pos, red_coin = generate_coin_wt_numba_optimization(
         batch_size, generate, red_coin, red_pos, blue_pos, coin_pos, grid_size
     )
 
@@ -264,6 +282,7 @@ def compute_reward(
     red_coin,
     asymmetric,
     both_players_can_pick_the_same_coin,
+    punishment_helped,
 ):
     reward_red = np.zeros(batch_size)
     reward_blue = np.zeros(batch_size)
@@ -295,6 +314,8 @@ def compute_reward(
                 reward_red[i] += -2
                 reward_blue[i] += 1
                 blue_pick_any += 1
+                if asymmetric and punishment_helped:
+                    reward_red[i] -= 6
         else:
             if _same_pos(red_pos[i], coin_pos[i]) and (
                 red_first_if_both is None or red_first_if_both
@@ -337,7 +358,7 @@ def generate_coin_wt_numba_optimization(
     for i in prange(batch_size):
         if generate[i]:
             coin_pos[i] = _place_coin(red_pos[i], blue_pos[i], grid_size)
-    return coin_pos
+    return coin_pos, red_coin
 
 
 @jit(nopython=True)

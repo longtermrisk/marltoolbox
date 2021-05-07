@@ -90,6 +90,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         self.same_obs_for_each_player = config.get(
             "same_obs_for_each_player", True
         )
+        self.punishment_helped = config.get("punishment_helped", False)
 
     @override(gym.Env)
     def seed(self, seed=None):
@@ -99,6 +100,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
 
     @override(gym.Env)
     def reset(self):
+        # print("reset")
         self.step_count_in_current_episode = 0
 
         if self.output_additional_info:
@@ -215,6 +217,8 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
                 reward_red += -2
                 reward_blue += 1
                 blue_pick_any = True
+                if self.asymmetric and self.punishment_helped:
+                    reward_red -= 6
         else:
             if self._same_pos(self.red_pos, self.coin_pos) and (
                 red_first_if_both is None or red_first_if_both

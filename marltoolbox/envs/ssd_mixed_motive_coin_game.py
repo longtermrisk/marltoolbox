@@ -40,6 +40,7 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
     @override(coin_game.CoinGame)
     def __init__(self, config: dict = {}):
         super().__init__(config)
+        self.punishment_helped = config.get("punishment_helped", False)
 
         self.OBSERVATION_SPACE = gym.spaces.Box(
             low=0,
@@ -141,7 +142,7 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
             ):
                 # Red coin is a coop coin
                 generate_new_coin = True
-                reward_red += 1.2
+                reward_red += 2.0
                 red_pick_any = True
                 red_pick_red = True
                 blue_pick_any = True
@@ -152,13 +153,18 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
                 reward_red += 1.0
                 red_pick_any = True
                 red_pick_red = True
+                if self.punishment_helped and self._same_pos(
+                    self.blue_pos, self.red_coin_pos
+                ):
+                    reward_red -= 0.75
+
         elif self._same_pos(self.blue_pos, self.blue_coin_pos):
             if not self.red_coin and self._same_pos(
                 self.red_pos, self.blue_coin_pos
             ):
                 # Blue coin is a coop coin
                 generate_new_coin = True
-                reward_blue += 2.0
+                reward_blue += 3.0
                 red_pick_any = True
                 blue_pick_any = True
                 blue_pick_blue = True
@@ -169,6 +175,10 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
                 reward_blue += 1.0
                 blue_pick_any = True
                 blue_pick_blue = True
+                if self.punishment_helped and self._same_pos(
+                    self.red_pos, self.blue_coin_pos
+                ):
+                    reward_red -= 0.75
 
         reward_list = [reward_red, reward_blue]
         if self.output_additional_info:
