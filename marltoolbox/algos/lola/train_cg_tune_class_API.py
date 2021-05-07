@@ -170,8 +170,12 @@ class LOLAPGCG(tune.Trainable):
         always_train_PG=False,
         use_normalized_rewards=False,
         use_centered_reward=False,
-        deactivate_critic=False,
         use_rolling_avg_actor_grad=False,
+        process_reward_after_rolling=False,
+        only_process_reward=False,
+        use_rolling_avg_reward=False,
+        reward_processing_bais=False,
+        center_and_normalize_with_rolling_avg=False,
         **kwargs,
     ):
 
@@ -237,9 +241,19 @@ class LOLAPGCG(tune.Trainable):
         self.last_term_to_use = 0.0
         self.use_normalized_rewards = use_normalized_rewards
         self.use_centered_reward = use_centered_reward
-        self.deactivate_critic = deactivate_critic
         self.use_rolling_avg_actor_grad = use_rolling_avg_actor_grad
-        print("self.deactivate_critic", self.deactivate_critic)
+        self.process_reward_after_rolling = process_reward_after_rolling
+        self.only_process_reward = only_process_reward
+        self.use_rolling_avg_reward = use_rolling_avg_reward
+        self.reward_processing_bais = reward_processing_bais
+        self.center_and_normalize_with_rolling_avg = (
+            center_and_normalize_with_rolling_avg
+        )
+        self._reward_rolling_avg = {}
+        self._reward_rolling_avg_length = 100
+
+        if self.use_rolling_avg_reward and self.use_rolling_avg_actor_grad:
+            self.use_rolling_avg_actor_grad = False
         print("self.use_normalized_rewards", self.use_normalized_rewards)
         print("self.use_centered_reward", self.use_centered_reward)
         print(
@@ -248,11 +262,13 @@ class LOLAPGCG(tune.Trainable):
 
         global_lr_divider_mul = 1.0
         if self.use_normalized_rewards:
-            global_lr_divider_mul = 10.0
-        elif self.use_centered_reward:
-            global_lr_divider_mul = 10.0
-        elif self.use_rolling_avg_actor_grad:
-            global_lr_divider_mul = 1 / 20.0
+            global_lr_divider_mul *= 2.0
+        if self.use_centered_reward:
+            global_lr_divider_mul *= 1.0
+        if self.use_rolling_avg_actor_grad:
+            global_lr_divider_mul *= 1 / 20.0
+        if self.use_rolling_avg_reward:
+            global_lr_divider_mul *= 1 / 10000.0
 
         self.global_lr_divider = global_lr_divider * global_lr_divider_mul
         self.global_lr_divider_original = (
@@ -277,7 +293,10 @@ class LOLAPGCG(tune.Trainable):
         self.max_epLength = (
             trace_length + 1
         )  # The max allowed length of our episode.
-        self.actor_rolling_avg = [10.0 for agent in range(self.total_n_agents)]
+        self.actor_rolling_avg = [
+            10.0 / global_lr_divider_mul
+            for agent in range(self.total_n_agents)
+        ]
 
         graph = tf.Graph()
 
@@ -307,7 +326,6 @@ class LOLAPGCG(tune.Trainable):
                         entropy_coeff=entropy_coeff,
                         weigth_decay=weigth_decay,
                         use_critic=use_critic,
-                        deactivate_critic=self.deactivate_critic,
                     )
                 )
                 print("mainPN_step", agent)
@@ -329,37 +347,14 @@ class LOLAPGCG(tune.Trainable):
                         entropy_coeff=entropy_coeff,
                         weigth_decay=weigth_decay,
                         use_critic=use_critic,
-                        deactivate_critic=self.deactivate_critic,
                     )
                 )
-            # Clones of the opponents
-            # if opp_model:
-            #     self.mainPN_clone = []
-            #     for agent in range(self.total_n_agents):
-            #         self.mainPN_clone.append(
-            #             Pnetwork(
-            #                 f"clone_{agent}",
-            #                 self.h_size[agent],
-            #                 agent,
-            #                 self.env,
-            #                 trace_length=trace_length,
-            #                 batch_size=batch_size,
-            #                 changed_config=changed_config,
-            #                 ac_lr=ac_lr,
-            #                 use_MAE=use_MAE,
-            #                 clip_loss_norm=clip_loss_norm,
-            #                 sess=self.sess,
-            #                 entropy_coeff=entropy_coeff,
-            #                 use_critic=use_critic,
-            #             )
-            #         )
 
             if not mem_efficient:
                 self.cube, self.cube_ops = make_cube(trace_length)
             else:
                 self.cube, self.cube_ops = None, None
 
-            # if not opp_model:
             corrections_func(
                 self.mainPN,
                 batch_size,
@@ -371,30 +366,6 @@ class LOLAPGCG(tune.Trainable):
                 clip_lola_correction_norm=clip_lola_correction_norm,
                 clip_lola_actor_norm=clip_lola_actor_norm,
             )
-            # else:
-            #     corrections_func(
-            #         [self.mainPN[0], self.mainPN_clone[1]],
-            #         batch_size,
-            #         trace_length,
-            #         corrections,
-            #         self.cube,
-            #         clip_lola_update_norm=clip_lola_update_norm,
-            #         lola_correction_multiplier=self.lola_correction_multiplier,
-            #         clip_lola_correction_norm=clip_lola_correction_norm,
-            #         clip_lola_actor_norm=clip_lola_actor_norm,
-            #     )
-            #     corrections_func(
-            #         [self.mainPN[1], self.mainPN_clone[0]],
-            #         batch_size,
-            #         trace_length,
-            #         corrections,
-            #         self.cube,
-            #         clip_lola_update_norm=clip_lola_update_norm,
-            #         lola_correction_multiplier=self.lola_correction_multiplier,
-            #         clip_lola_correction_norm=clip_lola_correction_norm,
-            #         clip_lola_actor_norm=clip_lola_actor_norm,
-            #     )
-            #     clone_update(self.mainPN_clone)
 
             if self.use_PG_exploiter:
                 simple_actor_training_func(
@@ -594,14 +565,14 @@ class LOLAPGCG(tune.Trainable):
             sample_reward0,
             sample_reward0_bis,
         ) = self.compute_centered_discounted_r(
-            rewards=trainBatch0[2], discount=discount
+            rewards=trainBatch0[2], discount=discount, player_key="player_0"
         )
         (
             sample_return1,
             sample_reward1,
             sample_reward1_bis,
         ) = self.compute_centered_discounted_r(
-            rewards=trainBatch1[2], discount=discount
+            rewards=trainBatch1[2], discount=discount, player_key="player_1"
         )
 
         state_input0 = np.concatenate(trainBatch0[0], axis=0)
@@ -717,43 +688,43 @@ class LOLAPGCG(tune.Trainable):
         )
 
         (  # Player_red
-            values,
+            values_p1,
             updateModel_1,
             update1,
             player_1_value,
             player_1_target,
             player_1_loss,
-            entropy_p_0,
-            v_0_log,
-            actor_target_error_0,
-            actor_loss_0,
-            parameters_norm_0,
-            second_order0,
-            v_0_grad_theta_0,
-            second_order0_sum,
-            actor_grad_sum_0,
+            entropy_p1,
+            v_0_log_p1,
+            actor_target_error_p1,
+            actor_loss_p1,
+            parameters_norm_p1,
+            second_order_p1,
+            v_0_grad_theta_p1,
+            second_order_sum_p1,
+            actor_grad_sum_p1,
             v_0_grad_01,
-            multiply0,
+            multiply_p1,
             # Player_blue
-            values_1,
-            updateModel_2,
-            update2,
+            values_p2,
+            updateModel_p2,
+            update_p2,
             player_2_value,
             player_2_target,
             player_2_loss,
-            entropy_p_1,
-            v_1_log,
-            actor_target_error_1,
-            actor_loss_1,
-            parameters_norm_1,
-            second_order1,
-            v_1_grad_theta_1,
-            second_order1_sum,
-            actor_grad_sum_1,
+            entropy_p2,
+            v_1_log_p2,
+            actor_target_error_p2,
+            actor_loss_p2,
+            parameters_norm_p2,
+            second_order_p2,
+            v_1_grad_theta_p2,
+            second_order_sum_p2,
+            actor_grad_sum_p2,
         ) = self.sess.run(lola_training_list, feed_dict=feed_dict)
 
         update1_sum, update2_sum = self._update_players(
-            update1, update2, lr_decay, use_actions_from_exploiter
+            update1, update_p2, lr_decay, use_actions_from_exploiter
         )
 
         if self.use_PG_exploiter:
@@ -797,8 +768,12 @@ class LOLAPGCG(tune.Trainable):
             pg_expl_update_sum = None
             pg_expl_actor_grad_sum = None
 
-        if self.use_rolling_avg_actor_grad:
-            self._update_actor_rolling_avg(actor_grad_sum_0, actor_grad_sum_1)
+        self._update_actor_rolling_avg(
+            actor_grad_sum_p1,
+            actor_grad_sum_p2,
+            trainBatch0[2],
+            trainBatch1[2],
+        )
 
         print("update params")
         to_report = self._prepare_logs(
@@ -806,20 +781,20 @@ class LOLAPGCG(tune.Trainable):
             last_info,
             player_1_loss,
             player_2_loss,
-            v_0_log,
-            v_1_log,
-            entropy_p_0,
-            entropy_p_1,
-            actor_loss_0,
-            actor_loss_1,
-            parameters_norm_0,
-            parameters_norm_1,
-            second_order0_sum,
-            second_order1_sum,
+            v_0_log_p1,
+            v_1_log_p2,
+            entropy_p1,
+            entropy_p2,
+            actor_loss_p1,
+            actor_loss_p2,
+            parameters_norm_p1,
+            parameters_norm_p2,
+            second_order_sum_p1,
+            second_order_sum_p2,
             update1_sum,
             update2_sum,
-            actor_grad_sum_0,
-            actor_grad_sum_1,
+            actor_grad_sum_p1,
+            actor_grad_sum_p2,
             pg_expl_player_loss,
             pg_expl_v_log,
             pg_expl_entropy,
@@ -835,15 +810,18 @@ class LOLAPGCG(tune.Trainable):
             sample_return1,
             sample_reward0,
             sample_reward1,
-            values,
-            values_1,
+            values_p1,
+            values_p2,
             player_1_target,
             player_2_target,
         )
         return to_report
 
-    def compute_centered_discounted_r(self, rewards, discount):
-        rewards = self._preprocess_rewards(rewards)
+    def compute_centered_discounted_r(self, rewards, discount, player_key=""):
+        if not self.only_process_reward:
+            rewards = self._process_rewards(
+                rewards, preprocess=True, key=player_key + "_rewards"
+            )
 
         sample_return = np.reshape(
             get_monte_carlo(
@@ -851,6 +829,11 @@ class LOLAPGCG(tune.Trainable):
             ),
             [self.batch_size, -1],
         )
+
+        if self.only_process_reward:
+            rewards = self._process_rewards(
+                rewards, preprocess=True, key=player_key + "_rewards"
+            )
 
         if self.correction_reward_baseline_per_step:
             sample_reward = discount * np.reshape(
@@ -864,44 +847,113 @@ class LOLAPGCG(tune.Trainable):
         sample_reward_bis = discount * np.reshape(
             rewards, [-1, self.trace_length]
         )
+
+        if not self.only_process_reward:
+            sample_return = self._process_rewards(
+                sample_return,
+                preprocess=False,
+                key=player_key + "_sample_return",
+            )
+        sample_reward = self._process_rewards(
+            sample_reward, preprocess=False, key=player_key + "_sample_reward"
+        )
+        sample_reward_bis = self._process_rewards(
+            sample_reward_bis,
+            preprocess=False,
+            key=player_key + "_sample_reward_bis",
+        )
         return sample_return, sample_reward, sample_reward_bis
 
-    def _preprocess_rewards(self, rewards):
-        if self.use_normalized_rewards:
-            return self._normalize_rewards(rewards)
-        elif self.use_centered_reward:
-            return self._center_reward(rewards)
+    def _process_rewards(self, rewards, preprocess, key: str):
+        postprocess = not preprocess
+        preprocessing = preprocess and not self.process_reward_after_rolling
+        postprocessing = postprocess and self.process_reward_after_rolling
+        if preprocessing or postprocessing:
+            if self.use_normalized_rewards:
+                return self._normalize_rewards(rewards, key)
+            elif self.use_centered_reward:
+                return self._center_reward(rewards, key)
         return rewards
 
-    def _normalize_rewards(self, rewards):
+    def _normalize_rewards(self, rewards, key: str):
         r_array = np.array(rewards)
-        rewards = (r_array - r_array.mean()) / r_array.std()
+        if self.center_and_normalize_with_rolling_avg:
+            mean_key = key + "_mean"
+            std_key = key + "_std"
+            self._update_reward_rolling_avg(r_array.mean(), mean_key)
+            self._update_reward_rolling_avg(r_array.std(), std_key)
+            rewards = (
+                r_array - self._get_reward_rolling_avg(mean_key)
+            ) / self._get_reward_rolling_avg(std_key)
+        else:
+            rewards = (r_array - r_array.mean()) / r_array.std()
+        if self.reward_processing_bais:
+            rewards += self.reward_processing_bais
         return rewards.tolist()
 
-    def _center_reward(self, rewards):
+    def _center_reward(self, rewards, key: str):
         r_array = np.array(rewards)
-        rewards = r_array - r_array.mean()
+        if self.center_and_normalize_with_rolling_avg:
+            self._update_reward_rolling_avg(r_array.mean(), key)
+            rewards = r_array - self._get_reward_rolling_avg(key)
+        else:
+            rewards = r_array - r_array.mean()
+        if self.reward_processing_bais:
+            rewards += self.reward_processing_bais
         return rewards.tolist()
+
+    def _update_reward_rolling_avg(self, value, key):
+        if key in self._reward_rolling_avg:
+            self._reward_rolling_avg[key] = value + self._reward_rolling_avg[
+                key
+            ] * (1 - (1 / self._reward_rolling_avg_length))
+        else:
+            self._reward_rolling_avg[key] = (
+                value * self._reward_rolling_avg_length
+            )
+
+    def _get_reward_rolling_avg(self, key):
+        return self._reward_rolling_avg[key] / self._reward_rolling_avg_length
 
     def _update_bs_mul_wt_rolling_avg(self):
-        self.global_lr_divider = [
-            self.global_lr_divider_original
-            * v
-            / self.use_rolling_avg_actor_grad
-            for v in self.actor_rolling_avg
-        ]
+        rolling_avg = None
+        if self.use_rolling_avg_actor_grad:
+            rolling_avg = self.use_rolling_avg_actor_grad
+        if self.use_rolling_avg_reward:
+            rolling_avg = self.use_rolling_avg_reward
 
-    def _update_actor_rolling_avg(self, actor_grad_sum_0, actor_grad_sum_1):
-        roll_avg_p0 = self.actor_rolling_avg[0]
-        roll_avg_p1 = self.actor_rolling_avg[1]
-        roll_avg_p0 = np.abs(actor_grad_sum_0) + roll_avg_p0 * (
-            1 - (1 / self.use_rolling_avg_actor_grad)
-        )
-        roll_avg_p1 = np.abs(actor_grad_sum_1) + roll_avg_p1 * (
-            1 - (1 / self.use_rolling_avg_actor_grad)
-        )
-        self.actor_rolling_avg[0] = roll_avg_p0
-        self.actor_rolling_avg[1] = roll_avg_p1
+        if rolling_avg is not None:
+            self.global_lr_divider = [
+                self.global_lr_divider_original * v / rolling_avg
+                for v in self.actor_rolling_avg
+            ]
+
+    def _update_actor_rolling_avg(
+        self,
+        actor_grad_sum_0,
+        actor_grad_sum_1,
+        reward_player_0,
+        reward_player_1,
+    ):
+        if self.use_rolling_avg_actor_grad or self.use_rolling_avg_reward:
+            roll_avg_p0 = self.actor_rolling_avg[0]
+            roll_avg_p1 = self.actor_rolling_avg[1]
+            if self.use_rolling_avg_actor_grad:
+                roll_avg_p0 = np.abs(actor_grad_sum_0) + roll_avg_p0 * (
+                    1 - (1 / self.use_rolling_avg_actor_grad)
+                )
+                roll_avg_p1 = np.abs(actor_grad_sum_1) + roll_avg_p1 * (
+                    1 - (1 / self.use_rolling_avg_actor_grad)
+                )
+            if self.use_rolling_avg_reward:
+                roll_avg_p0 = np.sum(np.abs(reward_player_0)) + roll_avg_p0 * (
+                    1 - (1 / self.use_rolling_avg_reward)
+                )
+                roll_avg_p1 = np.sum(np.abs(reward_player_1)) + roll_avg_p1 * (
+                    1 - (1 / self.use_rolling_avg_reward)
+                )
+            self.actor_rolling_avg[0] = roll_avg_p0
+            self.actor_rolling_avg[1] = roll_avg_p1
 
     def _update_players(
         self, update1, update2, lr_decay, use_actions_from_exploiter
@@ -913,7 +965,7 @@ class LOLAPGCG(tune.Trainable):
             update1 = update1 * lr_decay
             update2 = update2 * lr_decay
 
-        if self.use_rolling_avg_actor_grad:
+        if self.use_rolling_avg_actor_grad or self.use_rolling_avg_reward:
             self._update_bs_mul_wt_rolling_avg()
             update1_sum = sum(update1) / self.global_lr_divider[0]
             update2_sum = sum(update2) / self.global_lr_divider[1]
@@ -1139,18 +1191,18 @@ class LOLAPGCG(tune.Trainable):
             / self.num_episodes,
         }
         # Logging distribution (can be a speed bottleneck)
-        training_info.update(
-            {
-                "sample_return0": sample_return0,
-                "sample_return1": sample_return1,
-                "sample_reward0": sample_reward0,
-                "sample_reward1": sample_reward1,
-                "player_1_values": values,
-                "player_2_values": values_1,
-                "player_1_target": player_1_target,
-                "player_2_target": player_2_target,
-            }
-        )
+        # training_info.update(
+        #     {
+        #         "sample_return0": sample_return0,
+        #         "sample_return1": sample_return1,
+        #         "sample_reward0": sample_reward0,
+        #         "sample_reward1": sample_reward1,
+        #         "player_1_values": values,
+        #         "player_2_values": values_1,
+        #         "player_1_target": player_1_target,
+        #         "player_2_target": player_2_target,
+        #     }
+        # )
 
         # self.update1_list.clear()
         # self.update2_list.clear()
@@ -1181,6 +1233,13 @@ class LOLAPGCG(tune.Trainable):
             + to_report.get("player_blue_pick_own_color", 0.0)
             + to_report.get("player_red_pick_own_color", 0.0)
         )
+
+        if self.use_rolling_avg_actor_grad:
+            to_report["rolling_avg_actor_grad_p0"] = self.actor_rolling_avg[0]
+            to_report["rolling_avg_actor_grad_p1"] = self.actor_rolling_avg[1]
+        if self.use_rolling_avg_reward:
+            to_report["rolling_avg_reward_p0"] = self.actor_rolling_avg[0]
+            to_report["rolling_avg_reward_p1"] = self.actor_rolling_avg[1]
         return to_report
 
     def _log_one_step_in_full_episode(self, s, r, actions, obs, info):

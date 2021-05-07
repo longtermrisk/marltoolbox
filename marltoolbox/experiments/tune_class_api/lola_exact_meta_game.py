@@ -43,7 +43,7 @@ def main(debug):
     # nested_info=True,
     # )
 
-    hp = _get_hyperparameters(debug)
+    hp = get_hyperparameters(debug)
 
     results = []
     ray.init(num_cpus=os.cpu_count(), local_mode=hp["debug"])
@@ -67,7 +67,6 @@ def main(debug):
             config=mixed_rllib_configs,
             verbose=1,
             stop=stop_config,
-            checkpoint_at_end=True,
             name=hp_eval["exp_name"],
             log_to_file=not hp_eval["debug"],
         )
@@ -75,28 +74,36 @@ def main(debug):
         (
             mean_player_1_payoffs,
             mean_player_2_payoffs,
-        ) = amtft_meta_game._extract_metrics(tune_analysis, hp_eval)
+            player_1_payoffs,
+            player_2_payoffs,
+        ) = amtft_meta_game.extract_metrics(tune_analysis, hp_eval)
 
         results.append(
             (
                 tau,
                 (mean_player_1_payoffs, mean_player_2_payoffs),
+                (player_1_payoffs, player_2_payoffs),
             )
         )
-    amtft_meta_game._save_to_json(exp_name=hp["exp_name"], object=results)
-    amtft_meta_game._plot_results(
-        exp_name=hp["exp_name"], results=results, hp_eval=hp_eval
+    amtft_meta_game.save_to_json(exp_name=hp["exp_name"], object=results)
+    amtft_meta_game.plot_results(
+        exp_name=hp["exp_name"],
+        results=results,
+        hp_eval=hp_eval,
+        format_fn=amtft_meta_game.format_result_for_plotting,
     )
-    amtft_meta_game._extract_stats_on_welfare_announced(
+    amtft_meta_game.extract_stats_on_welfare_announced(
         players_ids=env_config["players_ids"],
         exp_name=hp["exp_name"],
         nested_info=True,
     )
 
 
-def _get_hyperparameters(debug):
+def get_hyperparameters(debug):
+    """Get hyperparameters for meta game with LOLA-Exact policies in base
+    game"""
     # env = "IPD"
-    env = "AsymBoS"
+    env = "IteratedAsymBoS"
 
     hp = lola_exact_official.get_hyperparameters(
         debug, train_n_replicates=1, env=env
@@ -104,13 +111,13 @@ def _get_hyperparameters(debug):
 
     hp.update(
         {
-            "n_replicates_over_full_exp": 2 if debug else 5,
+            "n_replicates_over_full_exp": 2 if debug else 20,
             "final_base_game_eval_over_n_epi": 1 if debug else 200,
             "tau_range": np.arange(0.0, 1.1, 0.5)
             if hp["debug"]
             else np.arange(0.0, 1.1, 0.1),
             "n_self_play_in_final_meta_game": 0,
-            "n_cross_play_in_final_meta_game": 1 if debug else 4,
+            "n_cross_play_in_final_meta_game": 1 if debug else 10,
             "welfare_functions": [
                 (EGALITARIAN, EGALITARIAN),
                 (MIXED, MIXED),
@@ -145,28 +152,57 @@ def _produce_rllib_config_for_each_replicates(hp):
 
 
 def _load_base_game_results(hp, load_base_replicate_i):
-    prefix = "~/dev-maxime/CLR/vm-data/instance-10-cpu-2/"
+
+    # In local machine
+    # prefix = "~/dev-maxime/CLR/vm-data/instance-10-cpu-2/"
+    # prefix = "~/dev-maxime/CLR/vm-data/instance-10-cpu-2/"
+    # prefix = "~/dev-maxime/CLR/vm-data/instance-60-cpu-2-preemtible/"
+    prefix = "~/dev-maxime/CLR/vm-data/instance-60-cpu-3-preemtible/"
+    prefix2 = "~/dev-maxime/CLR/vm-data/instance-60-cpu-4-preemtible/"
+
+    # In VM
     # prefix = "~/ray_results/"
+    # prefix2 = prefix
+
     prefix = os.path.expanduser(prefix)
-    if "AsymBoS" in hp["env_name"]:
+    prefix2 = os.path.expanduser(prefix2)
+    if "IteratedAsymBoS" in hp["env_name"]:
         hp["data_dir"] = (
-            # ray_results
-            # prefix + "LOLA_Exact/2021_04_21/12_55_43",  # 8 replicates
-            # prefix + "LOLA_Exact/2021_04_21/13_11_06",  # 8 replicates
-            # instance-10-cpu-2
-            prefix + "LOLA_Exact/2021_04_21/12_59_13",  # 16 replicates
-            prefix + "LOLA_Exact/2021_04_21/12_59_26",  # 16 replicates
-            prefix + "LOLA_Exact/2021_04_21/15_58_12",  # 16 replicates
-            # prefix + "LOLA_Exact/2021_04_21/16_28_49",  # 16 replicates
-            prefix + "LOLA_Exact/2021_04_21/16_49_17",  # 16 replicates
-            prefix + "LOLA_Exact/2021_04_21/17_01_01",  # 16 replicates
+            # instance-60-cpu-3-preemtible & instance-60-cpu-4-preemtible
+            prefix + "LOLA_Exact/2021_05_05/14_49_18",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/14_50_39",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/14_51_01",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/14_53_56",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/14_56_32",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/15_46_08",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/15_46_23",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/15_46_59",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/15_47_22",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/15_48_22",  # 30 replicates
+            # instance-60-cpu-4-preemtible
+            prefix2 + "LOLA_Exact/2021_05_07/07_52_32",  # 30 replicates
+            # prefix2 + "LOLA_Exact/2021_05_07/08_02_21",  # 30 replicates
+            prefix2 + "LOLA_Exact/2021_05_07/08_02_38",  # 30 replicates
+            prefix2 + "LOLA_Exact/2021_05_07/08_02_49",  # 30 replicates
+            prefix2 + "LOLA_Exact/2021_05_07/08_03_03",  # 30 replicates
+            prefix2 + "LOLA_Exact/2021_05_07/08_54_58",  # 30 replicates
+            prefix2 + "LOLA_Exact/2021_05_07/08_55_34",  # 30 replicates
+            # prefix2 + "LOLA_Exact/2021_05_07/08_56_00",  # 30 replicates
+            prefix2 + "LOLA_Exact/2021_05_07/09_04_07",  # 30 replicates
+            prefix2 + "LOLA_Exact/2021_05_07/09_09_30",  # 30 replicates
+            prefix2 + "LOLA_Exact/2021_05_07/09_09_42",  # 30 replicates
+            prefix2 + "LOLA_Exact/2021_05_07/10_02_15",  # 30 replicates
+            prefix2 + "LOLA_Exact/2021_05_07/10_02_30",  # 30 replicates
+            prefix2 + "LOLA_Exact/2021_05_07/10_02_39",  # 30 replicates
+            prefix2 + "LOLA_Exact/2021_05_07/10_02_50",  # 30 replicates
         )[load_base_replicate_i]
-    # elif "IPD" in hp["env_name"]:
-    #     hp["data_dir"] = (prefix + "LOLA_Exact/2021_04_20/16_20_56",)[
-    #         load_base_replicate_i
-    #     ]
     else:
         raise ValueError(f'bad env_name: {hp["env_name"]}')
+
+    assert os.path.exists(hp["data_dir"]), (
+        "Path doesn't exist. Probably that the prefix need to "
+        f"be changed to fit the current machine used. path: {hp['data_dir']}"
+    )
 
     print("==== Going to process data_dir", hp["data_dir"], "====")
 
@@ -210,19 +246,14 @@ def _classify_base_replicates_into_welfares(all_replicates_save_dir):
 
 
 def classify_into_welfare_based_on_rewards(reward_player_1, reward_player_2):
-    if 1.5 < reward_player_1 < 2.5 and 1.5 < reward_player_2 < 2.5:
+
+    ratio = reward_player_1 / reward_player_2
+    if ratio < 1.5:
         return EGALITARIAN
-    elif 4.5 > reward_player_2 > 3.5 and 0.5 < reward_player_1 < 1.5:
-        return UTILITARIAN
-    elif 3.5 > reward_player_2 > 2.5 and 1.75 > reward_player_1 > 1.25:
+    elif ratio < 2.5:
         return MIXED
     else:
-        logger.warning(
-            "failure to classify: "
-            f"reward_player_1 {reward_player_1}, "
-            f"reward_player_2 {reward_player_2}"
-        )
-        return FAILURE
+        return UTILITARIAN
 
 
 def _filter_replicate_dir_by_welfare(
@@ -254,14 +285,12 @@ def _get_vanilla_lola_exact_eval_config(hp, final_eval_over_n_epi):
 
     hp_eval["n_self_play_per_checkpoint"] = None
     hp_eval["n_cross_play_per_checkpoint"] = None
-    # hp_eval["x_axis_metric"] = "ret1"
-    # hp_eval["y_axis_metric"] = "ret2"
     hp_eval[
         "x_axis_metric"
-    ] = f"policy_reward_mean.{env_config['players_ids'][0]}"
+    ] = f"policy_reward_mean/{env_config['players_ids'][0]}"
     hp_eval[
         "y_axis_metric"
-    ] = f"policy_reward_mean.{env_config['players_ids'][1]}"
+    ] = f"policy_reward_mean/{env_config['players_ids'][1]}"
     hp_eval["plot_axis_scale_multipliers"] = (
         1 / hp_eval["trace_length"],
         1 / hp_eval["trace_length"],
@@ -364,6 +393,11 @@ def _get_list_of_replicates_path_in_eval(hp):
     assert len(child_dirs) == 1, f"{child_dirs}"
     eval_dir = utils.path.get_unique_child_dir(child_dirs[0])
     eval_replicates_dir = utils.path.get_unique_child_dir(eval_dir)
+    possible_nested_dir = utils.path.try_get_unique_child_dir(
+        eval_replicates_dir
+    )
+    if possible_nested_dir is not None:
+        eval_replicates_dir = possible_nested_dir
     all_eval_replicates_dirs = (
         utils.path.get_children_paths_wt_selecting_filter(
             eval_replicates_dir, _filter="PG_"
@@ -448,5 +482,5 @@ def _average_perf_per_play_mode(raw_data_points_wt_welfares, hp):
 
 
 if __name__ == "__main__":
-    debug_mode = False
+    debug_mode = True
     main(debug_mode)

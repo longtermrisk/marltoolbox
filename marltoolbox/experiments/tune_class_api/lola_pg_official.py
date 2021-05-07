@@ -27,6 +27,7 @@ from marltoolbox.algos.lola import (
 from marltoolbox.envs import (
     vectorized_coin_game,
     vectorized_mixed_motive_coin_game,
+    vectorized_ssd_mm_coin_game,
     matrix_sequential_social_dilemma,
 )
 from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
@@ -56,7 +57,7 @@ def main(debug: bool, env=None):
     )
 
     if tune_hparams["load_plot_data"] is None:
-        ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
+        ray.init(num_cpus=os.cpu_count() // 4, num_gpus=0, local_mode=debug)
         tune_analysis_per_exp = _train(tune_hparams)
     else:
         tune_analysis_per_exp = None
@@ -90,9 +91,10 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
         #
         # "env_name": "IteratedPrisonersDilemma" if env is None else env,
         # "env_name": "IteratedAsymBoS" if env is None else env,
-        "env_name": "VectorizedCoinGame" if env is None else env,
+        # "env_name": "VectorizedCoinGame" if env is None else env,
         # "env_name": "AsymVectorizedCoinGame" if env is None else env,
         # "env_name": "VectorizedMixedMotiveCoinGame" if env is None else env,
+        "env_name": "VectorizedSSDMixedMotiveCoinGame" if env is None else env,
         "pseudo": False,
         "grid_size": 3,
         "lola_update": True,
@@ -128,14 +130,14 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
             ("total_reward",),
             ("entrop",),
         ],
-        # "use_normalized_rewards": False,
-        # "use_centered_reward": False,
-        # "deactivate_critic_learning": True,
-        # "use_rolling_avg_actor_grad": False,
-        "use_normalized_rewards": tune.grid_search([False, True]),
-        "use_centered_reward": tune.grid_search([False, True]),
-        "deactivate_critic_learning": tune.grid_search([False, True]),
-        "use_rolling_avg_actor_grad": tune.grid_search([False, 100]),
+        "use_normalized_rewards": True,
+        "use_centered_reward": False,
+        "use_rolling_avg_actor_grad": False,
+        "process_reward_after_rolling": False,
+        "only_process_reward": False,
+        "use_rolling_avg_reward": False,
+        "reward_processing_bais": False,
+        "center_and_normalize_with_rolling_avg": False,
     }
 
     if gamma == 0.5:
@@ -147,12 +149,12 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
                 else 4000
                 if high_coop_speed_hp
                 else 2000,
-                "trace_length": 4 if debug else 20,
+                "trace_length": 10 if debug else 20,
                 "lr": None,
                 "weigth_decay": 0.03,
                 "lola_correction_multiplier": 1,
                 "entropy_coeff": 0.001,
-                "batch_size": 8 if debug else 512,
+                "batch_size": 12 if debug else 512,
             }
         )
     elif gamma == 0.875:
@@ -161,11 +163,11 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
                 "gamma": 0.875,
                 "lr": 0.005 / 4,
                 "num_episodes": 3 if debug else 4000,
-                "trace_length": 4 if debug else 20,
+                "trace_length": 10 if debug else 20,
                 "weigth_decay": 0.03 / 8,
                 "lola_correction_multiplier": 4,
                 "entropy_coeff": 0.001,
-                "batch_size": 8 if debug else 512,
+                "batch_size": 12 if debug else 512,
             }
         )
     elif gamma == 0.9375:
@@ -174,65 +176,55 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
                 "gamma": 0.9375,
                 "lr": 0.005 / 4,
                 "num_episodes": 3 if debug else 2000,
-                "trace_length": 4 if debug else 40,
+                "trace_length": 10 if debug else 40,
                 "weigth_decay": 0.03 / 32,
                 "lola_correction_multiplier": 4,
                 "entropy_coeff": 0.002,
-                "batch_size": 8 if debug else 1024,
+                "batch_size": 12 if debug else 1024,
             }
         )
     elif gamma == 0.9:
         tune_hparams.update(
             {
                 "gamma": 0.9,
-                "lr": 0.005 / 2,
-                # "lr": tune.grid_search(
-                #     [0.005 / 2, 0.005 / 2 * 3, 0.005 / 2 * 3 * 3]
-                # ),
+                "lr": 0.005,
                 "num_episodes": 3 if debug else 2000,
-                "trace_length": 4 if debug else 40,
+                "trace_length": 10 if debug else 40,
                 "weigth_decay": 0.03 / 16,
-                "lola_correction_multiplier": 2,
-                "entropy_coeff": 0.002,
-                "batch_size": 8 if debug else 1024,
-                # "batch_size": 8 if debug else tune.grid_search(
+                "lola_correction_multiplier": 8,
+                "entropy_coeff": 0.002 * 10,
+                "batch_size": 12 if debug else 1024,
+                "use_normalized_rewards": True,
+                "reward_processing_bais": 0.1,
+                "center_and_normalize_with_rolling_avg": True,
+                # "weigth_decay": tune.grid_search(
                 #     [
-                #         512,
-                #         1024,
+                #         0.03 / 16,
+                #         0.03 / 16 * 10,
+                #         0.03 / 16 * 100,
+                #     ]
+                # ),
+                # "entropy_coeff": tune.grid_search(
+                #     [
+                #         0.002 * 10,
+                #         0.002 * 10 * 3,
+                #         0.002 * 10 * 10,
+                #         0.002 * 10 * 30,
+                #         0.002 * 10 * 100,
+                #     ]
+                # ),
+                # "use_normalized_rewards": tune.grid_search([False, True]),
+                # "center_and_normalize_with_rolling_avg": tune.grid_search(
+                #     [False, True]
+                # ),
+                # "lola_correction_multiplier": tune.grid_search(
+                #     [
+                #         0.0,
+                #         8.0,
                 #     ]
                 # ),
             }
         )
-    # elif gamma == 0.9:
-    #     # and tune_hparams["env_name"] == \
-    #     #                    "AsymVectorizedCoinGame":
-    #     tune_hparams.update(
-    #         {
-    #             "gamma": 0.9,
-    #             "lr": 0.005 / 2
-    #             if debug
-    #             else tune.grid_search([0.005 / 4, 0.005 / 2, 0.005]),
-    #             "num_episodes": 3 if debug else tune.grid_search([2000, 4000]),
-    #             "trace_length": 4 if debug else tune.grid_search([20, 40]),
-    #             "weigth_decay": 0.03 / 16
-    #             if debug
-    #             else tune.grid_search([0.03 / 8, 0.03 / 16]),
-    #             "lola_correction_multiplier": 2
-    #             if debug
-    #             else tune.grid_search([0.5, 1, 2, 4, 8]),
-    #             "entropy_coeff": 0.002
-    #             if debug
-    #             else tune.grid_search([0.002, 0.002 / 2, 0.002 * 2]),
-    #             "batch_size": 8
-    #             if debug
-    #             else tune.grid_search(
-    #                 [
-    #                     512,
-    #                     1024,
-    #                 ]
-    #             ),
-    #         }
-    #     )
 
     if use_best_exploiter:
         # Add exploiter hyperparameters
@@ -281,7 +273,9 @@ def _train(tune_hp):
     )
 
     if tune_hp["classify_into_welfare_fn"]:
-        tune_analysis_per_exp = _split_tune_results_wt_welfare(tune_analysis)
+        tune_analysis_per_exp = _split_tune_results_wt_welfare(
+            tune_analysis, tune_hp
+        )
     else:
         tune_analysis_per_exp = {"": tune_analysis}
 
@@ -311,24 +305,13 @@ def _get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
             tune_config[
                 "env_class"
             ] = vectorized_mixed_motive_coin_game.VectMixedMotiveCG
+        elif tune_config["env_name"] == "VectorizedSSDMixedMotiveCoinGame":
+            tune_config[
+                "env_class"
+            ] = vectorized_ssd_mm_coin_game.VectSSDMixedMotiveCG
         else:
             raise ValueError()
 
-        # tune_config["num_episodes"] = (
-        #     100000
-        #     if tune_config["num_episodes"] is None
-        #     else tune_config["num_episodes"]
-        # )
-        # tune_config["trace_length"] = (
-        #     150
-        #     if tune_config["trace_length"] is None
-        #     else tune_config["trace_length"]
-        # )
-        # tune_config["batch_size"] = (
-        #     4000
-        #     if tune_config["batch_size"] is None
-        #     else tune_config["batch_size"]
-        # )
         tune_config["lr"] = (
             0.005 if tune_config["lr"] is None else tune_config["lr"]
         )
@@ -348,7 +331,14 @@ def _get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
         ):
             tune_hp["x_limits"] = (-2.0, 4.0)
             tune_hp["y_limits"] = (-2.0, 4.0)
-        tune_hp["jitter"] = 0.02
+        elif (
+            tune_config["env_class"]
+            == vectorized_ssd_mm_coin_game.VectSSDMixedMotiveCG
+        ):
+            tune_hp["x_limits"] = (-0.1, 1.5)
+            tune_hp["y_limits"] = (-0.1, 1.5)
+
+        tune_hp["jitter"] = 0.00
         env_config = {
             "players_ids": ["player_red", "player_blue"],
             "batch_size": tune.sample_from(
@@ -360,7 +350,8 @@ def _get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
             "grid_size": tune_config["grid_size"],
             "get_additional_info": True,
             "both_players_can_pick_the_same_coin": tune_config["env_name"]
-            == "VectorizedMixedMotiveCoinGame",
+            == "VectorizedMixedMotiveCoinGame"
+            or tune_config["env_name"] == "VectorizedSSDMixedMotiveCoinGame",
             "force_vectorize": False,
             "same_obs_for_each_player": True,
         }
@@ -546,8 +537,9 @@ def _evaluate_self_and_cross_perf(
     tune_analysis_per_exp,
     n_cross_play_per_checkpoint=None,
 ):
+    exp_name = os.path.join(rllib_hp["exp_name"], "eval")
     evaluator = cross_play.evaluator.SelfAndCrossPlayEvaluator(
-        exp_name=rllib_hp["exp_name"],
+        exp_name=exp_name,
         local_mode=rllib_hp["debug"],
     )
     analysis_metrics_per_mode = evaluator.perform_evaluation_or_load_data(
@@ -566,7 +558,7 @@ def _evaluate_self_and_cross_perf(
         rllib_hp["env_class"],
         matrix_sequential_social_dilemma.MatrixSequentialSocialDilemma,
     ):
-        background_area_coord = rllib_hp["env_class"].PAYOUT_MATRIX
+        background_area_coord = rllib_hp["env_class"].PAYOFF_MATRIX
     else:
         background_area_coord = None
 
@@ -595,12 +587,10 @@ EGALITARIAN = "egalitarian"
 UTILITARIAN = "utilitarian"
 
 
-def _split_tune_results_wt_welfare(
-    tune_analysis,
-):
+def _split_tune_results_wt_welfare(tune_analysis, hp):
     tune_analysis_per_welfare = {}
     for trial in tune_analysis.trials:
-        welfare_name = _get_trial_welfare(trial)
+        welfare_name = _get_trial_welfare(trial, hp)
         if welfare_name not in tune_analysis_per_welfare.keys():
             lola_exact_official._add_empty_tune_analysis(
                 tune_analysis_per_welfare, welfare_name, tune_analysis
@@ -609,29 +599,22 @@ def _split_tune_results_wt_welfare(
     return tune_analysis_per_welfare
 
 
-def _get_trial_welfare(trial):
-    # reward_player_1 = trial.last_result["total_reward_player_red"]
-    # reward_player_2 = trial.last_result["total_reward_player_blue"]
-    reward_player_1 = trial.last_result["player_red_pick_speed"]
-    reward_player_2 = trial.last_result["player_blue_pick_speed"]
-    welfare_name = lola_pg_classify_fn(reward_player_1, reward_player_2)
+def _get_trial_welfare(trial, hp):
+    pick_own_player_1 = trial.last_result["player_red_pick_own_color"]
+    pick_own_player_2 = trial.last_result["player_blue_pick_own_color"]
+    welfare_name = lola_pg_classify_fn(
+        pick_own_player_1, pick_own_player_2, hp
+    )
     return welfare_name
 
 
-def lola_pg_classify_fn(player_1_reward, player_2_reward):
-    if 0.2 < player_1_reward < 1.5 and 0.2 < player_2_reward < 1.5:
+def lola_pg_classify_fn(pick_own_player_1, pick_own_player_2, hp):
+    if pick_own_player_1 > 0.75:
         return EGALITARIAN
-    elif player_1_reward > 1.5 and player_2_reward < 0:
-        return UTILITARIAN
     else:
-        logger.warning(
-            "failure to classify: "
-            f"player_1_reward {player_1_reward}, "
-            f"player_2_reward {player_2_reward}"
-        )
-        return FAILURE
+        return UTILITARIAN
 
 
 if __name__ == "__main__":
-    debug_mode = False
+    debug_mode = True
     main(debug_mode)

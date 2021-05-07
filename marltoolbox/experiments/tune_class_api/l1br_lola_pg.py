@@ -374,7 +374,7 @@ def get_rllib_config(hp: dict, lvl1_idx: list, lvl1_training: bool):
     assert lvl1_training
 
     tune_config, _, env_config = get_tune_config(hp=hp)
-    tune_config["seed"] = 2020
+    # tune_config["seed"] = 2020
 
     stop = {"episodes_total": hp["n_epi"]}
 
