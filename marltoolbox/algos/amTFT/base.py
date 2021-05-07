@@ -48,6 +48,7 @@ DEFAULT_CONFIG = merge_dicts(
         "rollout_length": 40,
         "n_rollout_replicas": 20,
         "last_k": 1,
+        "punish_instead_of_selfish": False,
         # TODO use log level of RLLib instead of mine
         "verbose": 1,
         "auto_load_checkpoint": True,
@@ -84,6 +85,7 @@ PLOT_KEYS = [
     "debit_threshold",
     "summed_debit",
     "summed_n_steps_to_punish",
+    "reset_rnn_state",
 ]
 
 PLOT_ASSEMBLAGE_TAGS = [
@@ -92,6 +94,7 @@ PLOT_ASSEMBLAGE_TAGS = [
     ("debit_threshold",),
     ("summed_debit",),
     ("summed_n_steps_to_punish",),
+    ("reset_rnn_state",),
 ]
 
 

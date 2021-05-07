@@ -56,9 +56,18 @@ class AmTFTPolicyBase(
         # notation alpha in the paper
         self.punishment_multiplier = config["punishment_multiplier"]
         self.working_state = config["working_state"]
+        assert (
+            self.working_state in WORKING_STATES
+        ), f"self.working_state {self.working_state}"
         self.verbose = config["verbose"]
         self.welfare_key = config["welfare_key"]
         self.auto_load_checkpoint = config.get("auto_load_checkpoint", True)
+        self.punish_instead_of_selfish = config.get(
+            "punish_instead_of_selfish", False
+        )
+        self.punish_instead_of_selfish_key = (
+            postprocessing.OPPONENT_NEGATIVE_REWARD
+        )
 
         if self.working_state in WORKING_STATES_IN_EVALUATION:
             self._set_models_for_evaluation()
@@ -74,16 +83,23 @@ class AmTFTPolicyBase(
             algo.model.eval()
 
     @with_lock
+    @override(hierarchical.HierarchicalTorchPolicy)
     def _compute_action_helper(
         self, input_dict, state_batches, seq_lens, explore, timestep
     ):
         state_batches = self._select_witch_algo_to_use(state_batches)
 
         self._track_last_coop_rnn_state(state_batches)
-
-        return super()._compute_action_helper(
+        actions, state_out, extra_fetches = super()._compute_action_helper(
             input_dict, state_batches, seq_lens, explore, timestep
         )
+        if self.verbose > 1:
+            print("algo idx", self.active_algo_idx, "action", actions)
+            print("extra_fetches", extra_fetches)
+            print("state_batches (in)", state_batches)
+            print("state_out", state_out)
+
+        return actions, state_out, extra_fetches
 
     def _select_witch_algo_to_use(self, state_batches):
         if (
@@ -126,6 +142,8 @@ class AmTFTPolicyBase(
             state_batches = self._get_initial_rnn_state(state_batches)
             self._to_log["reset_rnn_state"] = self.active_algo_idx
             setattr(self, last_algo_idx, self.active_algo_idx)
+            if self.verbose > 0:
+                print("reset_rnn_state")
         else:
             if "reset_rnn_state" in self._to_log.keys():
                 self._to_log.pop("reset_rnn_state")
@@ -142,7 +160,7 @@ class AmTFTPolicyBase(
             initial_state = [s.unsqueeze(0) for s in initial_state]
             msg = (
                 f"self.active_algo_idx {self.active_algo_idx} "
-                f"state_batches {state_batches} reset to initial {initial_state}"
+                f"state_batches {state_batches} reset to initial rnn state"
             )
             # print(msg)
             logger.info(msg)
@@ -181,14 +199,25 @@ class AmTFTPolicyBase(
     def _modify_batch_for_policy(self, algo_idx_to_train, samples):
         if algo_idx_to_train == OWN_COOP_POLICY_IDX:
             samples = samples.copy()
-            samples = self._overwrite_reward_for_policy_in_use(samples)
+            samples = self._overwrite_reward_for_policy_in_use(
+                samples, self.welfare_key
+            )
+        elif (
+            self.punish_instead_of_selfish
+            and algo_idx_to_train == OWN_SELFISH_POLICY_IDX
+        ):
+            samples = samples.copy()
+            samples = self._overwrite_reward_for_policy_in_use(
+                samples, self.punish_instead_of_selfish_key
+            )
+
         return samples
 
-    def _overwrite_reward_for_policy_in_use(self, samples_copy):
+    def _overwrite_reward_for_policy_in_use(self, samples_copy, welfare_key):
         samples_copy[samples_copy.REWARDS] = np.array(
-            samples_copy.data[self.welfare_key]
+            samples_copy.data[welfare_key]
         )
-        logger.debug(f"overwrite reward with {self.welfare_key}")
+        logger.debug(f"overwrite reward with {welfare_key}")
         return samples_copy
 
     def on_observation_fn(self, own_new_obs, opp_new_obs, both_new_raw_obs):
@@ -216,7 +245,6 @@ class AmTFTPolicyBase(
         *args,
         **kwargs,
     ):
-        # if self._first_fake_step_played:
         opp_obs, raw_obs, opp_a = self._get_information_from_opponent(
             policy_id, policy_ids, episode
         )
@@ -228,8 +256,6 @@ class AmTFTPolicyBase(
         )
 
         self.observed_n_step_in_current_epi += 1
-        # else:
-        #     self._first_fake_step_played = True
 
     def _get_information_from_opponent(self, agent_id, agent_ids, episode):
         opp_agent_id = [one_id for one_id in agent_ids if one_id != agent_id][
@@ -266,11 +292,27 @@ class AmTFTPolicyBase(
                 coop_opp_simulated_action = (
                     self._simulate_action_from_cooperative_opponent(opp_obs)
                 )
+                assert (
+                    len(worker.async_env.env_states) == 1
+                ), "amTFT in eval only works with one env not vector of envs"
+                assert (
+                    worker.env.step_count_in_current_episode
+                    == worker.async_env.env_states[
+                        0
+                    ].env.step_count_in_current_episode
+                )
+                assert (
+                    worker.env.step_count_in_current_episode
+                    == self._base_env_at_last_step.get_unwrapped()[
+                        0
+                    ].step_count_in_current_episode
+                    + 1
+                )
                 self._update_total_debit(
                     last_obs,
                     opp_action,
                     worker,
-                    base_env,
+                    self._base_env_at_last_step,
                     episode,
                     env_index,
                     coop_opp_simulated_action,
@@ -280,6 +322,8 @@ class AmTFTPolicyBase(
                         opp_action, coop_opp_simulated_action, worker, last_obs
                     )
 
+            self._base_env_at_last_step = copy.deepcopy(base_env)
+
             self._to_log["n_steps_to_punish"] = self.n_steps_to_punish
             self._to_log["debit_threshold"] = self.debit_threshold
 
@@ -288,12 +332,17 @@ class AmTFTPolicyBase(
 
     def on_episode_start(self, *args, **kwargs):
         if self.working_state in WORKING_STATES_IN_EVALUATION:
+            self._base_env_at_last_step = copy.deepcopy(kwargs["base_env"])
             self.last_own_algo_idx_in_eval = OWN_COOP_POLICY_IDX
             self.coop_opp_rnn_state_after_last_act = self.algorithms[
                 OPP_COOP_POLICY_IDX
             ].get_initial_state()
 
     def _simulate_action_from_cooperative_opponent(self, opp_obs):
+        if self.verbose > 1:
+            print("opp_obs for opp coop simu nonzero obs", np.nonzero(opp_obs))
+            for i, algo in enumerate(self.algorithms):
+                print("algo", i, algo)
         self.coop_opp_rnn_state_before_last_act = (
             self.coop_opp_rnn_state_after_last_act
         )
@@ -305,6 +354,20 @@ class AmTFTPolicyBase(
             obs=opp_obs,
             state=self.coop_opp_rnn_state_after_last_act,
         )
+        if self.verbose > 1:
+            print(
+                coop_opp_simulated_action,
+                "coop_opp_extra_fetches",
+                coop_opp_extra_fetches,
+            )
+            print(
+                "state before simu coop opp",
+                self.coop_opp_rnn_state_before_last_act,
+            )
+            print(
+                "state after simu coop opp",
+                self.coop_opp_rnn_state_after_last_act,
+            )
 
         return coop_opp_simulated_action
 
@@ -318,8 +381,19 @@ class AmTFTPolicyBase(
         env_index,
         coop_opp_simulated_action,
     ):
-
+        if self.verbose > 1:
+            print(
+                self.own_policy_id,
+                self.config[restore.LOAD_FROM_CONFIG_KEY][0].split("/")[-5],
+            )
         if coop_opp_simulated_action != opp_action:
+            if self.verbose > 0:
+                print(
+                    self.own_policy_id,
+                    "coop_opp_simulated_action != opp_action:",
+                    coop_opp_simulated_action,
+                    opp_action,
+                )
             if (
                 worker.env.step_count_in_current_episode
                 >= worker.env.max_steps
@@ -354,11 +428,6 @@ class AmTFTPolicyBase(
         )
         if coop_opp_simulated_action != opp_action:
             if self.verbose > 0:
-                print(
-                    "coop_opp_simulated_action != opp_action:",
-                    coop_opp_simulated_action,
-                    opp_action,
-                )
                 print(f"debit {debit}")
                 print(
                     f"self.total_debit {self.total_debit}, previous was {tmp}"
@@ -366,8 +435,8 @@ class AmTFTPolicyBase(
 
     def _is_starting_new_punishment_required(self, manual_threshold=None):
         if manual_threshold is not None:
-            return self.total_debit > manual_threshold
-        return self.total_debit > self.debit_threshold
+            return self.total_debit >= manual_threshold
+        return self.total_debit >= self.debit_threshold
 
     def _plan_punishment(
         self, opp_action, coop_opp_simulated_action, worker, last_obs
@@ -395,8 +464,6 @@ class AmTFTPolicyBase(
 
     def _defensive_check_observed_n_opp_moves(self, *args, **kwargs):
         if self.working_state in WORKING_STATES_IN_EVALUATION:
-            print("args", args)
-            print("kwargs", kwargs)
             assert (
                 self.observed_n_step_in_current_epi
                 == kwargs["base_env"].get_unwrapped()[0].max_steps
