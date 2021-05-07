@@ -9,6 +9,7 @@ from ray.rllib.evaluation.sampler import _get_or_raise
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AgentID, PolicyID
+from ray.rllib.utils.schedules import Schedule
 
 from marltoolbox.utils.miscellaneous import (
     assert_if_key_in_dict_then_args_are_none,
@@ -65,7 +66,10 @@ def welfares_postprocessing_fn(
 
     The parameters used to add a welfare can be given as arguments or
     will be read in the policy config dict (this should be preferred since this
-    allows for hyperparameter search over these parameters with Tune).
+    allows for hyperparameter search over these parameters with Tune).When
+    read from the config, they are read from the keys defined by
+    ADD_INEQUITY_AVERSION_WELFARE and similars. The value oassociated with
+    this key must be a tuple if you provide several parameters.
 
     :param add_utilitarian_welfare:
     :param add_egalitarian_welfare:
@@ -85,6 +89,8 @@ def welfares_postprocessing_fn(
     :return:
     """
 
+    # TODO refactor into instanciating an object (from a new class) and
+    #  returning one of it method OR use named tuple
     def postprocess_fn(policy, sample_batch, other_agent_batches, episode):
 
         if other_agent_batches is None:
@@ -94,6 +100,7 @@ def welfares_postprocessing_fn(
             return sample_batch
         _assert_using_config_xor_args(policy)
         parameters = _read_parameters_from_config_default_to_args(policy)
+        parameters = _get_values_from_any_scheduler(parameters, policy)
         sample_batch = _add_welfare_to_own_batch(
             sample_batch, other_agent_batches, episode, policy, *parameters
         )
@@ -105,11 +112,11 @@ def welfares_postprocessing_fn(
 
     def _assert_using_config_xor_args(policy):
         assert_if_key_in_dict_then_args_are_none(
-            policy.config, "add_utilitarian_welfare", add_utilitarian_welfare
+            policy.config, ADD_UTILITARIAN_WELFARE, add_utilitarian_welfare
         )
         assert_if_key_in_dict_then_args_are_none(
             policy.config,
-            "add_inequity_aversion_welfare",
+            ADD_INEQUITY_AVERSION_WELFARE,
             add_inequity_aversion_welfare,
             inequity_aversion_alpha,
             inequity_aversion_beta,
@@ -117,16 +124,16 @@ def welfares_postprocessing_fn(
             inequity_aversion_lambda,
         )
         assert_if_key_in_dict_then_args_are_none(
-            policy.config, "add_nash_welfare", add_nash_welfare
+            policy.config, ADD_NASH_WELFARE, add_nash_welfare
         )
         assert_if_key_in_dict_then_args_are_none(
-            policy.config, "add_egalitarian_welfare", add_egalitarian_welfare
+            policy.config, ADD_EGALITARIAN_WELFARE, add_egalitarian_welfare
         )
         assert_if_key_in_dict_then_args_are_none(
-            policy.config, "add_opponent_action", add_opponent_action
+            policy.config, ADD_OPPONENT_ACTION, add_opponent_action
         )
         assert_if_key_in_dict_then_args_are_none(
-            policy.config, "add_opponent_neg_reward", add_opponent_neg_reward
+            policy.config, ADD_OPPONENT_NEG_REWARD, add_opponent_neg_reward
         )
 
     def _read_parameters_from_config_default_to_args(policy):
@@ -173,6 +180,17 @@ def welfares_postprocessing_fn(
             add_opponent_a,
             add_opponent_neg_r,
         )
+
+    def _get_values_from_any_scheduler(parameters, policy):
+        logger.debug("_get_values_from_any_scheduler")
+        new_parameters = []
+        for param in parameters:
+            if isinstance(param, Schedule):
+                value_from_scheduler = param.value(policy.global_timestep)
+                new_parameters.append(value_from_scheduler)
+            else:
+                new_parameters.append(param)
+        return new_parameters
 
     def _add_welfare_to_own_batch(
         sample_batch, other_agent_batches, episode, policy, *parameters

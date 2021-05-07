@@ -60,20 +60,25 @@ class MetaGameSolver:
         self.opp_player_idx = opp_player_idx
         self.own_default_welfare_fn = own_default_welfare_fn
         self.opp_default_welfare_fn = opp_default_welfare_fn
-        self._list_all_welfares_fn()
+        self.all_welfare_fn = MetaGameSolver.list_all_welfares_fn(
+            self.all_welfare_pairs_wt_payoffs
+        )
         self._list_all_set_of_welfare_fn()
 
-    def _list_all_welfares_fn(self):
+    @staticmethod
+    def list_all_welfares_fn(all_welfare_pairs_wt_payoffs):
+        """List all welfare functions in the given data structure"""
         all_welfare_fn = []
-        for welfare_pairs_key in self.all_welfare_pairs_wt_payoffs.keys():
-            for welfare_fn in self._key_to_pair_of_welfare_names(
+        for welfare_pairs_key in all_welfare_pairs_wt_payoffs.keys():
+            for welfare_fn in MetaGameSolver.key_to_pair_of_welfare_names(
                 welfare_pairs_key
             ):
                 all_welfare_fn.append(welfare_fn)
-        self.all_welfare_fn = tuple(set(all_welfare_fn))
+        return tuple(set(all_welfare_fn))
 
     @staticmethod
-    def _key_to_pair_of_welfare_names(key):
+    def key_to_pair_of_welfare_names(key):
+        """Convert a key to the two welfare functions composing this key"""
         return key.split("-")
 
     def _list_all_set_of_welfare_fn(self):
@@ -203,13 +208,14 @@ class MetaGameSolver:
         return mean_payoff_p1, mean_payoff_p2
 
     def _read_own_payoff_from_data(self, own_welfare, opp_welfare):
-        welfare_pair_name = self._from_pair_of_welfare_names_to_key(
+        welfare_pair_name = self.from_pair_of_welfare_names_to_key(
             own_welfare, opp_welfare
         )
         return self.all_welfare_pairs_wt_payoffs[welfare_pair_name]
 
     @staticmethod
-    def _from_pair_of_welfare_names_to_key(own_welfare_set, opp_welfare_set):
+    def from_pair_of_welfare_names_to_key(own_welfare_set, opp_welfare_set):
+        """Convert two welfare functions into a key identifying this pair"""
         return f"{own_welfare_set}-{opp_welfare_set}"
 
     def _get_opp_best_response_idx(self):
@@ -247,7 +253,6 @@ class MetaGameSolver:
         if optimization_objective > self.best_objective:
             self.best_objective = optimization_objective
             self.selected_pure_policy_idx = idx
-            # self._to_log[f"tau_{self.tau}"] = self.tau_log[idx]
 
 
 class WelfareCoordinationTorchPolicy(
@@ -293,6 +298,9 @@ class WelfareCoordinationTorchPolicy(
             opp_default_welfare_fn=self.config["opp_default_welfare_fn"],
         )
         self.solve_meta_game(self.config["tau"])
+        self._to_log[f"tau_{self.tau}"] = self.tau_log[
+            self.selected_pure_policy_idx
+        ]
 
     @property
     def policy_checkpoints(self):
@@ -450,8 +458,3 @@ class WelfareCoordinationTorchPolicy(
                     algo.to_log = {}
 
         self._to_log = value
-
-    def _keep_action_if_best(self, optimization_objective, idx):
-        super()._keep_action_if_best(optimization_objective, idx)
-        if optimization_objective > self.best_objective:
-            self._to_log[f"tau_{self.tau}"] = self.tau_log[idx]

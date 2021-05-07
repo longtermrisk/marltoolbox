@@ -32,7 +32,7 @@ def before_loss_init_load_policy_checkpoint(
     Example: determining the checkpoint to load conditional on the current seed
     (when doing a grid_search over random seeds and with a multistage training)
     """
-    checkpoint_path, policy_id = policy.config.pop(
+    checkpoint_path, policy_id = policy.config.get(
         LOAD_FROM_CONFIG_KEY, (None, None)
     )
 
@@ -45,8 +45,7 @@ def before_loss_init_load_policy_checkpoint(
             f"marltoolbox restore: checkpoint found for policy_id: "
             f"{policy_id}"
         )
-        logger.info(msg)
-        print(msg)
+        logger.debug(msg)
     else:
         msg = (
             f"marltoolbox restore: NO checkpoint found for policy_id:"
@@ -54,7 +53,6 @@ def before_loss_init_load_policy_checkpoint(
             f"Not found under the config key: {LOAD_FROM_CONFIG_KEY}"
         )
         logger.warning(msg)
-        print(msg)
 
 
 def load_one_policy_checkpoint(
@@ -80,7 +78,7 @@ def load_one_policy_checkpoint(
         policy.load_checkpoint(checkpoint_tuple=(checkpoint_path, policy_id))
     else:
         checkpoint_path = os.path.expanduser(checkpoint_path)
-        logger.info(f"checkpoint_path {checkpoint_path}")
+        logger.debug(f"checkpoint_path {checkpoint_path}")
         checkpoint = pickle.load(open(checkpoint_path, "rb"))
         assert "worker" in checkpoint.keys()
         assert "optimizer" not in checkpoint.keys()
@@ -91,7 +89,7 @@ def load_one_policy_checkpoint(
         found_policy_id = False
         for p_id, state in objs["state"].items():
             if p_id == policy_id:
-                print(
+                logger.debug(
                     f"going to load policy {policy_id} "
                     f"from checkpoint {checkpoint_path}"
                 )
@@ -99,7 +97,7 @@ def load_one_policy_checkpoint(
                 found_policy_id = True
                 break
         if not found_policy_id:
-            print(
+            logger.debug(
                 f"policy_id {policy_id} not in "
                 f'checkpoint["worker"]["state"].keys() '
                 f'{objs["state"].keys()}'

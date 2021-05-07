@@ -2,7 +2,8 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.agents.pg import PGTrainer, PGTorchPolicy
+from ray.rllib.agents.pg.pg_torch_policy import pg_loss_stats
 
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
     IteratedPrisonersDilemma,
@@ -35,9 +36,11 @@ def get_rllib_config(seeds, debug=False):
         "episodes_total": 2 if debug else 400,
     }
 
+    n_steps_in_epi = 20
+
     env_config = {
         "players_ids": ["player_row", "player_col"],
-        "max_steps": 20,
+        "max_steps": n_steps_in_epi,
         "get_additional_info": True,
     }
 
@@ -64,6 +67,8 @@ def get_rllib_config(seeds, debug=False):
         "seed": tune.grid_search(seeds),
         "callbacks": log.get_logging_callbacks_class(log_full_epi=True),
         "framework": "torch",
+        "rollout_fragment_length": n_steps_in_epi,
+        "train_batch_size": n_steps_in_epi,
     }
 
     return rllib_config, stop_config

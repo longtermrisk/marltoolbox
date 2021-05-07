@@ -32,8 +32,12 @@ class SelfAndCrossPlayPlotter:
             self._extract_performance_evaluation_points(
                 metrics_for_one_evaluation_mode
             )
+        stat_summary_filename_prefix = (
+            plot_config.filename_prefix
+            + evaluator.RESULTS_SUMMARY_FILENAME_PREFIX
+        )
         self.stat_summary.save_summary(
-            filename_prefix=evaluator.RESULTS_SUMMARY_FILENAME_PREFIX,
+            filename_prefix=stat_summary_filename_prefix,
             folder_dir=exp_parent_dir,
         )
         return self._plot_and_save_fig(plot_config, exp_parent_dir)

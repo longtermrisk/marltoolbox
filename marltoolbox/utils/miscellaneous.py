@@ -159,56 +159,6 @@ def set_config_for_evaluation(
     return config_copy
 
 
-def filter_tune_results(
-    tune_analysis,
-    metric,
-    metric_threshold: float,
-    metric_mode="last-5-avg",
-    threshold_mode="above",
-):
-    assert threshold_mode in ("above", "equal", "below")
-    assert metric_mode in (
-        "avg",
-        "min",
-        "max",
-        "last",
-        "last-5-avg",
-        "last-10-avg",
-    )
-    print("Before trial filtering:", len(tune_analysis.trials), "trials")
-    trials_filtered = []
-    print(
-        "metric_threshold", metric_threshold, "threshold_mode", threshold_mode
-    )
-    for trial_idx, trial in enumerate(tune_analysis.trials):
-        available_metrics = trial.metric_analysis
-        print(
-            f"trial_idx {trial_idx} "
-            f"available_metrics[{metric}][{metric_mode}] "
-            f"{available_metrics[metric][metric_mode]}"
-        )
-        if (
-            threshold_mode == "above"
-            and available_metrics[metric][metric_mode] > metric_threshold
-        ):
-            trials_filtered.append(trial)
-        elif (
-            threshold_mode == "equal"
-            and available_metrics[metric][metric_mode] == metric_threshold
-        ):
-            trials_filtered.append(trial)
-        elif (
-            threshold_mode == "below"
-            and available_metrics[metric][metric_mode] < metric_threshold
-        ):
-            trials_filtered.append(trial)
-        else:
-            print(f"filter trial {trial_idx}")
-    tune_analysis.trials = trials_filtered
-    print("After trial filtering:", len(tune_analysis.trials), "trials")
-    return tune_analysis
-
-
 def get_random_seeds(n_seeds):
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(n_seeds))]

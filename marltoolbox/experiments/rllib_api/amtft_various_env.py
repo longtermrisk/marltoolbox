@@ -10,11 +10,12 @@ from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.tune.integration.wandb import WandbLoggerCallback
 
+from marltoolbox import utils
 from marltoolbox.algos import amTFT, augmented_r2d2
 from marltoolbox.envs import (
     matrix_sequential_social_dilemma,
-    vectorized_coin_game,
-    vectorized_mixed_motive_coin_game,
+    coin_game,
+    mixed_motive_coin_game,
     ssd_mixed_motive_coin_game,
 )
 from marltoolbox.envs.utils.wrappers import (
@@ -48,6 +49,7 @@ def main(
 
     if hparams["load_plot_data"] is None:
         ray.init(
+            num_gpus=0,
             num_cpus=os.cpu_count(),
             local_mode=hparams["debug"],
         )
@@ -90,7 +92,7 @@ def get_hyperparameters(
         n_times_more_utilitarians_seeds = 1
     elif train_n_replicates is None:
         n_times_more_utilitarians_seeds = 4
-        train_n_replicates = 4
+        train_n_replicates = 10
     else:
         n_times_more_utilitarians_seeds = 4
 
@@ -99,6 +101,28 @@ def get_hyperparameters(
     )
     pool_of_seeds = miscellaneous.get_random_seeds(n_seeds_to_prepare)
     exp_name, _ = log.log_in_current_day_dir("amTFT")
+    # prefix = "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-1/amTFT/2021_04_29/12_16_29/"
+    prefix = (
+        "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-1/amTFT"
+        "/2021_04_30/22_41_32/"
+    )
+    # prefix = "~/ray_results/amTFT/2021_04_29/12_16_29/"
+    util_prefix = os.path.join(prefix, "utilitarian_welfare/coop")
+    inequity_aversion_prefix = os.path.join(
+        prefix, "inequity_aversion_welfare/coop"
+    )
+    util_load_data_list = [
+        "R2D2_AsymVectorizedCoinGame_05122_00000_0_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_07-15-34/checkpoint_000500/checkpoint-500",
+        # "R2D2_AsymVectorizedCoinGame_05122_00001_1_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_07-15-34/checkpoint_000500/checkpoint-500",
+        # "R2D2_AsymVectorizedCoinGame_05122_00002_2_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_07-15-34/checkpoint_000500/checkpoint-500",
+        # "R2D2_AsymVectorizedCoinGame_05122_00003_3_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_07-15-34/checkpoint_000500/checkpoint-500",
+    ]
+    ia_load_data_list = [
+        "R2D2_AsymVectorizedCoinGame_43fb3_00000_0_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_01-26-34/checkpoint_000500/checkpoint-500",
+        # "R2D2_AsymVectorizedCoinGame_43fb3_00001_1_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_01-26-34/checkpoint_000500/checkpoint-500",
+        # "R2D2_AsymVectorizedCoinGame_43fb3_00002_2_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_01-26-34/checkpoint_000500/checkpoint-500",
+        # "R2D2_AsymVectorizedCoinGame_43fb3_00003_3_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_01-26-34/checkpoint_000500/checkpoint-500",
+    ]
     hparams = {
         "debug": debug,
         "use_r2d2": use_r2d2,
@@ -123,25 +147,11 @@ def get_hyperparameters(
         "load_policy_data": None,
         # "load_policy_data": {
         #     "Util": [
-        #         ".../IBP/amTFT/trials/"
-        #         "DQN_AsymCoinGame_...",
-        #         ".../IBP/amTFT/trials/"
-        #         "DQN_AsymCoinGame_..."],
-        #     'IA':[
-        #         ".../temp/IBP/amTFT/trials/"
-        #         "DQN_AsymCoinGame_...",
-        #         ".../IBP/amTFT/trials/"
-        #         "DQN_AsymCoinGame_..."],
-        # },
-        # "load_policy_data": {
-        #     "Util": [
-        #         "/home/maxime/ray_results/amTFT/2021_04_17/11_31_45"
-        #         "/utilitarian_welfare/coop"
-        #         "/R2D2_RewardUncertaintyEnvClassWrapper_d60ef_00000_0_seed=1618651907_2021-04-17_11-32-32/checkpoint_000010/checkpoint-10",
+        #         os.path.join(util_prefix, path) for path in util_load_data_list
         #     ],
         #     "IA": [
-        #         "/home/maxime/ray_results/amTFT/2021_04_17/11_31_45"
-        #         "/inequity_aversion_welfare/coop/R2D2_RewardUncertaintyEnvClassWrapper_c62e7_00000_0_seed=1618651905_2021-04-17_11-32-06/checkpoint_000010/checkpoint-10",
+        #         os.path.join(inequity_aversion_prefix, path)
+        #         for path in ia_load_data_list
         #     ],
         # },
         "amTFTPolicy": amTFT.AmTFTRolloutsTorchPolicy,
@@ -149,6 +159,12 @@ def get_hyperparameters(
             (postprocessing.WELFARE_INEQUITY_AVERSION, "inequity_aversion"),
             (postprocessing.WELFARE_UTILITARIAN, "utilitarian"),
         ],
+        # "amTFT_punish_instead_of_selfish": False,
+        # "use_short_debit_rollout": False,
+        # "punishment_helped": False,
+        "amTFT_punish_instead_of_selfish": True,
+        "use_short_debit_rollout": True,
+        "punishment_helped": True,
         "jitter": 0.05,
         "hiddens": [64],
         "gamma": 0.96,
@@ -206,12 +222,17 @@ def modify_hyperparams_for_the_selected_env(hp):
     hp["punishment_multiplier"] = 3.0
     hp["buf_frac"] = 0.125
     hp["training_intensity"] = 1 if hp["debug"] else 40
-    hp["rollout_length"] = 4
-    hp["n_rollout_replicas"] = 5
+    # hp["rollout_length"] = 6
+    hp["rollout_length"] = 20
+    hp["n_rollout_replicas"] = 10
+    hp["beta_steps_config"] = [
+        (0, 0.125),
+        (1.0, 0.25),
+    ]
 
     if "CoinGame" in hp["env_name"]:
-        hp["plot_keys"] += vectorized_coin_game.PLOT_KEYS
-        hp["plot_assemblage_tags"] += vectorized_coin_game.PLOT_ASSEMBLAGE_TAGS
+        hp["plot_keys"] += coin_game.PLOT_KEYS
+        hp["plot_assemblage_tags"] += coin_game.PLOT_ASSEMBLAGE_TAGS
 
         hp["n_steps_per_epi"] = 20 if hp["debug"] else 100
         hp["n_epi"] = 10 if hp["debug"] else 4000
@@ -223,53 +244,49 @@ def modify_hyperparams_for_the_selected_env(hp):
 
         hp["lambda"] = 0.96
         hp["alpha"] = 0.0
-        hp["beta"] = 0.5 / 2
+        # hp["beta"] = 0.5 / 4
+        hp["beta"] = config_helper.configurable_linear_scheduler(
+            "beta_steps_config"
+        )
 
         hp["debit_threshold"] = 3.0
-        hp["jitter"] = 0.02
+        hp["jitter"] = 0.0
         hp["filter_utilitarian"] = False
 
         hp["buf_frac"] = 0.5
         hp["target_network_update_freq"] = 30 * hp["n_steps_per_epi"]
         hp["last_exploration_temp_value"] = 0.003
 
-        hp["temperature_steps_config"] = [
-            (0, 2.0),
-            (0.2, 0.5),
-            (0.6, hp["last_exploration_temp_value"]),
-        ]
         hp["lr_steps_config"] = [
-            (0, 0.0),
-            (0.05, 1.0),
+            (0, 1.0),
             (0.25, 0.5),
             (1.0, 1e-9),
+        ]
+        hp["temperature_steps_config"] = [
+            (0, 0.75),
+            (0.2, 0.45),
+            (0.9, hp["last_exploration_temp_value"]),
         ]
 
         if "AsymCoinGame" in hp["env_name"]:
             hp["x_limits"] = (-0.5, 3.0)
             hp["y_limits"] = (-0.8, 0.8)
-            hp["env_class"] = vectorized_coin_game.AsymVectorizedCoinGame
+            hp["env_class"] = coin_game.AsymCoinGame
         elif "SSDMixedMotiveCoinGame" in hp["env_name"]:
             hp["x_limits"] = (-0.1, 1.5)
             hp["y_limits"] = (-0.1, 1.5)
             hp["env_class"] = ssd_mixed_motive_coin_game.SSDMixedMotiveCoinGame
-            hp["temperature_steps_config"] = [
-                (0, 0.75),
-                (0.2, 0.45),
-                (0.9, hp["last_exploration_temp_value"]),
-            ]
             hp["both_players_can_pick_the_same_coin"] = True
+            # hp["beta"] = 0.5 / 2
         elif "MixedMotiveCoinGame" in hp["env_name"]:
             hp["x_limits"] = (-2.0, 2.0)
             hp["y_limits"] = (-0.5, 3.0)
-            hp[
-                "env_class"
-            ] = vectorized_mixed_motive_coin_game.VectMixedMotiveCG
+            hp["env_class"] = mixed_motive_coin_game.MixedMotiveCoinGame
             hp["both_players_can_pick_the_same_coin"] = True
         else:
             hp["x_limits"] = (-0.5, 0.6)
             hp["y_limits"] = (-0.5, 0.6)
-            hp["env_class"] = vectorized_coin_game.VectorizedCoinGame
+            hp["env_class"] = coin_game.CoinGame
     else:
 
         hp["plot_keys"] += matrix_sequential_social_dilemma.PLOT_KEYS
@@ -329,7 +346,7 @@ def modify_hyperparams_for_the_selected_env(hp):
         (1 / hp["n_steps_per_epi"]),
     )  # for y axis
 
-    if hp["reward_uncertainty"] != 0.0:
+    if "reward_uncertainty" in hp.keys() and hp["reward_uncertainty"] != 0.0:
         hp["env_class"] = add_RewardUncertaintyEnvClassWrapper(
             env_class=hp["env_class"],
             reward_uncertainty_std=hp["reward_uncertainty"],
@@ -400,10 +417,7 @@ def get_rllib_config(hp, welfare_fn, eval=False):
     }
 
     env_config = get_env_config(hp)
-    env_config["bs_epi_mul"] = hp["bs_epi_mul"]
-    env_config["buf_frac"] = hp["buf_frac"]
-    env_config["temperature_steps_config"] = hp["temperature_steps_config"]
-    env_config["lr_steps_config"] = hp["lr_steps_config"]
+
     policies = get_policies(hp, env_config, welfare_fn, eval)
 
     selected_seeds = hp["seeds"][: hp["train_n_replicates"]]
@@ -554,23 +568,29 @@ def get_env_config(hp):
             "both_players_can_pick_the_same_coin": hp[
                 "both_players_can_pick_the_same_coin"
             ],
+            "punishment_helped": hp["punishment_helped"],
         }
     else:
         env_config = {
             "players_ids": ["player_row", "player_col"],
             "max_steps": hp["n_steps_per_epi"],
         }
+    env_config["bs_epi_mul"] = hp.get("bs_epi_mul", None)
+    env_config["buf_frac"] = hp.get("buf_frac", None)
+    env_config["temperature_steps_config"] = hp.get(
+        "temperature_steps_config", None
+    )
+    env_config["lr_steps_config"] = hp.get("lr_steps_config", None)
+    env_config["beta_steps_config"] = hp.get("beta_steps_config", None)
     return env_config
 
 
 def get_policies(hp, env_config, welfare_fn, eval=False):
-    PolicyClass = hp["amTFTPolicy"]
-    NestedPolicyClass, CoopNestedPolicyClass = get_nested_policy_class(
-        hp, welfare_fn
-    )
+    policy_class = hp["amTFTPolicy"]
+    nested_policy_class, coop_nested_policy_class = get_nested_policy_class(hp)
 
     if eval:
-        NestedPolicyClass = CoopNestedPolicyClass
+        nested_policy_class = coop_nested_policy_class
 
     amTFT_config_update = merge_dicts(
         amTFT.DEFAULT_CONFIG,
@@ -579,23 +599,46 @@ def get_policies(hp, env_config, welfare_fn, eval=False):
             "working_state": "train_coop",
             "welfare_key": welfare_fn,
             "verbose": 1 if hp["debug"] else 0,
-            # "verbose": 1 if hp["debug"] else 2,
+            # "verbose": 2,
             "punishment_multiplier": hp["punishment_multiplier"],
             "debit_threshold": hp["debit_threshold"],
-            "rollout_length": min(hp["n_steps_per_epi"], hp["rollout_length"]),
-            "n_rollout_replicas": hp["n_rollout_replicas"],
+            "rollout_length": 2
+            if hp["debug"]
+            else min(hp["n_steps_per_epi"], hp["rollout_length"]),
+            "n_rollout_replicas": 2
+            if hp["debug"]
+            else hp["n_rollout_replicas"],
+            "punish_instead_of_selfish": hp["amTFT_punish_instead_of_selfish"],
+            "use_short_debit_rollout": hp["use_short_debit_rollout"],
             "optimizer": {
                 "sgd_momentum": hp["sgd_momentum"],
             },
             "nested_policies": [
-                {"Policy_class": CoopNestedPolicyClass, "config_update": {}},
-                {"Policy_class": NestedPolicyClass, "config_update": {}},
-                {"Policy_class": CoopNestedPolicyClass, "config_update": {}},
-                {"Policy_class": NestedPolicyClass, "config_update": {}},
+                {
+                    "Policy_class": coop_nested_policy_class,
+                    "config_update": {
+                        postprocessing.ADD_INEQUITY_AVERSION_WELFARE: [
+                            welfare_fn
+                            == postprocessing.WELFARE_INEQUITY_AVERSION,
+                            hp["alpha"],
+                            hp["beta"],
+                            hp["gamma"],
+                            hp["lambda"],
+                        ],
+                        postprocessing.ADD_UTILITARIAN_WELFARE: (
+                            welfare_fn == postprocessing.WELFARE_UTILITARIAN
+                        ),
+                    },
+                },
+                {"Policy_class": nested_policy_class, "config_update": {}},
+                {
+                    "Policy_class": coop_nested_policy_class,
+                    "config_update": {},
+                },
+                {"Policy_class": nested_policy_class, "config_update": {}},
             ],
         },
     )
-
     policy_1_config = copy.deepcopy(amTFT_config_update)
     policy_1_config["own_policy_id"] = env_config["players_ids"][0]
     policy_1_config["opp_policy_id"] = env_config["players_ids"][1]
@@ -605,46 +648,45 @@ def get_policies(hp, env_config, welfare_fn, eval=False):
     policy_2_config["opp_policy_id"] = env_config["players_ids"][0]
 
     policies = {
-        env_config["players_ids"][0]: (
+        env_config["players_ids"][0]: [
             # The default policy is DQN defined in DQNTrainer but
             # we overwrite it to use the LE policy
-            PolicyClass,
+            policy_class,
             hp["env_class"](env_config).OBSERVATION_SPACE,
             hp["env_class"].ACTION_SPACE,
             policy_1_config,
-        ),
-        env_config["players_ids"][1]: (
-            PolicyClass,
+        ],
+        env_config["players_ids"][1]: [
+            policy_class,
             hp["env_class"](env_config).OBSERVATION_SPACE,
             hp["env_class"].ACTION_SPACE,
             policy_2_config,
-        ),
+        ],
     }
 
     return policies
 
 
-def get_nested_policy_class(hp, welfare_fn):
+def get_nested_policy_class(hp):
     nested_policy_class = _select_base_policy(hp)
 
     coop_nested_policy_class = nested_policy_class.with_updates(
-        # TODO problem: this prevent to use HP searches on gamma etc.
         postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
-            postprocessing.welfares_postprocessing_fn(
-                add_utilitarian_welfare=(
-                    welfare_fn == postprocessing.WELFARE_UTILITARIAN
-                ),
-                add_inequity_aversion_welfare=(
-                    welfare_fn == postprocessing.WELFARE_INEQUITY_AVERSION
-                ),
-                inequity_aversion_alpha=hp["alpha"],
-                inequity_aversion_beta=hp["beta"],
-                inequity_aversion_gamma=hp["gamma"],
-                inequity_aversion_lambda=hp["lambda"],
-            ),
+            postprocessing.welfares_postprocessing_fn(),
             postprocess_nstep_and_prio,
         )
     )
+
+    if hp["amTFT_punish_instead_of_selfish"]:
+        nested_policy_class = nested_policy_class.with_updates(
+            # TODO problem: this prevent to use HP searches on gamma etc.
+            postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
+                postprocessing.welfares_postprocessing_fn(
+                    add_opponent_neg_reward=True,
+                ),
+                postprocess_nstep_and_prio,
+            )
+        )
     return nested_policy_class, coop_nested_policy_class
 
 
@@ -675,13 +717,12 @@ def _modify_config_for_r2d2(rllib_config, hp, stop_config, eval=False):
         rllib_config["use_h_function"] = False
         rllib_config["burn_in"] = 0
         rllib_config["zero_init_states"] = False
+        rllib_config["model"]["lstm_cell_size"] = 16
         if hp["debug"]:
             rllib_config["model"]["max_seq_len"] = 2
-            rllib_config["model"]["lstm_cell_size"] = 8
         else:
             rllib_config["model"]["max_seq_len"] = 20
             rllib_config["env_config"]["bs_epi_mul"] = 4
-            rllib_config["model"]["lstm_cell_size"] = 16
             if "CoinGame" in hp["env_name"]:
                 rllib_config["training_intensity"] = tune.sample_from(
                     lambda spec: spec.config["num_envs_per_worker"] * 40
@@ -702,7 +743,7 @@ def postprocess_utilitarian_results(results, env_config, hp):
             hp_cp["train_n_replicates"]
             // hp_cp["n_times_more_utilitarians_seeds"]
         )
-        results = miscellaneous.filter_tune_results(
+        results = utils.tune_analysis.filter_trials(
             results,
             metric=f"policy_reward_mean/{env_config['players_ids'][0]}",
             metric_threshold=hp_cp["utilitarian_filtering_threshold"]
@@ -750,7 +791,7 @@ def evaluate_self_play_cross_play(
     if "CoinGame" in hp_eval["env_name"]:
         background_area_coord = None
     else:
-        background_area_coord = hp_eval["env_class"].PAYOUT_MATRIX
+        background_area_coord = hp_eval["env_class"].PAYOFF_MATRIX
     plot_config = plot.PlotConfig(
         xlim=hp_eval["x_limits"],
         ylim=hp_eval["y_limits"],
@@ -817,7 +858,8 @@ def modify_hp_for_evaluation(hp: dict, eval_over_n_epi: int = 1):
 
 def modify_config_for_evaluation(config_eval, hp, env_config, stop_config):
     config_eval["explore"] = False
-    config_eval["seed"] = None
+    config_eval.pop("seed")
+    # = None
     config_eval["num_workers"] = 0
     assert (
         config_eval["num_envs_per_worker"] == 1
@@ -875,5 +917,5 @@ def print_inequity_aversion_welfare(env_config, analysis_metrics_per_mode):
 
 if __name__ == "__main__":
     use_r2d2 = True
-    debug_mode = True
+    debug_mode = False
     main(debug_mode, use_r2d2=use_r2d2)

@@ -34,6 +34,7 @@ def get_tune_policy_class(PolicyClass):
             self.load_checkpoint(
                 config.pop(LOAD_FROM_CONFIG_KEY, (None, None))
             )
+            self._to_log = {}
 
             super().__init__(observation_space, action_space, config)
 
@@ -76,6 +77,27 @@ def get_tune_policy_class(PolicyClass):
             self.checkpoint_path, self.policy_id = checkpoint_tuple
             if self.checkpoint_path is not None:
                 self.tune_trainer.load_checkpoint(self.checkpoint_path)
+
+        @property
+        def to_log(self):
+            to_log = {
+                "frozen_policy": self._to_log,
+                "nested_tune_policy": {
+                    f"policy_{algo_idx}": algo.to_log
+                    for algo_idx, algo in enumerate(self.algorithms)
+                    if hasattr(algo, "to_log")
+                },
+            }
+            return to_log
+
+        @to_log.setter
+        def to_log(self, value):
+            if value == {}:
+                for algo in self.algorithms:
+                    if hasattr(algo, "to_log"):
+                        algo.to_log = {}
+
+            self._to_log = value
 
     return FrozenPolicyFromTuneTrainer
 

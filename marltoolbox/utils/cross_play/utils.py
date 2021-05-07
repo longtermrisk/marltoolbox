@@ -57,6 +57,7 @@ def _create_one_master_config(
         all_policy_mix.extend(policies_mixes)
 
     master_config = copy.deepcopy(all_rllib_configs[0])
+    print("len(all_policy_mix)", len(all_policy_mix))
     master_config["multiagent"]["policies"] = tune.grid_search(all_policy_mix)
     return master_config
 

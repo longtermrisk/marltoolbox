@@ -12,6 +12,7 @@ from ray import tune
 from ray.rllib.agents import dqn
 from ray.rllib.utils import merge_dicts
 
+from marltoolbox import utils
 from marltoolbox.algos import welfare_coordination
 from marltoolbox.experiments.rllib_api import amtft_various_env
 from marltoolbox.utils import (
@@ -22,13 +23,11 @@ from marltoolbox.utils import (
     tune_analysis,
     restore,
 )
-from marltoolbox import utils
 
 logger = logging.getLogger(__name__)
 
 
 def main(debug):
-
     # _extract_stats_on_welfare_announced(
     #     exp_dir="/home/maxime/dev-maxime/CLR/vm-data/instance-60-cpu-3-preemtible/amTFT/2021_04_23/12_58_42",
     #     players_ids=["player_row", "player_col"],
@@ -36,8 +35,8 @@ def main(debug):
     #
     # if debug:
     #     test_meta_solver(debug)
-
-    hp = _get_hyperparameters(debug)
+    use_r2d2 = True
+    hp = get_hyperparameters(debug, use_r2d2=use_r2d2)
 
     results = []
     ray.init(num_cpus=os.cpu_count(), local_mode=hp["debug"])
@@ -51,43 +50,53 @@ def main(debug):
         ) = _produce_rllib_config_for_each_replicates(hp)
 
         mixed_rllib_configs = _mix_rllib_config(all_rllib_config, hp_eval)
-
         tune_analysis = ray.tune.run(
-            dqn.DQNTrainer,
+            hp["trainer"],
             config=mixed_rllib_configs,
             verbose=1,
             stop=stop_config,
-            checkpoint_at_end=True,
             name=hp_eval["exp_name"],
-            log_to_file=not hp_eval["debug"],
-            # loggers=None
-            # if hp_eval["debug"]
-            # else DEFAULT_LOGGERS + (WandbLogger,),
+            # log_to_file=not hp_eval["debug"],
         )
-        mean_player_1_payoffs, mean_player_2_payoffs = _extract_metrics(
-            tune_analysis, hp_eval
-        )
+        (
+            mean_player_1_payoffs,
+            mean_player_2_payoffs,
+            player_1_payoffs,
+            player_2_payoffs,
+        ) = extract_metrics(tune_analysis, hp_eval)
 
         results.append(
             (
                 tau,
                 (mean_player_1_payoffs, mean_player_2_payoffs),
+                (player_1_payoffs, player_2_payoffs),
             )
         )
-    _save_to_json(exp_name=hp["exp_name"], object=results)
-    _plot_results(exp_name=hp["exp_name"], results=results, hp_eval=hp_eval)
-    _extract_stats_on_welfare_announced(
+    save_to_json(exp_name=hp["exp_name"], object=results)
+    plot_results(
+        exp_name=hp["exp_name"],
+        results=results,
+        hp_eval=hp_eval,
+        format_fn=format_result_for_plotting,
+    )
+    extract_stats_on_welfare_announced(
         exp_name=hp["exp_name"], players_ids=env_config["players_ids"]
     )
 
 
-def _get_hyperparameters(debug):
+def get_hyperparameters(debug, use_r2d2=False):
+    """Get hyperparameters for meta game with amTFT policies in base game"""
+
     # env = "IteratedPrisonersDilemma"
     env = "IteratedAsymBoS"
     # env = "CoinGame"
 
     hp = amtft_various_env.get_hyperparameters(
-        debug, train_n_replicates=1, filter_utilitarian=False, env=env
+        debug,
+        train_n_replicates=1,
+        filter_utilitarian=False,
+        env=env,
+        use_r2d2=use_r2d2,
     )
 
     hp.update(
@@ -99,8 +108,15 @@ def _get_hyperparameters(debug):
             else np.arange(0.0, 1.1, 0.1),
             "n_self_play_in_final_meta_game": 0,
             "n_cross_play_in_final_meta_game": 1 if debug else 4,
+            "max_n_replicates_in_base_game": 10,
         }
     )
+
+    if use_r2d2:
+        hp["trainer"] = dqn.r2d2.R2D2Trainer
+    else:
+        hp["trainer"] = dqn.DQNTrainer
+
     return hp
 
 
@@ -124,11 +140,14 @@ def _produce_rllib_config_for_each_replicates(hp):
             rllib_config, env_config, hp_eval
         )
         all_rllib_config.append(rllib_config)
+
     return all_rllib_config, hp_eval, env_config, stop_config
 
 
 def _load_base_game_results(hp, load_base_replicate_i):
-    prefix = "~/dev-maxime/CLR/vm-data/instance-10-cpu-2/"
+    # prefix = "~/dev-maxime/CLR/vm-data/instance-10-cpu-2/"
+    # prefix = "~/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/"
+    prefix = "~/dev-maxime/CLR/vm-data/instance-60-cpu-2-preemtible/"
     # prefix = "~/ray_results/"
     prefix = os.path.expanduser(prefix)
     if "CoinGame" in hp["env_name"]:
@@ -137,11 +156,27 @@ def _load_base_game_results(hp, load_base_replicate_i):
         ]
     elif "IteratedAsymBoS" in hp["env_name"]:
         hp["data_dir"] = (
-            prefix + "amTFT/2021_04_13/11_56_23",  # 5 replicates
-            prefix + "amTFT/2021_04_13/13_40_03",  # 5 replicates
-            prefix + "amTFT/2021_04_13/13_40_34",  # 5 replicates
-            prefix + "amTFT/2021_04_13/18_06_48",  # 10 replicates
-            prefix + "amTFT/2021_04_13/18_07_05",  # 10 replicates
+            # Before fix + without R2D2
+            # prefix + "amTFT/2021_04_13/11_56_23",  # 5 replicates
+            # prefix + "amTFT/2021_04_13/13_40_03",  # 5 replicates
+            # prefix + "amTFT/2021_04_13/13_40_34",  # 5 replicates
+            # prefix + "amTFT/2021_04_13/18_06_48",  # 10 replicates
+            # prefix + "amTFT/2021_04_13/18_07_05",  # 10 replicates
+            # After env fix + with R2D2
+            # prefix + "amTFT/2021_05_03/13_44_48",  # 10 replicates
+            # prefix + "amTFT/2021_05_03/13_45_09",  # 10 replicates
+            # prefix + "amTFT/2021_05_03/13_47_00",  # 10 replicates
+            # prefix + "amTFT/2021_05_03/13_48_03",  # 10 replicates
+            # prefix + "amTFT/2021_05_03/13_49_28",  # 10 replicates
+            # prefix + "amTFT/2021_05_03/13_49_47",  # 10 replicates
+            # After fix env + short debit rollout + punish instead of
+            # selfish + 20 rllout length insead of 6
+            prefix + "amTFT/2021_05_03/13_52_07",  # 10 replicates
+            prefix + "amTFT/2021_05_03/13_52_27",  # 10 replicates
+            prefix + "amTFT/2021_05_03/13_53_37",  # 10 replicates
+            ### prefix + "amTFT/2021_05_03/13_54_08",  # 10 replicates
+            prefix + "amTFT/2021_05_03/13_54_55",  # 10 replicates
+            prefix + "amTFT/2021_05_03/13_56_35",  # 10 replicates
         )[load_base_replicate_i]
     elif "IteratedPrisonersDilemma" in hp["env_name"]:
         hp["data_dir"] = (
@@ -150,6 +185,10 @@ def _load_base_game_results(hp, load_base_replicate_i):
         )[load_base_replicate_i]
     else:
         raise ValueError()
+
+    assert os.path.exists(
+        hp["data_dir"]
+    ), "Path doesn't exist. Probably that the prefix need to be changed to fit the current machine used"
 
     hp["json_file"] = _get_results_json_file_path_in_dir(hp["data_dir"])
     hp["ckpt_per_welfare"] = _get_checkpoints_for_each_welfare_in_dir(
@@ -174,10 +213,10 @@ def _get_vanilla_amTFT_eval_config(hp, final_eval_over_n_epi):
     hp_eval["n_cross_play_per_checkpoint"] = None
     hp_eval[
         "x_axis_metric"
-    ] = f"policy_reward_mean.{env_config['players_ids'][0]}"
+    ] = f"policy_reward_mean/{env_config['players_ids'][0]}"
     hp_eval[
         "y_axis_metric"
-    ] = f"policy_reward_mean.{env_config['players_ids'][1]}"
+    ] = f"policy_reward_mean/{env_config['players_ids'][1]}"
 
     return rllib_config, hp_eval, env_config, stop_config
 
@@ -255,11 +294,15 @@ def _mix_rllib_config(all_rllib_configs, hp_eval):
         raise ValueError()
 
 
-def _extract_metrics(tune_analysis, hp_eval):
-    player_1_payoffs = utils.tune_analysis.extract_metric_values_per_trials(
+def extract_metrics(tune_analysis, hp_eval):
+    # TODO PROBLEM using last result but there are several episodes with
+    #  different welfare functions !! => BUT plot is good
+    # Metric from the last result means the metric average over the last
+    # training iteration and we have only one training iteration here.
+    player_1_payoffs = utils.tune_analysis.extract_metrics_for_each_trials(
         tune_analysis, metric=hp_eval["x_axis_metric"]
     )
-    player_2_payoffs = utils.tune_analysis.extract_metric_values_per_trials(
+    player_2_payoffs = utils.tune_analysis.extract_metrics_for_each_trials(
         tune_analysis, metric=hp_eval["y_axis_metric"]
     )
     mean_player_1_payoffs = sum(player_1_payoffs) / len(player_1_payoffs)
@@ -269,30 +312,35 @@ def _extract_metrics(tune_analysis, hp_eval):
         mean_player_1_payoffs,
         mean_player_2_payoffs,
     )
-    return mean_player_1_payoffs, mean_player_2_payoffs
+    return (
+        mean_player_1_payoffs,
+        mean_player_2_payoffs,
+        player_1_payoffs,
+        player_2_payoffs,
+    )
 
 
-def _save_to_json(exp_name, object):
+def save_to_json(exp_name, object):
     exp_dir = _get_exp_dir_from_exp_name(exp_name)
     json_file = os.path.join(exp_dir, "final_eval_in_base_game.json")
     with open(json_file, "w") as outfile:
         json.dump(object, outfile)
 
 
-def _plot_results(exp_name, results, hp_eval):
+def plot_results(exp_name, results, hp_eval, format_fn, jitter=0.0):
     exp_dir = _get_exp_dir_from_exp_name(exp_name)
-    data_groups_per_mode = _format_result_for_plotting(results)
+    data_groups_per_mode = format_fn(results)
 
-    if "CoinGame" in hp_eval["env_name"]:
-        background_area_coord = None
-    else:
-        background_area_coord = hp_eval["env_class"].PAYOUT_MATRIX
+    background_area_coord = None
+    if "CoinGame" not in hp_eval["env_name"] and "env_class" in hp_eval.keys():
+        background_area_coord = hp_eval["env_class"].PAYOFF_MATRIX
+
     plot_config = plot.PlotConfig(
         save_dir_path=exp_dir,
         xlim=hp_eval["x_limits"],
         ylim=hp_eval["y_limits"],
         markersize=5,
-        # jitter=0.0,
+        jitter=jitter,
         xlabel="player 1 payoffs",
         ylabel="player 2 payoffs",
         x_scale_multiplier=hp_eval["plot_axis_scale_multipliers"][0],
@@ -304,12 +352,9 @@ def _plot_results(exp_name, results, hp_eval):
     plot_helper.plot_dots(data_groups_per_mode)
 
 
-def _format_result_for_plotting(results):
+def format_result_for_plotting(results):
     data_groups_per_mode = {}
-    for (
-        tau,
-        (mean_player_1_payoffs, mean_player_2_payoffs),
-    ) in results:
+    for (tau, (mean_player_1_payoffs, mean_player_2_payoffs), _) in results:
         df_row_dict = {}
         df_row_dict[f"mean"] = (
             mean_player_1_payoffs,
@@ -321,7 +366,7 @@ def _format_result_for_plotting(results):
 
 
 def test_meta_solver(debug):
-    hp = _get_hyperparameters(debug)
+    hp = get_hyperparameters(debug)
     hp = _load_base_game_results(hp, load_base_replicate_i=0)
     stop, env_config, rllib_config = amtft_various_env.get_rllib_config(
         hp, welfare_fn=postprocessing.WELFARE_INEQUITY_AVERSION, eval=True
@@ -411,6 +456,12 @@ def _get_json_results_path(eval_dir):
     all_files_filtered = [
         file_path for file_path in all_files_filtered if ".json" in file_path
     ]
+    all_files_filtered = [
+        file_path
+        for file_path in all_files_filtered
+        if os.path.split(file_path)[-1].startswith("plotself")
+        or not os.path.split(file_path)[-1].startswith("plot")
+    ]
     assert len(all_files_filtered) == 1, f"{all_files_filtered}"
     json_result_path = os.path.join(eval_dir, all_files_filtered[0])
     return json_result_path
@@ -421,14 +472,59 @@ def _get_checkpoints_for_each_welfare_in_dir(data_dir, hp):
     ckpt_per_welfare = {}
     for welfare_fn, welfare_name in hp["welfare_functions"]:
         welfare_training_save_dir = os.path.join(data_dir, welfare_fn, "coop")
-        all_replicates_save_dir = get_dir_of_each_replicate(
-            welfare_training_save_dir
+        all_replicates_save_dir = _get_replicates_dir_for_all_possible_config(
+            hp, welfare_training_save_dir
+        )
+        all_replicates_save_dir = _filter_checkpoints_if_utilitarians(
+            all_replicates_save_dir, hp
         )
         ckpts = restore.get_checkpoint_for_each_replicates(
             all_replicates_save_dir
         )
+        print("len(ckpts)", len(ckpts))
         ckpt_per_welfare[welfare_name.replace("_", " ")] = ckpts
     return ckpt_per_welfare
+
+
+def _get_replicates_dir_for_all_possible_config(hp, welfare_training_save_dir):
+    if "use_r2d2" in hp and hp["use_r2d2"]:
+        all_replicates_save_dir = get_dir_of_each_replicate(
+            welfare_training_save_dir, str_in_dir="R2D2_"
+        )
+    else:
+        all_replicates_save_dir = get_dir_of_each_replicate(
+            welfare_training_save_dir, str_in_dir="DQN_"
+        )
+    return all_replicates_save_dir
+
+
+def _filter_checkpoints_if_utilitarians(all_replicates_save_dir, hp):
+    util_or_inequity_aversion = [
+        path.split("/")[-3] for path in all_replicates_save_dir
+    ]
+    print("util_or_inequity_aversion", util_or_inequity_aversion)
+    if all(
+        welfare == "utilitarian_welfare"
+        for welfare in util_or_inequity_aversion
+    ):
+        all_replicates_save_dir = (
+            utils.path.filter_list_of_replicates_by_results(
+                all_replicates_save_dir,
+                filter_key="episode_reward_mean",
+                filter_mode=tune_analysis.ABOVE,
+                filter_threshold=95,
+            )
+        )
+        if len(all_replicates_save_dir) > hp["max_n_replicates_in_base_game"]:
+            all_replicates_save_dir = all_replicates_save_dir[
+                : hp["max_n_replicates_in_base_game"]
+            ]
+    else:
+        print(
+            "not filtering ckpts. all_replicates_save_dir[0]",
+            all_replicates_save_dir[0],
+        )
+    return all_replicates_save_dir
 
 
 def get_dir_of_each_replicate(welfare_training_save_dir, str_in_dir="DQN_"):
@@ -477,7 +573,7 @@ def keep_only_cross_play_values(json_data):
 def _format_eval_mode(eval_mode):
     k_wtout_kind_of_play = eval_mode.split(":")[-1].strip()
     both_welfare_fn = k_wtout_kind_of_play.split(" vs ")
-    return welfare_coordination.WelfareCoordinationTorchPolicy._from_pair_of_welfare_names_to_key(
+    return welfare_coordination.WelfareCoordinationTorchPolicy.from_pair_of_welfare_names_to_key(
         *both_welfare_fn
     )
 
@@ -502,7 +598,7 @@ def _order_players(cross_play_means, player_ids):
     }
 
 
-def _extract_stats_on_welfare_announced(
+def extract_stats_on_welfare_announced(
     players_ids, exp_name=None, exp_dir=None, nested_info=False
 ):
     if exp_dir is None:
@@ -615,5 +711,5 @@ def _format_in_same_order(all_welfares_player_n):
 
 
 if __name__ == "__main__":
-    debug_mode = False
+    debug_mode = True
     main(debug_mode)

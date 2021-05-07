@@ -2,6 +2,9 @@ import json
 import os
 from typing import List
 
+from marltoolbox.utils import miscellaneous
+from marltoolbox.utils.tune_analysis import ABOVE, BELOW, EQUAL
+
 
 def get_unique_child_dir(_dir: str):
     """
@@ -19,6 +22,23 @@ def get_unique_child_dir(_dir: str):
     assert len(list_child_dir) == 1, f"{list_child_dir}"
     unique_child_dir = list_child_dir[0]
     return unique_child_dir
+
+
+def try_get_unique_child_dir(_dir: str):
+    """
+    If it exists, returns the path to the unique dir inside the given dir.
+    Otherwise returns None.
+
+    :param _dir: path to given dir
+    :return: path to the unique dir inside the given dir or if it doesn't
+        exist None
+    """
+
+    try:
+        unique_child_dir = get_unique_child_dir(_dir)
+        return unique_child_dir
+    except AssertionError:
+        return None
 
 
 def list_all_files_in_one_dir_tree(path: str) -> List[str]:
@@ -142,3 +162,36 @@ def _read_all_lines_of_file(file_path: str) -> list:
 def keep_dirs_only(paths: list) -> list:
     """Keep only the directories"""
     return [path for path in paths if os.path.isdir(path)]
+
+
+def filter_list_of_replicates_by_results(
+    replicate_paths: list,
+    filter_key: str,
+    filter_threshold: float,
+    filter_mode: str = ABOVE,
+) -> list:
+    print("Going to start filtering replicate_paths")
+    print("len(replicate_paths)", len(replicate_paths))
+    filtered_replicate_paths = []
+    for replica_path in replicate_paths:
+        replica_results = get_results_for_replicate(replica_path)
+        last_result = replica_results[-1]
+        assert isinstance(last_result, dict)
+        _, _, current_value, found = miscellaneous.move_to_key(
+            last_result, filter_key
+        )
+        assert found, (
+            f"filter_key {filter_key} not found in last_result "
+            f"{last_result}"
+        )
+        if filter_mode == ABOVE and current_value > filter_threshold:
+            filtered_replicate_paths.append(replica_path)
+        elif filter_mode == EQUAL and current_value == filter_threshold:
+            filtered_replicate_paths.append(replica_path)
+        elif filter_mode == BELOW and current_value < filter_threshold:
+            filtered_replicate_paths.append(replica_path)
+        else:
+            print(f"filtering out replica_path {replica_path}")
+    print("After filtering:")
+    print("len(filtered_replicate_paths)", len(filtered_replicate_paths))
+    return filtered_replicate_paths

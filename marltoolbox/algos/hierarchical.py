@@ -43,8 +43,8 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
             if nested_config["Policy_class"] is None:
                 raise ValueError(
                     "You must specify the classes for the nested Policies "
-                    'in config["nested_config"]["Policy_class"] '
-                    f'current value is {nested_config["Policy_class"]}.'
+                    'in config["nested_config"]["Policy_class"]. '
+                    f"nested_config: {nested_config}."
                 )
             Policy = nested_config["Policy_class"]
             policy = Policy(
@@ -103,10 +103,8 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
                     f"printing this message."
                 )
                 logger.info(msg)
-                # from warnings import warn
-                # warn(msg)
-                return object.__getattribute__(
-                    self.algorithms[self.active_algo_idx], attr
+                return self.algorithms[self.active_algo_idx].__getattribute__(
+                    attr
                 )
             except AttributeError as secondary:
                 raise type(initial)(f"{initial.args} and {secondary.args}")
@@ -141,6 +139,14 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         self.algorithms[self.active_algo_idx].model = value
 
     @property
+    def exploration(self):
+        return self.algorithms[self.active_algo_idx].exploration
+
+    @exploration.setter
+    def exploration(self, value):
+        self.algorithms[self.active_algo_idx].exploration = value
+
+    @property
     def dist_class(self):
         return self.algorithms[self.active_algo_idx].dist_class
 
@@ -157,9 +163,11 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         for algo in self.algorithms:
             algo.global_timestep = value
 
+    @override(rllib.policy.Policy)
     def on_global_var_update(self, global_vars):
         for algo in self.algorithms:
             algo.on_global_var_update(global_vars)
+        super().on_global_var_update(global_vars)
 
     @property
     def update_target(self):
@@ -170,12 +178,14 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
 
         return nested_update_target
 
+    @override(rllib.policy.TorchPolicy)
     def get_weights(self):
         return {
             self.nested_key(i): algo.get_weights()
             for i, algo in enumerate(self.algorithms)
         }
 
+    @override(rllib.policy.TorchPolicy)
     def set_weights(self, weights):
         for i, algo in enumerate(self.algorithms):
             algo.set_weights(weights[self.nested_key(i)])
@@ -252,7 +262,6 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         # Set optimizer vars first.
         optimizer_vars = state.pop("_optimizer_variables", None)
         if optimizer_vars:
-            print("self", self)
             assert len(optimizer_vars) == len(
                 self._optimizers
             ), f"{len(optimizer_vars)} {len(self._optimizers)}"

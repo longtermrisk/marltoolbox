@@ -393,7 +393,6 @@ def _train_in_self_play(rllib_config, stop, exp_name, hp):
         checkpoint_at_end=True,
         name=full_exp_name,
         log_to_file=not hp["debug"],
-        # loggers=None if hp["debug"] else DEFAULT_LOGGERS + (WandbLogger,),
         callbacks=None
         if hp["debug"]
         else [

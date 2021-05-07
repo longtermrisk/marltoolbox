@@ -16,7 +16,7 @@ def get_temp_scheduler() -> Callable:
 
     :return: an easily customizable temperature scheduler
     """
-    return _configurable_linear_scheduler("temperature_steps_config")
+    return configurable_linear_scheduler("temperature_steps_config")
 
 
 def get_lr_scheduler() -> Callable:
@@ -29,12 +29,16 @@ def get_lr_scheduler() -> Callable:
 
     :return: an easily customizable temperature scheduler
     """
-    return _configurable_linear_scheduler(
+    return configurable_linear_scheduler(
         "lr_steps_config", second_term_key="lr"
     )
 
 
-def _configurable_linear_scheduler(config_key, second_term_key: str = None):
+def configurable_linear_scheduler(config_key, second_term_key: str = None):
+    """Returns a configurable linear scheduler which use the hyperparameters
+    stop.episodes_total and config.env_config.max_steps fro the RLLib
+    config."""
+
     return tune.sample_from(
         lambda spec: PiecewiseSchedule(
             endpoints=[

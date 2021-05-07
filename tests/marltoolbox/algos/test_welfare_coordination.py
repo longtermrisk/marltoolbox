@@ -93,7 +93,7 @@ def _get_all_welfare_pairs_wt_extrem_payoffs_for_i(
     for welfare_p1 in welfares:
         for welfare_p2 in welfares:
             welfare_pair_name = (
-                MetaGameSolver._from_pair_of_welfare_names_to_key(
+                MetaGameSolver.from_pair_of_welfare_names_to_key(
                     welfare_p1, welfare_p2
                 )
             )
@@ -228,7 +228,7 @@ def _assert_get_the_right_payoffs_or_default_payoff(
 def _add_nominal_case(welfares, all_welfare_pairs_wt_payoffs, own_player_idx):
     own_welfare_set = set(random.sample(welfares, 1))
     opp_welfare_set = set(random.sample(welfares, 1))
-    welfare_pair_name = MetaGameSolver._from_pair_of_welfare_names_to_key(
+    welfare_pair_name = MetaGameSolver.from_pair_of_welfare_names_to_key(
         list(own_welfare_set)[0], list(opp_welfare_set)[0]
     )
     payoff = random.random()
@@ -242,7 +242,7 @@ def _add_default_case(welfares, all_welfare_pairs_wt_payoffs, own_player_idx):
     own_default_welfare_fn = random.sample(welfares, 1)[0]
     opp_default_welfare_fn = random.sample(welfares, 1)[0]
     welfare_default_pair_name = (
-        MetaGameSolver._from_pair_of_welfare_names_to_key(
+        MetaGameSolver.from_pair_of_welfare_names_to_key(
             own_default_welfare_fn, opp_default_welfare_fn
         )
     )

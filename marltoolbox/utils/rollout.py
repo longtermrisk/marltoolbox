@@ -70,6 +70,7 @@ def internal_rollout(
     seed=None,
     explore=None,
     last_rnn_states=None,
+    base_env=None,
 ):
     """
     Can perform rollouts on the environment from inside a worker_rollout or
@@ -104,10 +105,15 @@ def internal_rollout(
     if saver is None:
         saver = RolloutManager()
 
-    env = copy.deepcopy(worker.env)
-    if hasattr(env, "seed") and callable(env.seed):
-        env.seed(seed)
+    if base_env is None:
+        env = worker.env
+    else:
+        env = base_env.get_unwrapped()[0]
 
+    # if hasattr(env, "seed") and callable(env.seed):
+    #     env.seed(seed)
+
+    env = copy.deepcopy(env)
     multiagent = isinstance(env, MultiAgentEnv)
     if policy_agent_mapping is None:
         if worker.multiagent:
@@ -306,7 +312,6 @@ def _worker_compute_action(
     if type(pp).__name__ != "NoPreprocessor":
         observation = pp.transform(observation)
     filtered_obs = worker.filters[policy_id](observation, update=False)
-
     result = worker.get_policy(policy_id).compute_single_action(
         filtered_obs,
         state,

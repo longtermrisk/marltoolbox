@@ -1,7 +1,7 @@
 from marltoolbox.utils.miscellaneous import move_to_key, logger
 
 
-def extract_metric_values_per_trials(
+def extract_value_from_last_training_iteration_for_each_trials(
     tune_analysis,
     metric="episode_reward_mean",
 ):
@@ -13,6 +13,17 @@ def extract_metric_values_per_trials(
             found
         ), f"metric: {metric} not found in last_results: {last_results}"
         metric_values.append(value)
+    return metric_values
+
+
+def extract_metrics_for_each_trials(
+    tune_analysis,
+    metric="episode_reward_mean",
+    metric_mode="avg",
+):
+    metric_values = []
+    for trial in tune_analysis.trials:
+        metric_values.append(trial.metric_analysis[metric][metric_mode])
     return metric_values
 
 
@@ -60,3 +71,67 @@ def extract_config_values_from_tune_analysis(tune_experiment_analysis, key):
         else:
             values.append(None)
     return values
+
+
+ABOVE = "above"
+EQUAL = "equal"
+BELOW = "below"
+FILTERING_MODES = (ABOVE, EQUAL, BELOW)
+
+RLLIB_METRICS_MODES = (
+    "avg",
+    "min",
+    "max",
+    "last",
+    "last-5-avg",
+    "last-10-avg",
+)
+
+
+def filter_trials(
+    experiement_analysis,
+    metric,
+    metric_threshold: float,
+    metric_mode="last-5-avg",
+    threshold_mode=ABOVE,
+):
+    """
+    Filter trials of an ExperimentAnalysis
+
+    :param experiement_analysis:
+    :param metric:
+    :param metric_threshold:
+    :param metric_mode:
+    :param threshold_mode:
+    :return:
+    """
+    assert threshold_mode in FILTERING_MODES, (
+        f"threshold_mode {threshold_mode} " f"must be in {FILTERING_MODES}"
+    )
+    assert metric_mode in RLLIB_METRICS_MODES
+    print(
+        "Before trial filtering:", len(experiement_analysis.trials), "trials"
+    )
+    trials_filtered = []
+    print(
+        "metric_threshold", metric_threshold, "threshold_mode", threshold_mode
+    )
+    for trial_idx, trial in enumerate(experiement_analysis.trials):
+        available_metrics = trial.metric_analysis
+        metric_value = available_metrics[metric][metric_mode]
+        print(
+            f"trial_idx {trial_idx} "
+            f"available_metrics[{metric}][{metric_mode}] "
+            f"{metric_value}"
+        )
+        if threshold_mode == ABOVE and metric_value > metric_threshold:
+            trials_filtered.append(trial)
+        elif threshold_mode == EQUAL and metric_value == metric_threshold:
+            trials_filtered.append(trial)
+        elif threshold_mode == BELOW and metric_value < metric_threshold:
+            trials_filtered.append(trial)
+        else:
+            print(f"filtering out trial {trial_idx}")
+    experiement_analysis.trials = trials_filtered
+    print("After trial filtering:", len(experiement_analysis.trials), "trials")
+    return experiement_analysis
