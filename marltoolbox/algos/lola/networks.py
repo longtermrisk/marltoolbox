@@ -100,7 +100,7 @@ class Pnetwork:
             self.sample_reward_bis = tf.placeholder(
                 shape=[None, trace_length],
                 dtype=tf.float32,
-                name="sample_reward",
+                name="sample_reward_bis",
             )
 
             self.j = tf.placeholder(shape=[None], dtype=tf.float32, name="j")
@@ -239,6 +239,7 @@ class Pnetwork:
                 shape=[None, 1], dtype=tf.float32, name="next_value"
             )
             self.next_v = tf.matmul(self.next_value, self.gamma_array_inverse)
+
             if use_critic:
                 self.target = self.sample_reward_bis + self.next_v
             else:
@@ -325,6 +326,7 @@ class Pnetwork:
                     entropy_coeff * self.entropy
                     + weigth_decay * self.weigths_norm
                 ) * self.loss_multiplier
+
             self.updateModel = self.trainer.minimize(
                 total_loss, var_list=self.value_params
             )

@@ -2,7 +2,8 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.agents.pg import PGTrainer, PGTorchPolicy
+from ray.rllib.agents.pg.pg_torch_policy import pg_loss_stats
 
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
     IteratedPrisonersDilemma,
@@ -10,14 +11,14 @@ from marltoolbox.envs.matrix_sequential_social_dilemma import (
 from marltoolbox.utils import log, miscellaneous
 
 
-def main(debug, stop_iters=300, tf=False):
+def main(debug):
     train_n_replicates = 1 if debug else 1
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("PG_IPD")
 
     ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
 
-    rllib_config, stop_config = get_rllib_config(seeds, debug, stop_iters, tf)
+    rllib_config, stop_config = get_rllib_config(seeds, debug)
     tune_analysis = tune.run(
         PGTrainer,
         config=rllib_config,
@@ -30,14 +31,16 @@ def main(debug, stop_iters=300, tf=False):
     return tune_analysis
 
 
-def get_rllib_config(seeds, debug=False, stop_iters=300, tf=False):
+def get_rllib_config(seeds, debug=False):
     stop_config = {
-        "training_iteration": 2 if debug else stop_iters,
+        "episodes_total": 2 if debug else 400,
     }
+
+    n_steps_in_epi = 20
 
     env_config = {
         "players_ids": ["player_row", "player_col"],
-        "max_steps": 20,
+        "max_steps": n_steps_in_epi,
         "get_additional_info": True,
     }
 
@@ -63,8 +66,9 @@ def get_rllib_config(seeds, debug=False, stop_iters=300, tf=False):
         },
         "seed": tune.grid_search(seeds),
         "callbacks": log.get_logging_callbacks_class(log_full_epi=True),
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": "tf" if tf else "torch",
+        "framework": "torch",
+        "rollout_fragment_length": n_steps_in_epi,
+        "train_batch_size": n_steps_in_epi,
     }
 
     return rllib_config, stop_config

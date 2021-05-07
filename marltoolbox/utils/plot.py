@@ -5,6 +5,9 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 
+plt.switch_backend("agg")
+plt.style.use("seaborn-whitegrid")
+
 COLORS = list(mcolors.TABLEAU_COLORS) + list(mcolors.XKCD_COLORS)
 RANDOM_MARKERS = ["1", "2", "3", "4", "8", "s", "p", "P", "*", "h", "H", "+"]
 MARKERS = ["o", "s", "v", "^", "<", ">", "P", "X", "D", "*"] + RANDOM_MARKERS

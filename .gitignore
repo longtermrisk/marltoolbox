@@ -50,3 +50,4 @@ marltoolbox/examples/Tutorial_*.py
 marltoolbox/experiments/Tutorial_*.py
 api_key_wandb
 wandb/
+requirements.txt

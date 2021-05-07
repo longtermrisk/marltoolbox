@@ -8,6 +8,7 @@ import datetime
 from ray import tune
 import os
 
+import utils.restore
 from marltoolbox.algos.alternating_offers.alt_offers_training import (
     AltOffersTraining,
 )
@@ -48,7 +49,9 @@ def main():
             "metrics.pickle",
         )
     )
-    best_checkpoints = miscellaneous.extract_checkpoints(analysis)
+    best_checkpoints = utils.restore.extract_checkpoints_from_tune_analysis(
+        analysis
+    )
     print(best_checkpoints)
 
 

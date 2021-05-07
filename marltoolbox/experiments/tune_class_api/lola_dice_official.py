@@ -10,6 +10,7 @@ import time
 import ray
 from ray import tune
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
+from ray.tune.integration.wandb import WandbLoggerCallback
 
 from marltoolbox.algos.lola_dice.train_tune_class_API import LOLADICE
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
@@ -36,6 +37,13 @@ def main(debug):
         # Example: "load_plot_data": ".../SameAndCrossPlay_save.p",
         "exp_name": exp_name,
         "train_n_replicates": train_n_replicates,
+        "wandb": {
+            "project": "LOLA_DICE",
+            "group": exp_name,
+            "api_key_file": os.path.join(
+                os.path.dirname(__file__), "../../../api_key_wandb"
+            ),
+        },
         "env_name": "IPD",
         # "env_name": "IMP",
         # "env_name": "AsymBoS",
@@ -85,6 +93,16 @@ def train(hp):
         stop=stop,
         metric=hp["metric"],
         mode="max",
+        callbacks=None
+        if hp["debug"]
+        else [
+            WandbLoggerCallback(
+                project=hp["wandb"]["project"],
+                group=hp["wandb"]["group"],
+                api_key_file=hp["wandb"]["api_key_file"],
+                log_config=True,
+            )
+        ],
     )
     tune_analysis_per_exp = {"": tune_analysis}
     return tune_analysis_per_exp

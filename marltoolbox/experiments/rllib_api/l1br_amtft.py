@@ -4,12 +4,11 @@ import os
 import ray
 from ray import tune
 from ray.rllib.agents import dqn
-from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
-from ray.rllib.utils.framework import try_import_torch
 
-torch, nn = try_import_torch()
-
+from marltoolbox import utils
 from marltoolbox.algos import amTFT
+from marltoolbox.algos.augmented_dqn import MyDQNTorchPolicy
+from marltoolbox.experiments.rllib_api import amtft_various_env
 from marltoolbox.utils import (
     log,
     postprocessing,
@@ -17,7 +16,6 @@ from marltoolbox.utils import (
     miscellaneous,
     callbacks,
 )
-from marltoolbox.experiments.rllib_api import amtft_various_env
 
 
 def main(debug, env=None):
@@ -42,10 +40,12 @@ def get_hyperparameters(debug, env):
     pool_of_seeds = miscellaneous.get_random_seeds(train_n_replicates)
     hparams = {
         "debug": debug,
+        "use_r2d2": False,
         "filter_utilitarian": False,
         "train_n_replicates": train_n_replicates,
         "seeds": pool_of_seeds,
         "exp_name": exp_name,
+        "num_envs_per_worker": 16,
         "welfare_functions": [
             (postprocessing.WELFARE_UTILITARIAN, "utilitarian")
         ],
@@ -96,7 +96,9 @@ def train_lvl1_agents(hp_lvl1, tune_analysis_lvl0):
     stop, env_config, rllib_config = amtft_various_env.get_rllib_config(
         hp_lvl1, hp_lvl1["welfare_functions"][0][0]
     )
-    checkpoints_lvl0 = miscellaneous.extract_checkpoints(tune_analysis_lvl0)
+    checkpoints_lvl0 = utils.restore.extract_checkpoints_from_tune_analysis(
+        tune_analysis_lvl0
+    )
     rllib_config = modify_conf_for_lvl1_training(
         hp_lvl1, env_config, rllib_config, checkpoints_lvl0
     )
@@ -124,7 +126,7 @@ def modify_conf_for_lvl1_training(
 
     # Use a simple DQN as lvl1 agent (instead of amTFT with nested DQN)
     rllib_config_lvl1["multiagent"]["policies"][lvl1_policy_id] = (
-        DQNTorchPolicy,
+        MyDQNTorchPolicy,
         hp_lvl1["env_class"](env_config).OBSERVATION_SPACE,
         hp_lvl1["env_class"].ACTION_SPACE,
         {},
@@ -132,9 +134,7 @@ def modify_conf_for_lvl1_training(
 
     rllib_config_lvl1["callbacks"] = callbacks.merge_callbacks(
         amTFT.AmTFTCallbacks,
-        log.get_logging_callbacks_class(
-            log_full_epi=False, log_full_epi_interval=100
-        ),
+        log.get_logging_callbacks_class(),
     )
 
     l1br_configuration_helper = lvl1_best_response.L1BRConfigurationHelper(

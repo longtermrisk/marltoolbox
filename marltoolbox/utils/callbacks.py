@@ -6,6 +6,7 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils.typing import AgentID, PolicyID
 
 from marltoolbox.utils.miscellaneous import logger
+from marltoolbox.utils import restore
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker

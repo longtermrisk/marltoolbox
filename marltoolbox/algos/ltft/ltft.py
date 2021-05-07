@@ -12,13 +12,16 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.train_ops import TrainOneStep
-from ray.rllib.execution.train_ops import UpdateTargetNetwork
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
+from ray.rllib.execution.train_ops import (
+    TrainOneStep,
+    UpdateTargetNetwork,
+    TrainTFMultiGPU,
+)
 from torch.nn import CrossEntropyLoss
 
 from marltoolbox.algos import augmented_dqn, supervised_learning, hierarchical
@@ -116,7 +119,7 @@ DEFAULT_CONFIG.update(
                 framework="torch",
             ),
         },
-        "log_level": "DEBUG",
+        "batch_mode": "complete_episodes",
     }
 )
 
@@ -133,7 +136,7 @@ PLOT_KEYS = [
 
 PLOT_ASSEMBLAGE_TAGS = [
     ("defection",),
-    ("defection", "chosen_percentile"),
+    ("defection_", "chosen_percentile"),
     ("punish",),
     ("delta_log_likelihood_coop_std", "delta_log_likelihood_coop_mean"),
     ("likelihood_opponent", "likelihood_approximated_opponent"),
@@ -158,7 +161,15 @@ def execution_plan(
     workers: WorkerSet, config: TrainerConfigDict
 ) -> LocalIterator[dict]:
     """
-    Modified from the execution plan of the DQNTrainer
+    Execution plan of the DQN algorithm. Defines the distributed dataflow.
+
+    Args:
+        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
+            of the Trainer.
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        LocalIterator[dict]: A local iterator over training metrics.
     """
     if config.get("prioritized_replay"):
         prio_args = {
@@ -175,7 +186,9 @@ def execution_plan(
         buffer_size=config["buffer_size"],
         replay_batch_size=config["train_batch_size"],
         replay_mode=config["multiagent"]["replay_mode"],
-        replay_sequence_length=config["replay_sequence_length"],
+        replay_sequence_length=config.get("replay_sequence_length", 1),
+        replay_burn_in=config.get("burn_in", 0),
+        replay_zero_init_states=config.get("zero_init_states", True),
         **prio_args,
     )
 
@@ -204,10 +217,9 @@ def execution_plan(
                 td_error = info.get(
                     "td_error", info[LEARNER_STATS_KEY].get("td_error")
                 )
+                samples.policy_batches[policy_id].set_get_interceptor(None)
                 prio_dict[policy_id] = (
-                    samples.policy_batches[policy_id].data.get(
-                        "batch_indexes"
-                    ),
+                    samples.policy_batches[policy_id].get("batch_indexes"),
                     td_error,
                 )
             local_replay_buffer.update_priorities(prio_dict)
@@ -217,11 +229,25 @@ def execution_plan(
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step, and then we decide whether to update the target network.
     post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
+
+    if config["simple_optimizer"]:
+        train_step_op = TrainOneStep(workers)
+    else:
+        train_step_op = TrainTFMultiGPU(
+            workers=workers,
+            sgd_minibatch_size=config["train_batch_size"],
+            num_sgd_iter=1,
+            num_gpus=config["num_gpus"],
+            shuffle_sequences=True,
+            _fake_gpus=config["_fake_gpus"],
+            framework=config.get("framework"),
+        )
+
     replay_op_dqn = (
         Replay(local_buffer=local_replay_buffer)
         .for_each(lambda x: post_fn(x, workers, config))
         .for_each(LocalTrainablePolicyModifier(workers, train_dqn_only))
-        .for_each(TrainOneStep(workers))
+        .for_each(train_step_op)
         .for_each(update_prio)
         .for_each(
             UpdateTargetNetwork(workers, config["target_network_update_freq"])

@@ -1,12 +1,9 @@
 import copy
 import random
-from typing import List, Union, Optional, Dict, Tuple
 
-from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils import override
 
 from marltoolbox.algos import hierarchical
 from marltoolbox.utils import miscellaneous, restore
@@ -17,7 +14,7 @@ DEFAULT_CONFIG = merge_dicts(
         # To configure
         "policy_checkpoints": [],
         "policy_id_to_load": None,
-        "nested_policies": None,
+        # "nested_policies": None,
         "freeze_algo": True,
         "use_random_algo": True,
         "use_algo_in_order": False,
@@ -54,12 +51,10 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
         """
         Called by a callback at the start of every episode.
         """
-
         if self.switch_of_algo_counter == self.switch_of_algo_every_n_epi:
             self.switch_of_algo_counter = 0
             self._set_algo_to_use()
-        else:
-            self.switch_of_algo_counter += 1
+        self.switch_of_algo_counter += 1
 
     def _set_algo_to_use(self):
         self._select_algo_idx_to_use()
@@ -75,10 +70,17 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
         else:
             raise ValueError()
 
+        self._to_log[
+            "PopulationOfIdenticalAlgo_active_checkpoint_idx"
+        ] = self.active_checkpoint_idx
+
     def _use_random_algo(self):
         self.active_checkpoint_idx = random.randint(
             0, len(self.policy_checkpoints) - 1
         )
+        self._to_log[
+            "PopulationOfIdenticalAlgo_active_checkpoint_idx"
+        ] = self.active_checkpoint_idx
 
     def _use_next_algo(self):
         self.active_checkpoint_idx += 1
@@ -110,22 +112,7 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
         self.algorithms[self.active_algo_idx].set_weights(weights)
 
     @override(hierarchical.HierarchicalTorchPolicy)
-    def compute_actions(
-        self,
-        obs_batch: Union[List[TensorType], TensorType],
-        state_batches: Optional[List[TensorType]] = None,
-        prev_action_batch: Union[List[TensorType], TensorType] = None,
-        prev_reward_batch: Union[List[TensorType], TensorType] = None,
-        info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["MultiAgentEpisode"]] = None,
-        explore: Optional[bool] = None,
-        timestep: Optional[int] = None,
-        **kwargs,
-    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        return self.algorithms[self.active_algo_idx].compute_actions(obs_batch)
-
-    @override(hierarchical.HierarchicalTorchPolicy)
-    def learn_on_batch(self, samples: SampleBatch):
+    def _learn_on_batch(self, samples: SampleBatch):
         if not self.freeze_algo:
             # TODO maybe need to call optimizer to update the LR of the nested optimizers
             learner_stats = {"learner_stats": {}}
@@ -165,6 +152,11 @@ class PopulationOfIdenticalAlgo(hierarchical.HierarchicalTorchPolicy):
         **kwargs,
     ):
         self.set_algo_to_use()
+        if hasattr(self.algorithms[self.active_algo_idx], "on_episode_start"):
+            self.algorithms[self.active_algo_idx].on_episode_start(
+                *args,
+                **kwargs,
+            )
 
 
 def modify_config_to_use_population(

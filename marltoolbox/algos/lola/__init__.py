@@ -1,3 +1,3 @@
 from marltoolbox.algos.lola.train_cg_tune_class_API import LOLAPGCG
-from marltoolbox.algos.lola.train_exact_tune_class_API import LOLAExact
+from marltoolbox.algos.lola.train_exact_tune_class_API import LOLAExactTrainer
 from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
