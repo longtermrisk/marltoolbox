@@ -16,10 +16,12 @@ from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.dqn.dqn_torch_policy import (
     DQNTorchPolicy,
     build_q_stats,
-    after_init,
+    before_loss_init,
 )
 from ray.rllib.utils.schedules import PiecewiseSchedule
+from ray.tune.integration.wandb import WandbLoggerCallback
 
+import utils.restore
 from marltoolbox.algos.lola.train_cg_tune_class_API import LOLAPGCG
 from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
@@ -58,7 +60,15 @@ def main(debug):
     exp_name, _ = log.log_in_current_day_dir("L1BR_LOLA_PG")
 
     tune_hparams = {
+        "debug": debug,
         "exp_name": exp_name,
+        "wandb": {
+            "project": "L1BR_LOLA_PG",
+            "group": exp_name,
+            "api_key_file": os.path.join(
+                os.path.dirname(__file__), "../../../api_key_wandb"
+            ),
+        },
         "load_data": None,
         # Example: "load_data": ".../lvl1_results.p",
         "load_population": None,
@@ -241,6 +251,16 @@ def train_lvl0_population(tune_hp):
         stop=stop,
         metric=tune_config["metric"],
         mode="max",
+        callbacks=None
+        if tune_hp["debug"]
+        else [
+            WandbLoggerCallback(
+                project=tune_hp["wandb"]["project"],
+                group=tune_hp["wandb"]["group"],
+                api_key_file=tune_hp["wandb"]["api_key_file"],
+                log_config=True,
+            )
+        ],
     )
 
 
@@ -306,7 +326,11 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
     )
 
     if tune_hp["load_population"] is None:
-        lvl0_checkpoints = miscellaneous.extract_checkpoints(results_list_lvl0)
+        lvl0_checkpoints = (
+            utils.restore.extract_checkpoints_from_tune_analysis(
+                results_list_lvl0
+            )
+        )
     else:
         lvl0_checkpoints = tune_hp["load_population"]
     lvl0_policy_id = env_config["players_ids"][lvl0_policy_idx]
@@ -331,6 +355,16 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
         checkpoint_at_end=True,
         metric="episode_reward_mean",
         mode="max",
+        callbacks=None
+        if tune_hp["debug"]
+        else [
+            WandbLoggerCallback(
+                project=tune_hp["wandb"]["project"],
+                group=tune_hp["wandb"]["group"],
+                api_key_file=tune_hp["wandb"]["api_key_file"],
+                log_config=True,
+            )
+        ],
     )
 
     return results
@@ -340,13 +374,16 @@ def get_rllib_config(hp: dict, lvl1_idx: list, lvl1_training: bool):
     assert lvl1_training
 
     tune_config, _, env_config = get_tune_config(hp=hp)
-    tune_config["seed"] = 2020
+    # tune_config["seed"] = 2020
 
     stop = {"episodes_total": hp["n_epi"]}
 
-    after_init_fn = functools.partial(
+    before_loss_init_fn = functools.partial(
         miscellaneous.sequence_of_fn_wt_same_args,
-        function_list=[restore.after_init_load_policy_checkpoint, after_init],
+        function_list=[
+            before_loss_init,
+            restore.before_loss_init_load_policy_checkpoint,
+        ],
     )
 
     def sgd_optimizer_dqn(policy, config) -> "torch.optim.Optimizer":
@@ -359,7 +396,7 @@ def get_rllib_config(hp: dict, lvl1_idx: list, lvl1_training: bool):
     MyDQNTorchPolicy = DQNTorchPolicy.with_updates(
         stats_fn=log.augment_stats_fn_wt_additionnal_logs(build_q_stats),
         optimizer_fn=sgd_optimizer_dqn,
-        after_init=after_init_fn,
+        before_loss_init=before_loss_init_fn,
     )
 
     if tune_config["env_class"] in (

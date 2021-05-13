@@ -9,9 +9,12 @@ import os
 
 import ray
 from ray import tune
+from ray.tune.analysis import ExperimentAnalysis
 from ray.rllib.agents.pg import PGTorchPolicy
+from ray.tune.integration.wandb import WandbLoggerCallback
+from marltoolbox.experiments.tune_class_api import lola_exact_meta_game
 
-from marltoolbox.algos.lola.train_exact_tune_class_API import LOLAExact
+from marltoolbox.algos.lola.train_exact_tune_class_API import LOLAExactTrainer
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
     IteratedPrisonersDilemma,
     IteratedMatchingPennies,
@@ -19,10 +22,31 @@ from marltoolbox.envs.matrix_sequential_social_dilemma import (
 )
 from marltoolbox.experiments.tune_class_api import lola_pg_official
 from marltoolbox.utils import policy, log, miscellaneous
+from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
 
 
 def main(debug):
-    train_n_replicates = 2 if debug else 40
+    hparams = get_hyperparameters(debug)
+
+    if hparams["load_plot_data"] is None:
+        ray.init(
+            num_cpus=os.cpu_count(),
+            num_gpus=0,
+            local_mode=debug,
+        )
+        tune_analysis_per_exp = train(hparams)
+    else:
+        tune_analysis_per_exp = None
+
+    evaluate(tune_analysis_per_exp, hparams)
+    ray.shutdown()
+
+
+def get_hyperparameters(debug, train_n_replicates=None, env=None):
+    """Get hyperparameters for LOLA-Exact for matrix games"""
+
+    if train_n_replicates is None:
+        train_n_replicates = 2 if debug else int(3 * 1)
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
 
     exp_name, _ = log.log_in_current_day_dir("LOLA_Exact")
@@ -32,12 +56,24 @@ def main(debug):
         "load_plot_data": None,
         # Example "load_plot_data": ".../SelfAndCrossPlay_save.p",
         "exp_name": exp_name,
+        "classify_into_welfare_fn": True,
         "train_n_replicates": train_n_replicates,
-        "env_name": "IPD",
-        # "env_name": "IMP",
-        # "env_name": "AsymBoS",
+        "wandb": {
+            "project": "LOLA_Exact",
+            "group": exp_name,
+            "api_key_file": os.path.join(
+                os.path.dirname(__file__), "../../../api_key_wandb"
+            ),
+        },
+        # "env_name": "IPD" if env is None else env,
+        # "env_name": "IMP" if env is None else env,
+        "env_name": "IteratedAsymBoS" if env is None else env,
         "num_episodes": 5 if debug else 50,
         "trace_length": 5 if debug else 200,
+        "re_init_every_n_epi": 1,
+        # "num_episodes": 5 if debug else 50 * 200,
+        # "trace_length": 1,
+        # "re_init_every_n_epi": 50,
         "simple_net": True,
         "corrections": True,
         "pseudo": False,
@@ -53,46 +89,66 @@ def main(debug):
         # "with_linear_LR_decay_to_zero": True,
         # "clip_update": 0.1,
         # "lr": 0.001,
+        "plot_keys": aggregate_and_plot_tensorboard_data.PLOT_KEYS + ["ret"],
+        "plot_assemblage_tags": aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS
+        + [("ret",)],
+        "x_limits": (-0.1, 4.1),
+        "y_limits": (-0.1, 4.1),
     }
 
-    if hparams["load_plot_data"] is None:
-        ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
-        tune_analysis_per_exp = train(hparams)
-    else:
-        tune_analysis_per_exp = None
-
-    evaluate(tune_analysis_per_exp, hparams)
-    ray.shutdown()
+    hparams["plot_axis_scale_multipliers"] = (
+        1 / hparams["trace_length"],
+        1 / hparams["trace_length"],
+    )
+    return hparams
 
 
 def train(hp):
-    tune_config, stop, _ = get_tune_config(hp)
+    tune_config, stop_config, _ = get_tune_config(hp)
     # Train with the Tune Class API (not an RLLib Trainer)
     tune_analysis = tune.run(
-        LOLAExact,
+        LOLAExactTrainer,
         name=hp["exp_name"],
         config=tune_config,
         checkpoint_at_end=True,
-        stop=stop,
+        stop=stop_config,
         metric=hp["metric"],
         mode="max",
+        # callbacks=None
+        # if hp["debug"]
+        # else [
+        #     WandbLoggerCallback(
+        #         project=hp["wandb"]["project"],
+        #         group=hp["wandb"]["group"],
+        #         api_key_file=hp["wandb"]["api_key_file"],
+        #         log_config=True,
+        #     )
+        # ],
     )
-    tune_analysis_per_exp = {"": tune_analysis}
+    if hp["classify_into_welfare_fn"]:
+        tune_analysis_per_exp = _split_tune_results_wt_welfare(tune_analysis)
+    else:
+        tune_analysis_per_exp = {"": tune_analysis}
+
     return tune_analysis_per_exp
 
 
-def get_tune_config(hp: dict) -> dict:
+def get_tune_config(hp: dict):
     tune_config = copy.deepcopy(hp)
-    assert tune_config["env_name"] in ("IPD", "IMP", "BoS", "AsymBoS")
+    assert tune_config["env_name"] in ("IPD", "IMP", "BoS", "IteratedAsymBoS")
 
-    if tune_config["env_name"] in ("IPD", "IMP", "BoS", "AsymBoS"):
-        env_config = {
-            "players_ids": ["player_row", "player_col"],
-            "max_steps": tune_config["trace_length"],
-            "get_additional_info": True,
-        }
+    env_config = {
+        "players_ids": ["player_row", "player_col"],
+        "max_steps": tune_config["trace_length"],
+        "get_additional_info": True,
+    }
 
-    if tune_config["env_name"] in ("IPD", "BoS", "AsymBoS"):
+    if tune_config["env_name"] == "IteratedAsymBoS":
+        tune_config["Q_net_std"] = 3.0
+    else:
+        tune_config["Q_net_std"] = 1.0
+
+    if tune_config["env_name"] in ("IPD", "BoS", "IteratedAsymBoS"):
         tune_config["gamma"] = (
             0.96 if tune_config["gamma"] is None else tune_config["gamma"]
         )
@@ -103,8 +159,8 @@ def get_tune_config(hp: dict) -> dict:
         )
         tune_config["save_dir"] = "dice_results_imp"
 
-    stop = {"episodes_total": tune_config["num_episodes"]}
-    return tune_config, stop, env_config
+    stop_config = {"episodes_total": tune_config["num_episodes"]}
+    return tune_config, stop_config, env_config
 
 
 def evaluate(tune_analysis_per_exp, hp):
@@ -113,7 +169,7 @@ def evaluate(tune_analysis_per_exp, hp):
         rllib_config_eval,
         policies_to_load,
         trainable_class,
-        stop,
+        stop_config,
         env_config,
     ) = generate_eval_config(hp)
 
@@ -122,9 +178,12 @@ def evaluate(tune_analysis_per_exp, hp):
         rllib_config_eval,
         policies_to_load,
         trainable_class,
-        stop,
+        stop_config,
         env_config,
         tune_analysis_per_exp,
+        n_cross_play_per_checkpoint=min(15, hp["train_n_replicates"] - 1)
+        if hp["classify_into_welfare_fn"]
+        else None,
     )
 
 
@@ -136,8 +195,8 @@ def generate_eval_config(hp):
     hp_eval["batch_size"] = 1
     hp_eval["num_episodes"] = 100
 
-    tune_config, stop, env_config = get_tune_config(hp_eval)
-    tune_config["TuneTrainerClass"] = LOLAExact
+    tune_config, stop_config, env_config = get_tune_config(hp_eval)
+    tune_config["TuneTrainerClass"] = LOLAExactTrainer
 
     hp_eval["group_names"] = ["lola"]
     hp_eval["scale_multipliers"] = (
@@ -154,7 +213,7 @@ def generate_eval_config(hp):
         hp_eval["env_class"] = IteratedMatchingPennies
         hp_eval["x_limits"] = (-1.0, 1.0)
         hp_eval["y_limits"] = (-1.0, 1.0)
-    elif hp_eval["env_name"] == "AsymBoS":
+    elif hp_eval["env_name"] == "IteratedAsymBoS":
         hp_eval["env_class"] = IteratedAsymBoS
         hp_eval["x_limits"] = (-0.1, 4.1)
         hp_eval["y_limits"] = (-0.1, 4.1)
@@ -184,21 +243,53 @@ def generate_eval_config(hp):
         },
         "seed": hp_eval["seed"],
         "min_iter_time_s": hp_eval["min_iter_time_s"],
+        "num_workers": 0,
+        "num_envs_per_worker": 1,
     }
 
     policies_to_load = copy.deepcopy(env_config["players_ids"])
-    trainable_class = LOLAExact
+    trainable_class = LOLAExactTrainer
 
     return (
         hp_eval,
         rllib_config_eval,
         policies_to_load,
         trainable_class,
-        stop,
+        stop_config,
         env_config,
     )
 
 
+def _split_tune_results_wt_welfare(
+    tune_analysis,
+):
+    tune_analysis_per_welfare = {}
+    for trial in tune_analysis.trials:
+        welfare_name = _get_trial_welfare(trial)
+        if welfare_name not in tune_analysis_per_welfare.keys():
+            _add_empty_tune_analysis(
+                tune_analysis_per_welfare, welfare_name, tune_analysis
+            )
+        tune_analysis_per_welfare[welfare_name].trials.append(trial)
+    return tune_analysis_per_welfare
+
+
+def _get_trial_welfare(trial):
+    reward_player_1 = trial.last_result["ret1"]
+    reward_player_2 = trial.last_result["ret2"]
+    welfare_name = lola_exact_meta_game.classify_into_welfare_based_on_rewards(
+        reward_player_1, reward_player_2
+    )
+    return welfare_name
+
+
+def _add_empty_tune_analysis(
+    tune_analysis_per_welfare, welfare_name, tune_analysis
+):
+    tune_analysis_per_welfare[welfare_name] = copy.deepcopy(tune_analysis)
+    tune_analysis_per_welfare[welfare_name].trials = []
+
+
 if __name__ == "__main__":
-    debug_mode = True
+    debug_mode = False
     main(debug_mode)

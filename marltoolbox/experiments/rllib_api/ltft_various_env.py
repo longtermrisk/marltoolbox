@@ -5,8 +5,7 @@ import ray
 from ray import tune
 from ray.rllib.agents.dqn.dqn_torch_policy import postprocess_nstep_and_prio
 from ray.rllib.utils.schedules import PiecewiseSchedule
-from ray.tune.integration.wandb import WandbLogger
-from ray.tune.logger import DEFAULT_LOGGERS
+from ray.tune.integration.wandb import WandbLoggerCallback
 
 from marltoolbox.algos import ltft, augmented_dqn
 from marltoolbox.algos.exploiters.influence_evader import (
@@ -68,6 +67,13 @@ def _get_hyparameters(
         "seeds": seeds,
         "debug": debug,
         "exp_name": exp_name,
+        "wandb": {
+            "project": "LTFT",
+            "group": exp_name,
+            "api_key_file": os.path.join(
+                os.path.dirname(__file__), "../../../api_key_wandb"
+            ),
+        },
         "hiddens": [64],
         "log_n_points": 260,
         "clustering_distance": 0.2,
@@ -231,13 +237,6 @@ def _get_rllib_config(hp: dict):
                     ),
                 },
                 "policy_mapping_fn": lambda agent_id: agent_id,
-                # When replay_mode=lockstep, RLlib will replay all the agent
-                # transitions at a particular timestep together in a batch.
-                # This allows the policy to implement differentiable shared
-                # computations between agents it controls at that timestep. When
-                # replay_mode=independent,
-                # transitions are replayed independently per policy.
-                # "replay_mode": "lockstep",
                 "observation_fn": ltft.observation_fn,
             },
             # === DQN Models ===
@@ -322,18 +321,7 @@ def _get_rllib_config(hp: dict):
             # time
             "num_envs_per_worker": 1,
             "batch_mode": "complete_episodes",
-            "logger_config": {
-                "wandb": {
-                    "project": "LTFT",
-                    "group": hp["exp_name"],
-                    "api_key_file": os.path.join(
-                        os.path.dirname(__file__), "../../../api_key_wandb"
-                    ),
-                    "log_config": True,
-                },
-            },
             # === Debug Settings ===
-            "log_level": "INFO",
             # Callbacks that will be run during various phases of training. See the
             # `DefaultCallbacks` class and
             # `examples/custom_metrics_and_callbacks.py`
@@ -401,12 +389,20 @@ def _train_in_self_play(rllib_config, stop, exp_name, hp):
     tune_analysis_self_play = ray.tune.run(
         ltft.LTFTTrainer,
         config=rllib_config,
-        verbose=1,
         stop=stop,
         checkpoint_at_end=True,
         name=full_exp_name,
         log_to_file=not hp["debug"],
-        loggers=None if hp["debug"] else DEFAULT_LOGGERS + (WandbLogger,),
+        callbacks=None
+        if hp["debug"]
+        else [
+            WandbLoggerCallback(
+                project=hp["wandb"]["project"],
+                group=hp["wandb"]["group"],
+                api_key_file=hp["wandb"]["api_key_file"],
+                log_config=True,
+            ),
+        ],
     )
 
     if not hp["debug"]:
@@ -430,12 +426,20 @@ def _train_against_opponent(hp, rllib_config, stop, exp_name, env_config):
     tune_analysis_naive_opponent = ray.tune.run(
         ltft.LTFTTrainer,
         config=rllib_config,
-        verbose=1,
         stop=stop,
         checkpoint_at_end=True,
         name=full_exp_name,
         log_to_file=not hp["debug"],
-        loggers=None if hp["debug"] else DEFAULT_LOGGERS + (WandbLogger,),
+        callbacks=None
+        if hp["debug"]
+        else [
+            WandbLoggerCallback(
+                project=hp["wandb"]["project"],
+                group=hp["wandb"]["group"],
+                api_key_file=hp["wandb"]["api_key_file"],
+                log_config=True,
+            )
+        ],
     )
 
     if not hp["debug"]:

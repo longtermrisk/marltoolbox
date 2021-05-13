@@ -5,11 +5,12 @@ import ray
 from ray import tune
 from ray.rllib.agents.dqn import DQNTrainer
 
+from marltoolbox import utils
 from marltoolbox.algos import amTFT
 from marltoolbox.scripts.aggregate_and_plot_tensorboard_data import (
     add_summary_plots,
 )
-from marltoolbox.utils import miscellaneous, restore
+from marltoolbox.utils import miscellaneous, restore, tune_analysis
 
 
 def train_amtft(
@@ -117,10 +118,10 @@ def _get_plot_keys(plot_keys, plot_assemblage_tags):
 
 
 def _extract_selfish_policies_checkpoints(tune_analysis_selfish_policies):
-    checkpoints = miscellaneous.extract_checkpoints(
+    checkpoints = restore.extract_checkpoints_from_tune_analysis(
         tune_analysis_selfish_policies
     )
-    seeds = miscellaneous.extract_config_values_from_tune_analysis(
+    seeds = utils.tune_analysis.extract_config_values_from_tune_analysis(
         tune_analysis_selfish_policies, "seed"
     )
     seed_to_checkpoint = {}

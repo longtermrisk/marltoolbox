@@ -1,13 +1,14 @@
 import copy
 import logging
-from typing import List, Union, Optional, Dict, Tuple, Iterable
+
+from ray.rllib.utils.threading import with_lock
+from typing import List, Union, Iterable
 
 import torch
 from ray import rllib
-from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.annotations import override
 
 from marltoolbox.utils import log
 
@@ -41,9 +42,9 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
             updated_config.update(nested_config["config_update"])
             if nested_config["Policy_class"] is None:
                 raise ValueError(
-                    f"You must specify the classes for the nested Policies "
-                    f'in config["nested_config"]["Policy_class"] '
-                    f'current value is {nested_config["Policy_class"]}.'
+                    "You must specify the classes for the nested Policies "
+                    'in config["nested_config"]["Policy_class"]. '
+                    f"nested_config: {nested_config}."
                 )
             Policy = nested_config["Policy_class"]
             policy = Policy(
@@ -70,6 +71,21 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
 
         self._to_log = {}
         self._already_printed_warnings = []
+        self._merge_all_view_requirements()
+
+    def _merge_all_view_requirements(self):
+        self.view_requirements = {}
+        for algo in self.algorithms:
+            for k, v in algo.view_requirements.items():
+                self._add_in_view_requirement_or_check_are_equals(k, v)
+
+    def _add_in_view_requirement_or_check_are_equals(self, k, v):
+        if k not in self.view_requirements.keys():
+            self.view_requirements[k] = v
+        else:
+            assert vars(self.view_requirements[k]) == vars(
+                v
+            ), f"{vars(self.view_requirements[k])} must equal {vars(v)}"
 
     def __getattribute__(self, attr):
         """
@@ -87,10 +103,8 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
                     f"printing this message."
                 )
                 logger.info(msg)
-                # from warnings import warn
-                # warn(msg)
-                return object.__getattribute__(
-                    self.algorithms[self.active_algo_idx], attr
+                return self.algorithms[self.active_algo_idx].__getattribute__(
+                    attr
                 )
             except AttributeError as secondary:
                 raise type(initial)(f"{initial.args} and {secondary.args}")
@@ -113,7 +127,6 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
             for algo in self.algorithms:
                 if hasattr(algo, "to_log"):
                     algo.to_log = {}
-                # setattr(algo, "to_log", {})
 
         self._to_log = value
 
@@ -124,6 +137,14 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
     @model.setter
     def model(self, value):
         self.algorithms[self.active_algo_idx].model = value
+
+    @property
+    def exploration(self):
+        return self.algorithms[self.active_algo_idx].exploration
+
+    @exploration.setter
+    def exploration(self, value):
+        self.algorithms[self.active_algo_idx].exploration = value
 
     @property
     def dist_class(self):
@@ -142,9 +163,11 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         for algo in self.algorithms:
             algo.global_timestep = value
 
+    @override(rllib.policy.Policy)
     def on_global_var_update(self, global_vars):
         for algo in self.algorithms:
             algo.on_global_var_update(global_vars)
+        super().on_global_var_update(global_vars)
 
     @property
     def update_target(self):
@@ -155,12 +178,14 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
 
         return nested_update_target
 
+    @override(rllib.policy.TorchPolicy)
     def get_weights(self):
         return {
             self.nested_key(i): algo.get_weights()
             for i, algo in enumerate(self.algorithms)
         }
 
+    @override(rllib.policy.TorchPolicy)
     def set_weights(self, weights):
         for i, algo in enumerate(self.algorithms):
             algo.set_weights(weights[self.nested_key(i)])
@@ -168,27 +193,22 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
     def nested_key(self, i):
         return f"nested_{i}"
 
-    def compute_actions(
-        self,
-        obs_batch: Union[List[TensorType], TensorType],
-        state_batches: Optional[List[TensorType]] = None,
-        prev_action_batch: Union[List[TensorType], TensorType] = None,
-        prev_reward_batch: Union[List[TensorType], TensorType] = None,
-        info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["MultiAgentEpisode"]] = None,
-        explore: Optional[bool] = None,
-        timestep: Optional[int] = None,
-        **kwargs,
-    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
+    @with_lock
+    @override(rllib.policy.TorchPolicy)
+    def _compute_action_helper(
+        self, input_dict, state_batches, seq_lens, explore, timestep
+    ):
         actions, state_out, extra_fetches = self.algorithms[
             self.active_algo_idx
-        ].compute_actions(obs_batch)
+        ]._compute_action_helper(
+            input_dict, state_batches, seq_lens, explore, timestep
+        )
 
         return actions, state_out, extra_fetches
 
+    @with_lock
     def learn_on_batch(self, samples: SampleBatch):
-        self._update_lr_in_all_optimizers()
+
         stats = self._learn_on_batch(samples)
         self._log_learning_rates()
         return stats
@@ -217,21 +237,11 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
                 The local PyTorch optimizer(s) to use for this Policy.
         """
 
-        # TODO find a clean solution to update the LR when using a LearningRateSchedule
-        # TODO this will probably no more be needed when moving to RLLib>1.0.0
-        for algo in self.algorithms:
-            if hasattr(algo, "cur_lr"):
-                for opt in algo._optimizers:
-                    for p in opt.param_groups:
-                        p["lr"] = algo.cur_lr
-
         all_optimizers = []
         for algo_n, algo in enumerate(self.algorithms):
             opt = algo.optimizer()
             all_optimizers.extend(opt)
         return all_optimizers
-
-    # TODO Move this in helper functions
 
     def postprocess_trajectory(
         self, sample_batch, other_agent_batches=None, episode=None
@@ -245,14 +255,13 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
         Use to log LR to check that they are really updated as configured.
         """
         for algo_idx, algo in enumerate(self.algorithms):
-            self.to_log[f"algo{algo_idx}"] = log._log_learning_rate(algo)
+            self.to_log[f"algo{algo_idx}"] = log.log_learning_rate(algo)
 
     def set_state(self, state: object) -> None:
         state = state.copy()  # shallow copy
         # Set optimizer vars first.
         optimizer_vars = state.pop("_optimizer_variables", None)
         if optimizer_vars:
-            print("self", self)
             assert len(optimizer_vars) == len(
                 self._optimizers
             ), f"{len(optimizer_vars)} {len(self._optimizers)}"
@@ -260,3 +269,12 @@ class HierarchicalTorchPolicy(rllib.policy.TorchPolicy):
                 o.load_state_dict(s)
         # Then the Policy's (NN) weights.
         super().set_state(state)
+
+    def _get_dummy_batch_from_view_requirements(
+        self, batch_size: int = 1
+    ) -> SampleBatch:
+        dummy_sample_batch = super()._get_dummy_batch_from_view_requirements(
+            batch_size
+        )
+        dummy_sample_batch[dummy_sample_batch.DONES][-1] = True
+        return dummy_sample_batch

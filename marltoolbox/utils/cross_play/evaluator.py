@@ -4,14 +4,7 @@ import logging
 import os
 import pickle
 import random
-import warnings
 from typing import Dict
-
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-
-plt.style.use("seaborn-whitegrid")
 
 import ray
 from ray import tune
@@ -19,9 +12,11 @@ from ray.rllib.agents.pg import PGTrainer
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.integration.wandb import WandbLogger
 from ray.tune.logger import DEFAULT_LOGGERS
+from ray.tune.logger import SafeFallbackEncoder
 
+from marltoolbox import utils
 from marltoolbox.utils import restore, log, miscellaneous
-from marltoolbox.utils.plot import PlotHelper, PlotConfig
+from marltoolbox.utils.cross_play import ploter
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +79,8 @@ class SelfAndCrossPlayEvaluator:
         stop_config,
         policies_to_load_from_checkpoint,
         tune_analysis_per_exp: list,
-        TrainerClass=PGTrainer,
-        TuneTrainerClass=None,
+        rllib_trainer_class=PGTrainer,
+        tune_trainer_class=None,
         n_cross_play_per_checkpoint: int = 1,
         n_self_play_per_checkpoint: int = 1,
         to_load_path: str = None,
@@ -101,9 +96,9 @@ class SelfAndCrossPlayEvaluator:
         :param tune_analysis_per_exp: List of the tune_analysis you want to
             extract the groups of checkpoints from. All the checkpoints in these
             tune_analysis will be extracted.
-        :param TrainerClass: (default is the PGTrainer class) Normal 1st argument (run_or_experiment) provided to
+        :param rllib_trainer_class: (default is the PGTrainer class) Normal 1st argument (run_or_experiment) provided to
             tune.run(). You should use the one which provides the data flow you need. (Probably a simple PGTrainer will do).
-        :param TuneTrainerClass: Will only be needed when you are going to evaluate policies created from a Tune
+        :param tune_trainer_class: Will only be needed when you are going to evaluate policies created from a Tune
             trainer. You need to provide the class of this trainer.
         :param n_cross_play_per_checkpoint: (int) How many cross-play experiment per checkpoint you want to run.
             They are run randomly against the other checkpoints.
@@ -114,8 +109,8 @@ class SelfAndCrossPlayEvaluator:
         """
         if to_load_path is None:
             self.define_the_experiment_to_run(
-                TrainerClass=TrainerClass,
-                TuneTrainerClass=TuneTrainerClass,
+                TrainerClass=rllib_trainer_class,
+                TuneTrainerClass=tune_trainer_class,
                 evaluation_config=evaluation_config,
                 stop_config=stop_config,
                 policies_to_load_from_checkpoint=policies_to_load_from_checkpoint,
@@ -139,7 +134,7 @@ class SelfAndCrossPlayEvaluator:
         stop_config: dict,
         TuneTrainerClass=None,
         TrainerClass=PGTrainer,
-        policies_to_load_from_checkpoint: list = ["All"],
+        policies_to_load_from_checkpoint: list = ("All"),
     ):
         """
         :param evaluation_config: Normal config argument provided to tune.run().
@@ -148,8 +143,9 @@ class SelfAndCrossPlayEvaluator:
         :param stop_config: Normal stop_config argument provided to tune.run().
         :param TuneTrainerClass: Will only be needed when you are going to evaluate policies created from a Tune
             trainer. You need to provide the class of this trainer.
-        :param TrainerClass: (default is the PGTrainer class) Normal 1st argument (run_or_experiment) provided to
-            tune.run(). You should use the one which provides the data flow you need. (Probably a simple PGTrainer will do).
+        :param TrainerClass: (default is the PGTrainer class) The usual 1st
+            argument provided to tune.run(). You should use the one which
+            provides the data flow you need. (Probably a simple PGTrainer will do).
         :param policies_to_load_from_checkpoint:
         """
 
@@ -165,14 +161,16 @@ class SelfAndCrossPlayEvaluator:
         self.policies_ids_sorted = sorted(
             list(self.evaluation_config["multiagent"]["policies"].keys())
         )
-        self.policies_to_load_from_checkpoint = sorted(
-            [
-                policy_id
-                for policy_id in self.policies_ids_sorted
-                if self._is_policy_to_load(
-                    policy_id, policies_to_load_from_checkpoint
-                )
-            ]
+        self.policies_to_load_from_checkpoint = tuple(
+            sorted(
+                [
+                    policy_id
+                    for policy_id in self.policies_ids_sorted
+                    if self._is_policy_to_load(
+                        policy_id, policies_to_load_from_checkpoint
+                    )
+                ]
+            )
         )
 
         self.experiment_defined = True
@@ -218,8 +216,10 @@ class SelfAndCrossPlayEvaluator:
     def _extract_one_group_of_checkpoints(
         self, one_tune_result: ExperimentAnalysis, group_name
     ):
-        checkpoints_in_one_group = miscellaneous.extract_checkpoints(
-            one_tune_result
+        checkpoints_in_one_group = (
+            utils.restore.extract_checkpoints_from_tune_analysis(
+                one_tune_result
+            )
         )
         self.checkpoints.extend(
             [
@@ -370,7 +370,7 @@ class SelfAndCrossPlayEvaluator:
         save_path = self.save_path.split(".")[0:-1] + ["json"]
         save_path = ".".join(save_path)
         with open(save_path, "w") as outfile:
-            json.dump(metrics, outfile)
+            json.dump(metrics, outfile, cls=SafeFallbackEncoder)
 
     def load_results(self, to_load_path):
         assert to_load_path.endswith(self.results_file_name), (
@@ -443,23 +443,6 @@ class SelfAndCrossPlayEvaluator:
         )
         return opponents
 
-    def _split_results_per_mode_and_group_pair_id(
-        self, all_metadata_wt_results
-    ):
-        analysis_per_mode = []
-
-        metadata_per_modes = self._split_metadata_per_mode(
-            all_metadata_wt_results
-        )
-        for mode, metadata_for_one_mode in metadata_per_modes.items():
-            analysis_per_mode.extend(
-                self._split_metadata_per_group_pair_id(
-                    metadata_for_one_mode, mode
-                )
-            )
-
-        return analysis_per_mode
-
     def _split_metadata_per_mode(self, all_results):
         return {
             mode: [report for report in all_results if report["mode"] == mode]
@@ -472,32 +455,62 @@ class SelfAndCrossPlayEvaluator:
         tune_analysis = [
             metadata["results"] for metadata in metadata_for_one_mode
         ]
-        group_pair_names = [
+        pairs_of_group_names = [
             self._get_pair_of_group_names(metadata)
             for metadata in metadata_for_one_mode
         ]
-        group_pair_ids = [
-            self._get_id_of_pair_of_group_names(one_pair_of_names)
-            for one_pair_of_names in group_pair_names
+        ids_of_pairs_of_groups = [
+            self._get_id_of_pair_of_group_names(one_pair_of_group_names)
+            for one_pair_of_group_names in pairs_of_group_names
         ]
-        group_pair_ids_in_this_mode = sorted(set(group_pair_ids))
+        group_pair_ids_in_this_mode = sorted(set(ids_of_pairs_of_groups))
 
         for group_pair_id in list(group_pair_ids_in_this_mode):
             (
                 filtered_analysis_list,
-                one_pair_of_names,
+                one_pair_of_group_names,
             ) = self._find_and_group_results_for_one_group_pair_id(
-                group_pair_id, tune_analysis, group_pair_ids, group_pair_names
+                group_pair_id,
+                tune_analysis,
+                ids_of_pairs_of_groups,
+                pairs_of_group_names,
             )
             analysis_per_group_pair_id.append(
                 (
                     mode,
                     filtered_analysis_list,
                     group_pair_id,
-                    one_pair_of_names,
+                    one_pair_of_group_names,
                 )
             )
         return analysis_per_group_pair_id
+
+    def _get_pair_of_group_names(self, metadata):
+        # checkpoints_idx_used = [
+        #     metadata[policy_id]["checkpoint_i"]
+        #     for policy_id in self.policies_to_load_from_checkpoint
+        # ]
+        # pair_of_group_names = [
+        #     self.checkpoints[checkpoint_i]["group_name"]
+        #     for checkpoint_i in checkpoints_idx_used
+        # ]
+        checkpoints_idx_used = {
+            policy_id: metadata[policy_id]["checkpoint_i"]
+            for policy_id in self.policies_to_load_from_checkpoint
+        }
+        pair_of_group_names = {
+            policy_id: self.checkpoints[checkpoint_i]["group_name"]
+            for policy_id, checkpoint_i in checkpoints_idx_used.items()
+        }
+        return pair_of_group_names
+
+    def _get_id_of_pair_of_group_names(self, pair_of_group_names):
+        ordered_pair_of_group_names = [
+            pair_of_group_names[policy_id]
+            for policy_id in self.policies_to_load_from_checkpoint
+        ]
+        id_of_pair_of_group_names = "".join(ordered_pair_of_group_names)
+        return id_of_pair_of_group_names
 
     def _find_and_group_results_for_one_group_pair_id(
         self, group_pair_id, tune_analysis, group_pair_ids, group_pair_names
@@ -519,6 +532,35 @@ class SelfAndCrossPlayEvaluator:
 
         return filtered_tune_analysis, one_pair_of_names
 
+    def _group_results_and_extract_metrics(self, all_metadata_wt_results):
+        # TODO improve the design to remove these unclear names
+        analysis_per_mode_per_group_pair_id = (
+            self._split_results_per_mode_and_group_pair_id(
+                all_metadata_wt_results
+            )
+        )
+        analysis_metrics_per_mode_per_group_pair_id = (
+            self._extract_all_metrics(analysis_per_mode_per_group_pair_id)
+        )
+        return analysis_metrics_per_mode_per_group_pair_id
+
+    def _split_results_per_mode_and_group_pair_id(
+        self, all_metadata_wt_results
+    ):
+        analysis_per_mode = []
+
+        metadata_per_modes = self._split_metadata_per_mode(
+            all_metadata_wt_results
+        )
+        for mode, metadata_for_one_mode in metadata_per_modes.items():
+            analysis_per_mode.extend(
+                self._split_metadata_per_group_pair_id(
+                    metadata_for_one_mode, mode
+                )
+            )
+
+        return analysis_per_mode
+
     def _extract_all_metrics(self, analysis_per_mode):
         analysis_metrics_per_mode = []
         for mode_i, mode_data in enumerate(analysis_per_mode):
@@ -533,33 +575,6 @@ class SelfAndCrossPlayEvaluator:
             )
         return analysis_metrics_per_mode
 
-    def _group_results_and_extract_metrics(self, all_metadata_wt_results):
-        # TODO improve the design to remove these unclear names
-        analysis_per_mode_per_group_pair_id = (
-            self._split_results_per_mode_and_group_pair_id(
-                all_metadata_wt_results
-            )
-        )
-        analysis_metrics_per_mode_per_group_pair_id = (
-            self._extract_all_metrics(analysis_per_mode_per_group_pair_id)
-        )
-        return analysis_metrics_per_mode_per_group_pair_id
-
-    def _get_id_of_pair_of_group_names(self, pair_of_group_names):
-        id_of_pair_of_group_names = "".join(pair_of_group_names)
-        return id_of_pair_of_group_names
-
-    def _get_pair_of_group_names(self, metadata):
-        checkpoints_idx_used = [
-            metadata[policy_id]["checkpoint_i"]
-            for policy_id in self.policies_to_load_from_checkpoint
-        ]
-        pair_of_group_names = [
-            self.checkpoints[checkpoint_i]["group_name"]
-            for checkpoint_i in checkpoints_idx_used
-        ]
-        return pair_of_group_names
-
     def plot_results(
         self,
         analysis_metrics_per_mode,
@@ -567,213 +582,181 @@ class SelfAndCrossPlayEvaluator:
         x_axis_metric,
         y_axis_metric,
     ):
-        plotter = SelfAndCrossPlayPlotter()
-        return plotter.plot_results(
+
+        vanilla_plot_path = self._plot_as_provided(
+            analysis_metrics_per_mode,
+            plot_config,
+            x_axis_metric,
+            y_axis_metric,
+        )
+
+        if plot_config.plot_max_n_points is not None:
+            plot_config.plot_max_n_points *= 2
+
+        self._plot_merge_self_cross(
+            analysis_metrics_per_mode,
+            plot_config,
+            x_axis_metric,
+            y_axis_metric,
+        )
+        self._plot_merge_same_and_diff_pref(
+            analysis_metrics_per_mode,
+            plot_config,
+            x_axis_metric,
+            y_axis_metric,
+        )
+        return vanilla_plot_path
+
+    def _plot_as_provided(
+        self,
+        analysis_metrics_per_mode,
+        plot_config,
+        x_axis_metric,
+        y_axis_metric,
+    ):
+        vanilla_plot_path = self._plot_one_time(
+            analysis_metrics_per_mode,
+            plot_config,
+            x_axis_metric,
+            y_axis_metric,
+        )
+        return vanilla_plot_path
+
+    def _plot_merge_self_cross(
+        self,
+        analysis_metrics_per_mode,
+        plot_config,
+        x_axis_metric,
+        y_axis_metric,
+    ):
+        self._plot_one_time_with_prefix_and_preprocess(
+            "_self_cross",
+            "_merge_into_self_and_cross",
+            analysis_metrics_per_mode,
+            plot_config,
+            x_axis_metric,
+            y_axis_metric,
+        )
+
+    def _plot_merge_same_and_diff_pref(
+        self,
+        analysis_metrics_per_mode,
+        plot_config,
+        x_axis_metric,
+        y_axis_metric,
+    ):
+
+        self._plot_one_time_with_prefix_and_preprocess(
+            "_same_and_diff_pref",
+            "_merge_into_cross_same_pref_diff_pref",
+            analysis_metrics_per_mode,
+            plot_config,
+            x_axis_metric,
+            y_axis_metric,
+        )
+
+    def _plot_one_time_with_prefix_and_preprocess(
+        self,
+        prefix: str,
+        preprocess: str,
+        analysis_metrics_per_mode,
+        plot_config,
+        x_axis_metric,
+        y_axis_metric,
+    ):
+        initial_filename_prefix = plot_config.filename_prefix
+        plot_config.filename_prefix += prefix
+        metrics_for_same_pref_diff_pref = getattr(self, preprocess)(
+            analysis_metrics_per_mode
+        )
+        self._plot_one_time(
+            metrics_for_same_pref_diff_pref,
+            plot_config,
+            x_axis_metric,
+            y_axis_metric,
+        )
+        plot_config.filename_prefix = initial_filename_prefix
+
+    def _merge_into_self_and_cross(self, analysis_metrics_per_mode):
+        metrics_for_self_and_cross = []
+        for selected_play_mode in self.MODES:
+            metrics_for_self_and_cross.append(
+                (selected_play_mode, [], "", None)
+            )
+            for (
+                play_mode,
+                metrics,
+                pair_name,
+                pair_tuple,
+            ) in analysis_metrics_per_mode:
+                if play_mode == selected_play_mode:
+                    metrics_for_self_and_cross[-1][1].extend(metrics)
+        return metrics_for_self_and_cross
+
+    def _merge_into_cross_same_pref_diff_pref(self, analysis_metrics_per_mode):
+        analysis_metrics_per_mode_wtout_self_play = self._copy_wtout_self_play(
+            analysis_metrics_per_mode
+        )
+        one_pair_of_group_names = analysis_metrics_per_mode[0][3]
+        metrics_for_same_pref_diff_pref = [
+            (
+                self.CROSS_PLAY_MODE,
+                [],
+                "same_prefsame_pref",
+                {k: "same_pref" for k in one_pair_of_group_names.keys()},
+            ),
+            (
+                self.CROSS_PLAY_MODE,
+                [],
+                "diff_prefdiff_pref",
+                {k: "diff_pref" for k in one_pair_of_group_names.keys()},
+            ),
+        ]
+        for (
+            play_mode,
+            metrics,
+            pair_name,
+            pair_of_group_names,
+        ) in analysis_metrics_per_mode_wtout_self_play:
+            groups_names = list(pair_of_group_names.values())
+            assert len(groups_names) == 2
+            if groups_names[0] == groups_names[1]:
+                metrics_for_same_pref_diff_pref[0][1].extend(metrics)
+            else:
+                metrics_for_same_pref_diff_pref[1][1].extend(metrics)
+        if len(metrics_for_same_pref_diff_pref[1][1]) == 0:
+            metrics_for_same_pref_diff_pref.pop(1)
+        if len(metrics_for_same_pref_diff_pref[0][1]) == 0:
+            metrics_for_same_pref_diff_pref.pop(0)
+        return metrics_for_same_pref_diff_pref
+
+    def _copy_wtout_self_play(self, analysis_metrics_per_mode):
+        analysis_metrics_per_mode_wtout_self_play = []
+        for (
+            play_mode,
+            metrics,
+            pair_name,
+            pair_tuple,
+        ) in analysis_metrics_per_mode:
+            if play_mode == self.CROSS_PLAY_MODE:
+                analysis_metrics_per_mode_wtout_self_play.append(
+                    (self.CROSS_PLAY_MODE, metrics, pair_name, pair_tuple)
+                )
+        return analysis_metrics_per_mode_wtout_self_play
+
+    def _plot_one_time(
+        self,
+        analysis_metrics_per_mode,
+        plot_config,
+        x_axis_metric,
+        y_axis_metric,
+    ):
+        plotter = ploter.SelfAndCrossPlayPlotter()
+        plot_path = plotter.plot_results(
             exp_parent_dir=self.exp_parent_dir,
             metrics_per_mode=analysis_metrics_per_mode,
             plot_config=plot_config,
             x_axis_metric=x_axis_metric,
             y_axis_metric=y_axis_metric,
         )
-
-
-class SelfAndCrossPlayPlotter:
-    def __init__(self):
-        self.x_axis_metric = None
-        self.y_axis_metric = None
-        self.metric_mode = None
-        self.stat_summary = None
-        self.data_groups_per_mode = None
-
-    def plot_results(
-        self,
-        exp_parent_dir: str,
-        x_axis_metric: str,
-        y_axis_metric: str,
-        metrics_per_mode: list,
-        plot_config: PlotConfig,
-        metric_mode: str = "avg",
-    ):
-        self._reset(x_axis_metric, y_axis_metric, metric_mode)
-        for metrics_for_one_evaluation_mode in metrics_per_mode:
-            self._extract_performance_evaluation_points(
-                metrics_for_one_evaluation_mode
-            )
-        self.stat_summary.save_summary(
-            filename_prefix=RESULTS_SUMMARY_FILENAME_PREFIX,
-            folder_dir=exp_parent_dir,
-        )
-        return self._plot_and_save_fig(plot_config, exp_parent_dir)
-
-    def _reset(self, x_axis_metric, y_axis_metric, metric_mode):
-        self.x_axis_metric = x_axis_metric
-        self.y_axis_metric = y_axis_metric
-        self.metric_mode = metric_mode
-        self.stat_summary = StatisticSummary(
-            self.x_axis_metric, self.y_axis_metric, self.metric_mode
-        )
-        self.data_groups_per_mode = {}
-
-    def _extract_performance_evaluation_points(
-        self, metrics_for_one_evaluation_mode
-    ):
-        (
-            mode,
-            available_metrics_list,
-            group_pair_id,
-            group_pair_name,
-        ) = metrics_for_one_evaluation_mode
-
-        label = self._get_label(mode, group_pair_name)
-        x, y = self._extract_x_y_points(available_metrics_list)
-
-        self.stat_summary.aggregate_stats_on_data_points(x, y, label)
-        self.data_groups_per_mode[label] = self._format_as_df(x, y)
-        print("x, y", x, y)
-
-    def _get_label(self, mode, group_pair_name):
-        # For backward compatibility
-        if mode == "Same-play" or mode == "same training run":
-            mode = self.SELF_PLAY_MODE
-        elif mode == "Cross-play" or mode == "cross training run":
-            mode = self.CROSS_PLAY_MODE
-
-        print("Evaluator mode:", mode)
-        if self._suffix_needed(group_pair_name):
-            print("Using group_pair_name:", group_pair_name)
-            label = f"{mode}: " + " vs ".join(group_pair_name)
-        else:
-            label = mode
-        label = label.replace("_", " ")
-        print("label", label)
-        return label
-
-    def _suffix_needed(self, group_pair_name):
-        return (
-            group_pair_name is not None
-            and all([name is not None for name in group_pair_name])
-            and all(group_pair_name)
-        )
-
-    def _extract_x_y_points(self, available_metrics_list):
-        x, y = [], []
-        assert len(available_metrics_list) > 0
-        random.shuffle(available_metrics_list)
-
-        for available_metrics in available_metrics_list:
-            if self.x_axis_metric in available_metrics.keys():
-                x_point = available_metrics[self.x_axis_metric][
-                    self.metric_mode
-                ]
-            else:
-                x_point = 123456789
-                warnings.warn(
-                    f"x_axis_metric {self.x_axis_metric}"
-                    " not in available_metrics "
-                    f"{available_metrics.keys()}"
-                )
-            if self.y_axis_metric in available_metrics.keys():
-                y_point = available_metrics[self.y_axis_metric][
-                    self.metric_mode
-                ]
-            else:
-                y_point = 123456789
-                warnings.warn(
-                    f"y_axis_metric {self.y_axis_metric}"
-                    " not in available_metrics "
-                    f"{available_metrics.keys()}"
-                )
-            x.append(x_point)
-            y.append(y_point)
-        return x, y
-
-    def _format_as_df(self, x, y):
-        group_df_dict = {
-            "": [
-                (one_x_point, one_y_point)
-                for one_x_point, one_y_point in zip(x, y)
-            ]
-        }
-        group_df = pd.DataFrame(group_df_dict)
-        return group_df
-
-    def _plot_and_save_fig(self, plot_config, exp_parent_dir):
-        plot_helper = PlotHelper(plot_config)
-        plot_helper.plot_cfg.save_dir_path = exp_parent_dir
-        return plot_helper.plot_dots(self.data_groups_per_mode)
-
-
-class StatisticSummary:
-    def __init__(self, x_axis_metric, y_axis_metric, metric_mode):
-        self.x_means, self.x_se, self.x_labels, self.x_raw = [], [], [], []
-        self.y_means, self.y_se, self.y_labels, self.y_raw = [], [], [], []
-        self.matrix_label = []
-        self.x_axis_metric, self.y_axis_metric = x_axis_metric, y_axis_metric
-        self.metric_mode = metric_mode
-
-    def aggregate_stats_on_data_points(self, x, y, label):
-        # TODO refactor that to use a data structure
-        #  (like per metric and per plot?)
-        self.x_means.append(sum(x) / len(x))
-        self.x_se.append(np.array(x).std() / np.sqrt(len(x)))
-        self.x_labels.append(
-            f"Metric:{self.x_axis_metric}, " f"Metric mode:{self.metric_mode}"
-        )
-
-        self.y_means.append(sum(y) / len(y))
-        self.y_se.append(np.array(y).std() / np.sqrt(len(y)))
-        self.y_labels.append(
-            f"Metric:{self.y_axis_metric}, " f"Metric mode:{self.metric_mode}"
-        )
-
-        self.matrix_label.append(label)
-        self.x_raw.append(x)
-        self.y_raw.append(y)
-
-    def save_summary(self, filename_prefix, folder_dir):
-        file_name = (
-            f"{filename_prefix}_{self.y_axis_metric}_"
-            f"vs_{self.x_axis_metric}_matrix.json"
-        )
-        file_name = file_name.replace("/", "_")
-        file_path = os.path.join(folder_dir, file_name)
-        formated_data = {}
-        for step_i in range(len(self.x_means)):
-            (
-                x_mean,
-                x_std_err,
-                x_lbl,
-                y_mean,
-                y_std_err,
-                y_lbl,
-                lbl,
-                x,
-                y,
-            ) = self._get_values_from_a_data_point(step_i)
-            formated_data[lbl] = {
-                x_lbl: {
-                    "mean": x_mean,
-                    "std_err": x_std_err,
-                    "raw_data": str(x),
-                },
-                y_lbl: {
-                    "mean": y_mean,
-                    "std_err": y_std_err,
-                    "raw_data": str(y),
-                },
-            }
-        with open(file_path, "w") as f:
-            json.dump(formated_data, f, indent=4, sort_keys=True)
-
-    def _get_values_from_a_data_point(self, step_i):
-        return (
-            self.x_means[step_i],
-            self.x_se[step_i],
-            self.x_labels[step_i],
-            self.y_means[step_i],
-            self.y_se[step_i],
-            self.y_labels[step_i],
-            self.matrix_label[step_i],
-            self.x_raw[step_i],
-            self.y_raw[step_i],
-        )
+        return plot_path

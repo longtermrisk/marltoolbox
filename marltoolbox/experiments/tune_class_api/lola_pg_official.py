@@ -11,25 +11,32 @@
 ##########
 
 import copy
+import logging
 import os
 import time
 
 import ray
 from ray import tune
 from ray.rllib.agents.dqn import DQNTorchPolicy
-from ray.tune.integration.wandb import WandbLogger
-from ray.tune.logger import DEFAULT_LOGGERS
+from ray.tune.integration.wandb import WandbLoggerCallback
 
-from marltoolbox.algos.lola import train_cg_tune_class_API
-from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
+from marltoolbox.algos.lola import (
+    train_cg_tune_class_API,
+    train_pg_tune_class_API,
+)
 from marltoolbox.envs import (
     vectorized_coin_game,
     vectorized_mixed_motive_coin_game,
+    vectorized_ssd_mm_coin_game,
     matrix_sequential_social_dilemma,
 )
 from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
-from marltoolbox.utils import policy, log, self_and_cross_perf
+from marltoolbox import utils
+from marltoolbox.utils import policy, log, cross_play
 from marltoolbox.utils.plot import PlotConfig
+from marltoolbox.experiments.tune_class_api import lola_exact_official
+
+logger = logging.getLogger(__name__)
 
 
 def main(debug: bool, env=None):
@@ -40,68 +47,64 @@ def main(debug: bool, env=None):
     :param debug: selection of debug mode using less compute
     :param env: option to overwrite the env selection
     """
-    train_n_replicates = 2 if debug else 1
+    train_n_replicates = 2 if debug else 10
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
 
     exp_name, _ = log.log_in_current_day_dir("LOLA_PG")
 
+    tune_hparams = _get_hyperparameters(
+        debug, train_n_replicates, seeds, exp_name, env
+    )
+
+    if tune_hparams["load_plot_data"] is None:
+        ray.init(num_cpus=10, num_gpus=0, local_mode=debug)
+        tune_analysis_per_exp = _train(tune_hparams)
+    else:
+        tune_analysis_per_exp = None
+
+    _evaluate(tune_hparams, debug, tune_analysis_per_exp)
+    ray.shutdown()
+
+
+def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
     # The InfluenceEvader(like)
     use_best_exploiter = False
-    # use_best_exploiter = True
-
     high_coop_speed_hp = True if use_best_exploiter else False
-    # high_coop_speed_hp = True
+
+    gamma = 0.9
 
     tune_hparams = {
         "debug": debug,
         "exp_name": exp_name,
         "train_n_replicates": train_n_replicates,
-        # wandb configuration
-        "wandb": None
-        if debug
-        else {
+        "wandb": {
             "project": "LOLA_PG",
             "group": exp_name,
             "api_key_file": os.path.join(
                 os.path.dirname(__file__), "../../../api_key_wandb"
             ),
-            "log_config": True,
         },
+        "classify_into_welfare_fn": True,
         # Print metrics
         "load_plot_data": None,
         # Example: "load_plot_data": ".../SelfAndCrossPlay_save.p",
         #
-        # "gamma": 0.5,
-        # "num_episodes": 3 if debug else 4000 if high_coop_speed_hp else 2000,
-        # "trace_length": 4 if debug else 20,
-        # "lr": None,
-        #
-        # "gamma": 0.875,
-        # "lr": 0.005 / 4,
-        # "num_episodes": 3 if debug else 4000,
-        # "trace_length": 4 if debug else 20,
-        #
-        "gamma": 0.9375,
-        "lr": 0.005 / 4
-        if debug
-        else tune.grid_search([0.005 / 4, 0.005 / 4 / 2, 0.005 / 4 / 2 / 2]),
-        "num_episodes": 3 if debug else tune.grid_search([4000, 8000]),
-        "trace_length": 4 if debug else tune.grid_search([40, 80]),
-        #
-        "batch_size": 8 if debug else 512,
         # "env_name": "IteratedPrisonersDilemma" if env is None else env,
         # "env_name": "IteratedAsymBoS" if env is None else env,
         "env_name": "VectorizedCoinGame" if env is None else env,
         # "env_name": "AsymVectorizedCoinGame" if env is None else env,
         # "env_name": "VectorizedMixedMotiveCoinGame" if env is None else env,
+        # "env_name": "VectorizedSSDMixedMotiveCoinGame" if env is None else env,
+        "remove_trials_below_speed": False,
+        # "remove_trials_below_speed": 0.15,
         "pseudo": False,
         "grid_size": 3,
         "lola_update": True,
         "opp_model": False,
         "mem_efficient": True,
         "lr_correction": 1,
-        "bs_mul": 1 / 10 * 3 if use_best_exploiter else 1 / 10,
+        "global_lr_divider": 1 / 10 * 3 if use_best_exploiter else 1 / 10,
         "simple_net": True,
         "hidden": 32,
         "reg": 0,
@@ -117,20 +120,7 @@ def main(debug: bool, env=None):
         "clip_loss_norm": False,
         "clip_lola_update_norm": False,
         "clip_lola_correction_norm": 3.0,
-        # "clip_lola_correction_norm":
-        # tune.grid_search([3.0 / 2, 3.0, 3.0 * 2]),
         "clip_lola_actor_norm": 10.0,
-        # "clip_lola_actor_norm": tune.grid_search([10.0 / 2, 10.0, 10.0 * 2]),
-        "entropy_coeff": 0.001,
-        # "entropy_coeff": tune.grid_search([0.001/2/2, 0.001/2, 0.001]),
-        # "weigth_decay": 0.03,
-        "weigth_decay": 0.03
-        if debug
-        else tune.grid_search([0.03 / 8 / 2 / 2, 0.03 / 8 / 2, 0.03 / 8]),
-        # "lola_correction_multiplier": 1,
-        "lola_correction_multiplier": 1
-        if debug
-        else tune.grid_search([1 * 4, 1 * 4 * 2, 1 * 4 * 2 * 2]),
         "lr_decay": True,
         "correction_reward_baseline_per_step": False,
         "use_critic": False,
@@ -143,32 +133,119 @@ def main(debug: bool, env=None):
             ("total_reward",),
             ("entrop",),
         ],
+        "use_normalized_rewards": False,
+        "use_centered_reward": False,
+        "use_rolling_avg_actor_grad": False,
+        "process_reward_after_rolling": False,
+        "only_process_reward": False,
+        "use_rolling_avg_reward": False,
+        "reward_processing_bais": False,
+        "center_and_normalize_with_rolling_avg": False,
+        "punishment_helped": False,
     }
 
-    # Add exploiter hyperparameters
-    tune_hparams.update(
-        {
-            "start_using_exploiter_at_update_n": 1
-            if debug
-            else 3000
-            if high_coop_speed_hp
-            else 1500,
-            # PG exploiter
-            "use_PG_exploiter": True if use_best_exploiter else False,
-            "every_n_updates_copy_weights": 1 if debug else 100,
-            # "adding_scaled_weights": False,
-            # "adding_scaled_weights": 0.33,
-        }
-    )
+    if gamma == 0.5:
+        tune_hparams.update(
+            {
+                "gamma": 0.5,
+                "num_episodes": 3
+                if debug
+                else 4000
+                if high_coop_speed_hp
+                else 2000,
+                "trace_length": 10 if debug else 20,
+                "lr": None,
+                "weigth_decay": 0.03,
+                "lola_correction_multiplier": 1,
+                "entropy_coeff": 0.001,
+                "batch_size": 12 if debug else 512,
+            }
+        )
+    elif gamma == 0.875:
+        tune_hparams.update(
+            {
+                "gamma": 0.875,
+                "lr": 0.005 / 4,
+                "num_episodes": 3 if debug else 4000,
+                "trace_length": 10 if debug else 20,
+                "weigth_decay": 0.03 / 8,
+                "lola_correction_multiplier": 4,
+                "entropy_coeff": 0.001,
+                "batch_size": 12 if debug else 512,
+            }
+        )
+    elif gamma == 0.9375:
+        tune_hparams.update(
+            {
+                "gamma": 0.9375,
+                "lr": 0.005 / 4,
+                "num_episodes": 3 if debug else 2000,
+                "trace_length": 10 if debug else 40,
+                "weigth_decay": 0.03 / 32,
+                "lola_correction_multiplier": 4,
+                "entropy_coeff": 0.002,
+                "batch_size": 12 if debug else 1024,
+            }
+        )
+    elif gamma == 0.9:
+        tune_hparams.update(
+            {
+                "gamma": 0.9,
+                "lr": 0.005,
+                "num_episodes": 3 if debug else 2000,
+                "trace_length": 10 if debug else 40,
+                "weigth_decay": 0.03 / 16,
+                "lola_correction_multiplier": 8,
+                "entropy_coeff": 0.02,
+                "batch_size": 12 if debug else 1024,
+                "use_normalized_rewards": False,
+                "reward_processing_bais": 0.1,
+                "center_and_normalize_with_rolling_avg": False,
+                # "num_episodes": tune.grid_search(
+                #     [
+                #         1000,
+                #         2000,
+                #         4000,
+                #     ]
+                # ),
+                # "weigth_decay": tune.grid_search(
+                #     [
+                #         # 0.03 / 16,
+                #         0.03 / 16 * 10,
+                #         # 0.03 / 16 * 100,
+                #     ]
+                # ),
+                # "entropy_coeff": tune.grid_search(
+                #     [
+                #         0.02 / 2,
+                #         0.02,
+                #         0.02 * 2,
+                #     ]
+                # ),
+                # "use_normalized_rewards": tune.grid_search([False, True]),
+                # "center_and_normalize_with_rolling_avg": tune.grid_search(
+                #     [False, True]
+                # ),
+                # "lola_correction_multiplier": tune.grid_search(
+                #     [8.0 / 2.0, 8.0, 8.0 * 2.0]
+                # ),
+            }
+        )
 
-    if tune_hparams["load_plot_data"] is None:
-        ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
-        tune_analysis_per_exp = _train(tune_hparams)
-    else:
-        tune_analysis_per_exp = None
-
-    _evaluate(tune_hparams, debug, tune_analysis_per_exp)
-    ray.shutdown()
+    if use_best_exploiter:
+        # Add exploiter hyperparameters
+        tune_hparams.update(
+            {
+                "start_using_exploiter_at_update_n": 1
+                if debug
+                else 3000
+                if high_coop_speed_hp
+                else 1500,
+                "use_PG_exploiter": True if use_best_exploiter else False,
+                "every_n_updates_copy_weights": 1 if debug else 100,
+            }
+        )
+    return tune_hparams
 
 
 def _train(tune_hp):
@@ -177,7 +254,7 @@ def _train(tune_hp):
     if "CoinGame" in tune_config["env_name"]:
         trainable_class = train_cg_tune_class_API.LOLAPGCG
     else:
-        trainable_class = LOLAPGMatrice
+        trainable_class = train_pg_tune_class_API.LOLAPGMatrice
 
     # Train with the Tune Class API (not RLLib Class)
     tune_analysis = tune.run(
@@ -189,11 +266,28 @@ def _train(tune_hp):
         metric=tune_config["metric"],
         mode="max",
         log_to_file=not tune_hp["debug"],
-        loggers=DEFAULT_LOGGERS + (WandbLogger,),
+        callbacks=None
+        if tune_hp["debug"]
+        else [
+            WandbLoggerCallback(
+                project=tune_hp["wandb"]["project"],
+                group=tune_hp["wandb"]["group"],
+                api_key_file=tune_hp["wandb"]["api_key_file"],
+                log_config=True,
+            )
+        ],
     )
-    tune_analysis_per_exp = {"": tune_analysis}
 
-    # if not tune_hp["debug"]:
+    if tune_hp["remove_trials_below_speed"]:
+        tune_analysis = _remove_failed_trials(tune_analysis, tune_hp)
+
+    if tune_hp["classify_into_welfare_fn"]:
+        tune_analysis_per_exp = _split_tune_results_wt_welfare(
+            tune_analysis, tune_hp
+        )
+    else:
+        tune_analysis_per_exp = {"": tune_analysis}
+
     aggregate_and_plot_tensorboard_data.add_summary_plots(
         main_path=os.path.join("~/ray_results/", tune_config["exp_name"]),
         plot_keys=tune_config["plot_keys"],
@@ -201,6 +295,24 @@ def _train(tune_hp):
     )
 
     return tune_analysis_per_exp
+
+
+def _remove_failed_trials(results, tune_hp):
+    results = utils.tune_analysis.filter_trials(
+        results,
+        metric=f"player_red_pick_speed",
+        metric_threshold=tune_hp["remove_trials_below_speed"],
+        metric_mode="last-5-avg",
+        threshold_mode="above",
+    )
+    results = utils.tune_analysis.filter_trials(
+        results,
+        metric=f"player_blue_pick_speed",
+        metric_threshold=tune_hp["remove_trials_below_speed"],
+        metric_mode="last-5-avg",
+        threshold_mode="above",
+    )
+    return results
 
 
 def _get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
@@ -220,24 +332,13 @@ def _get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
             tune_config[
                 "env_class"
             ] = vectorized_mixed_motive_coin_game.VectMixedMotiveCG
+        elif tune_config["env_name"] == "VectorizedSSDMixedMotiveCoinGame":
+            tune_config[
+                "env_class"
+            ] = vectorized_ssd_mm_coin_game.VectSSDMixedMotiveCG
         else:
             raise ValueError()
 
-        tune_config["num_episodes"] = (
-            100000
-            if tune_config["num_episodes"] is None
-            else tune_config["num_episodes"]
-        )
-        tune_config["trace_length"] = (
-            150
-            if tune_config["trace_length"] is None
-            else tune_config["trace_length"]
-        )
-        tune_config["batch_size"] = (
-            4000
-            if tune_config["batch_size"] is None
-            else tune_config["batch_size"]
-        )
         tune_config["lr"] = (
             0.005 if tune_config["lr"] is None else tune_config["lr"]
         )
@@ -257,17 +358,30 @@ def _get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
         ):
             tune_hp["x_limits"] = (-2.0, 4.0)
             tune_hp["y_limits"] = (-2.0, 4.0)
-        tune_hp["jitter"] = 0.02
+        elif (
+            tune_config["env_class"]
+            == vectorized_ssd_mm_coin_game.VectSSDMixedMotiveCG
+        ):
+            tune_hp["x_limits"] = (-0.1, 1.5)
+            tune_hp["y_limits"] = (-0.1, 1.5)
+
+        tune_hp["jitter"] = 0.00
         env_config = {
             "players_ids": ["player_red", "player_blue"],
-            "batch_size": tune_config["batch_size"],
-            "max_steps": tune_config["trace_length"],
+            "batch_size": tune.sample_from(
+                lambda spec: spec.config["batch_size"]
+            ),
+            "max_steps": tune.sample_from(
+                lambda spec: spec.config["trace_length"]
+            ),
             "grid_size": tune_config["grid_size"],
             "get_additional_info": True,
             "both_players_can_pick_the_same_coin": tune_config["env_name"]
-            == "VectorizedMixedMotiveCoinGame",
+            == "VectorizedMixedMotiveCoinGame"
+            or tune_config["env_name"] == "VectorizedSSDMixedMotiveCoinGame",
             "force_vectorize": False,
             "same_obs_for_each_player": True,
+            "punishment_helped": tune_config["punishment_helped"],
         }
         tune_config["metric"] = "player_blue_pick_speed"
         tune_config["plot_keys"] += (
@@ -324,17 +438,13 @@ def _get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
         }
         tune_config["metric"] = "player_row_CC_freq"
 
-    tune_hp["scale_multipliers"] = (
-        1 / tune_config["trace_length"],
-        1 / tune_config["trace_length"],
+    # For hyperparameter search
+    tune_hp["scale_multipliers"] = tune.sample_from(
+        lambda spec: (
+            1 / spec.config["trace_length"],
+            1 / spec.config["trace_length"],
+        )
     )
-    # For HP search
-    # tune_hp["scale_multipliers"] = tune.sample_from(
-    #     lambda spec: (
-    #         1 / spec.config["trace_length"],
-    #         1 / spec.config["trace_length"],
-    #     )
-    # )
     tune_config["env_config"] = env_config
 
     if stop_on_epi_number:
@@ -379,7 +489,17 @@ def _generate_eval_config(tune_hp, debug):
         env_config["batch_size"] = 1
         tune_config["TuneTrainerClass"] = train_cg_tune_class_API.LOLAPGCG
     else:
-        tune_config["TuneTrainerClass"] = LOLAPGMatrice
+        tune_config["TuneTrainerClass"] = train_pg_tune_class_API.LOLAPGMatrice
+    tune_config["env_config"].update(
+        {
+            "batch_size": env_config["batch_size"],
+            "max_steps": rllib_hp["trace_length"],
+        }
+    )
+    rllib_hp["scale_multipliers"] = (
+        1 / rllib_hp["trace_length"],
+        1 / rllib_hp["trace_length"],
+    )
 
     rllib_config_eval = {
         "env": rllib_hp["env_class"],
@@ -409,6 +529,8 @@ def _generate_eval_config(tune_hp, debug):
         "callbacks": log.get_logging_callbacks_class(
             log_full_epi=True,
         ),
+        "num_envs_per_worker": 1,
+        "num_workers": 0,
     }
 
     policies_to_load = copy.deepcopy(env_config["players_ids"])
@@ -421,7 +543,7 @@ def _generate_eval_config(tune_hp, debug):
             "conv_filters": [[16, [3, 3], 1], [32, [3, 3], 1]],
         }
     else:
-        trainable_class = LOLAPGMatrice
+        trainable_class = train_pg_tune_class_API.LOLAPGMatrice
 
     return (
         rllib_hp,
@@ -441,19 +563,22 @@ def _evaluate_self_and_cross_perf(
     stop,
     env_config,
     tune_analysis_per_exp,
+    n_cross_play_per_checkpoint=None,
 ):
-    evaluator = self_and_cross_perf.SelfAndCrossPlayEvaluator(
-        exp_name=rllib_hp["exp_name"],
+    exp_name = os.path.join(rllib_hp["exp_name"], "eval")
+    evaluator = cross_play.evaluator.SelfAndCrossPlayEvaluator(
+        exp_name=exp_name,
         local_mode=rllib_hp["debug"],
-        use_wandb=not rllib_hp["debug"],
     )
     analysis_metrics_per_mode = evaluator.perform_evaluation_or_load_data(
         evaluation_config=rllib_config_eval,
         stop_config=stop,
         policies_to_load_from_checkpoint=policies_to_load,
         tune_analysis_per_exp=tune_analysis_per_exp,
-        TuneTrainerClass=trainable_class,
-        n_cross_play_per_checkpoint=min(5, rllib_hp["train_n_replicates"] - 1),
+        tune_trainer_class=trainable_class,
+        n_cross_play_per_checkpoint=min(5, rllib_hp["train_n_replicates"] - 1)
+        if n_cross_play_per_checkpoint is None
+        else n_cross_play_per_checkpoint,
         to_load_path=rllib_hp["load_plot_data"],
     )
 
@@ -461,7 +586,7 @@ def _evaluate_self_and_cross_perf(
         rllib_hp["env_class"],
         matrix_sequential_social_dilemma.MatrixSequentialSocialDilemma,
     ):
-        background_area_coord = rllib_hp["env_class"].PAYOUT_MATRIX
+        background_area_coord = rllib_hp["env_class"].PAYOFF_MATRIX
     else:
         background_area_coord = None
 
@@ -485,6 +610,45 @@ def _evaluate_self_and_cross_perf(
     )
 
 
+FAILURE = "failures"
+EGALITARIAN = "egalitarian"
+UTILITARIAN = "utilitarian"
+
+
+def _split_tune_results_wt_welfare(tune_analysis, hp):
+    tune_analysis_per_welfare = {}
+    for trial in tune_analysis.trials:
+        welfare_name = _get_trial_welfare(trial, hp)
+        if welfare_name not in tune_analysis_per_welfare.keys():
+            lola_exact_official._add_empty_tune_analysis(
+                tune_analysis_per_welfare, welfare_name, tune_analysis
+            )
+        tune_analysis_per_welfare[welfare_name].trials.append(trial)
+    return tune_analysis_per_welfare
+
+
+def _get_trial_welfare(trial, hp):
+    pick_own_player_1 = trial.last_result["player_red_pick_own_color"]
+    pick_own_player_2 = trial.last_result["player_blue_pick_own_color"]
+    welfare_name = lola_pg_classify_fn(
+        pick_own_player_1, pick_own_player_2, hp
+    )
+    return welfare_name
+
+
+def lola_pg_classify_fn(pick_own_player_1, pick_own_player_2, hp):
+    if hp["env_name"] == "VectorizedSSDMixedMotiveCoinGame":
+        if pick_own_player_1 < 0.75:
+            return UTILITARIAN
+        else:
+            return EGALITARIAN
+    else:
+        if pick_own_player_1 > 0.75:
+            return EGALITARIAN
+        else:
+            return UTILITARIAN
+
+
 if __name__ == "__main__":
-    debug_mode = True
+    debug_mode = False
     main(debug_mode)

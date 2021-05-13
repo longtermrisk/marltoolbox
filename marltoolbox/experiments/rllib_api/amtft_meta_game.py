@@ -1,8 +1,9 @@
+import collections
 import copy
 import json
 import logging
 import os
-import random
+from typing import List, Dict
 
 import numpy as np
 import pandas as pd
@@ -11,91 +12,120 @@ from ray import tune
 from ray.rllib.agents import dqn
 from ray.rllib.utils import merge_dicts
 
+from marltoolbox import utils
 from marltoolbox.algos import welfare_coordination
 from marltoolbox.experiments.rllib_api import amtft_various_env
 from marltoolbox.utils import (
-    self_and_cross_perf,
     postprocessing,
-    miscellaneous,
     plot,
+    path,
+    cross_play,
+    tune_analysis,
+    restore,
 )
 
 logger = logging.getLogger(__name__)
 
 
 def main(debug):
-    if debug:
-        test_meta_solver(debug)
-
-    hp = _get_hyperparameters(debug)
+    # _extract_stats_on_welfare_announced(
+    #     exp_dir="/home/maxime/dev-maxime/CLR/vm-data/instance-60-cpu-3-preemtible/amTFT/2021_04_23/12_58_42",
+    #     players_ids=["player_row", "player_col"],
+    # )
+    #
+    # if debug:
+    #     test_meta_solver(debug)
+    use_r2d2 = True
+    hp = get_hyperparameters(debug, use_r2d2=use_r2d2)
 
     results = []
+    ray.init(num_cpus=os.cpu_count(), local_mode=hp["debug"])
     for tau in hp["tau_range"]:
+        hp["tau"] = tau
         (
             all_rllib_config,
             hp_eval,
             env_config,
             stop_config,
-        ) = _produce_rllib_config_for_each_replicates(tau, hp)
+        ) = _produce_rllib_config_for_each_replicates(hp)
 
         mixed_rllib_configs = _mix_rllib_config(all_rllib_config, hp_eval)
-
         tune_analysis = ray.tune.run(
-            dqn.DQNTrainer,
+            hp["trainer"],
             config=mixed_rllib_configs,
             verbose=1,
             stop=stop_config,
-            checkpoint_at_end=True,
             name=hp_eval["exp_name"],
-            log_to_file=not hp_eval["debug"],
-            # loggers=None
-            # if hp_eval["debug"]
-            # else DEFAULT_LOGGERS + (WandbLogger,),
+            # log_to_file=not hp_eval["debug"],
         )
-        mean_player_1_payoffs, mean_player_2_payoffs = _extract_metrics(
-            tune_analysis, hp_eval
-        )
+        (
+            mean_player_1_payoffs,
+            mean_player_2_payoffs,
+            player_1_payoffs,
+            player_2_payoffs,
+        ) = extract_metrics(tune_analysis, hp_eval)
 
         results.append(
             (
                 tau,
                 (mean_player_1_payoffs, mean_player_2_payoffs),
+                (player_1_payoffs, player_2_payoffs),
             )
         )
-    _save_to_json(exp_name=hp["exp_name"], object=results)
-    _plot_results(exp_name=hp["exp_name"], results=results, hp_eval=hp_eval)
+    save_to_json(exp_name=hp["exp_name"], object=results)
+    plot_results(
+        exp_name=hp["exp_name"],
+        results=results,
+        hp_eval=hp_eval,
+        format_fn=format_result_for_plotting,
+    )
+    extract_stats_on_welfare_announced(
+        exp_name=hp["exp_name"], players_ids=env_config["players_ids"]
+    )
 
 
-def _get_hyperparameters(debug):
+def get_hyperparameters(debug, use_r2d2=False):
+    """Get hyperparameters for meta game with amTFT policies in base game"""
+
     # env = "IteratedPrisonersDilemma"
     env = "IteratedAsymBoS"
     # env = "CoinGame"
 
     hp = amtft_various_env.get_hyperparameters(
-        debug, train_n_replicates=1, filter_utilitarian=False, env=env
+        debug,
+        train_n_replicates=1,
+        filter_utilitarian=False,
+        env=env,
+        use_r2d2=use_r2d2,
     )
 
     hp.update(
         {
-            "n_replicates_over_full_exp": 2,
-            "final_base_game_eval_over_n_epi": 2,
+            "n_replicates_over_full_exp": 2 if debug else 5,
+            "final_base_game_eval_over_n_epi": 1 if debug else 20,
             "tau_range": np.arange(0.0, 1.1, 0.5)
             if hp["debug"]
             else np.arange(0.0, 1.1, 0.1),
             "n_self_play_in_final_meta_game": 0,
-            "n_cross_play_in_final_meta_game": 1,
+            "n_cross_play_in_final_meta_game": 1 if debug else 4,
+            "max_n_replicates_in_base_game": 10,
         }
     )
+
+    if use_r2d2:
+        hp["trainer"] = dqn.r2d2.R2D2Trainer
+    else:
+        hp["trainer"] = dqn.DQNTrainer
+
     return hp
 
 
-def _produce_rllib_config_for_each_replicates(tau, hp):
+def _produce_rllib_config_for_each_replicates(hp):
     all_rllib_config = []
     for replicate_i in range(hp["n_replicates_over_full_exp"]):
         hp_eval = _load_base_game_results(
             copy.deepcopy(hp), load_base_replicate_i=replicate_i
         )
-        hp_eval["tau"] = tau
 
         (
             rllib_config,
@@ -110,29 +140,55 @@ def _produce_rllib_config_for_each_replicates(tau, hp):
             rllib_config, env_config, hp_eval
         )
         all_rllib_config.append(rllib_config)
+
     return all_rllib_config, hp_eval, env_config, stop_config
 
 
 def _load_base_game_results(hp, load_base_replicate_i):
-    prefix = "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-2/"
-    # prefix = "/ray_results/"
+    # prefix = "~/dev-maxime/CLR/vm-data/instance-10-cpu-2/"
+    # prefix = "~/dev-maxime/CLR/vm-data/instance-60-cpu-1-preemtible/"
+    prefix = "~/dev-maxime/CLR/vm-data/instance-60-cpu-2-preemtible/"
+    # prefix = "~/ray_results/"
+    prefix = os.path.expanduser(prefix)
     if "CoinGame" in hp["env_name"]:
         hp["data_dir"] = (prefix + "amTFT/2021_04_10/19_37_20",)[
             load_base_replicate_i
         ]
     elif "IteratedAsymBoS" in hp["env_name"]:
         hp["data_dir"] = (
-            prefix + "amTFT/2021_04_13/11_56_23",  # 5 replicates
-            prefix + "amTFT/2021_04_13/13_40_03",  # 5 replicates
-            prefix + "amTFT/2021_04_13/13_40_34",  # 5 replicates
-            prefix + "amTFT/2021_04_13/18_06_48",  # 10 replicates
-            prefix + "amTFT/2021_04_13/18_07_05",  # 10 replicates
+            # Before fix + without R2D2
+            # prefix + "amTFT/2021_04_13/11_56_23",  # 5 replicates
+            # prefix + "amTFT/2021_04_13/13_40_03",  # 5 replicates
+            # prefix + "amTFT/2021_04_13/13_40_34",  # 5 replicates
+            # prefix + "amTFT/2021_04_13/18_06_48",  # 10 replicates
+            # prefix + "amTFT/2021_04_13/18_07_05",  # 10 replicates
+            # After env fix + with R2D2
+            # prefix + "amTFT/2021_05_03/13_44_48",  # 10 replicates
+            # prefix + "amTFT/2021_05_03/13_45_09",  # 10 replicates
+            # prefix + "amTFT/2021_05_03/13_47_00",  # 10 replicates
+            # prefix + "amTFT/2021_05_03/13_48_03",  # 10 replicates
+            # prefix + "amTFT/2021_05_03/13_49_28",  # 10 replicates
+            # prefix + "amTFT/2021_05_03/13_49_47",  # 10 replicates
+            # After fix env + short debit rollout + punish instead of
+            # selfish + 20 rllout length insead of 6
+            prefix + "amTFT/2021_05_03/13_52_07",  # 10 replicates
+            prefix + "amTFT/2021_05_03/13_52_27",  # 10 replicates
+            prefix + "amTFT/2021_05_03/13_53_37",  # 10 replicates
+            ### prefix + "amTFT/2021_05_03/13_54_08",  # 10 replicates
+            prefix + "amTFT/2021_05_03/13_54_55",  # 10 replicates
+            prefix + "amTFT/2021_05_03/13_56_35",  # 10 replicates
         )[load_base_replicate_i]
     elif "IteratedPrisonersDilemma" in hp["env_name"]:
         hp["data_dir"] = (
             "/home/maxime/dev-maxime/CLR/vm-data/"
             "instance-10-cpu-4/amTFT/2021_04_13/12_12_56",
         )[load_base_replicate_i]
+    else:
+        raise ValueError()
+
+    assert os.path.exists(
+        hp["data_dir"]
+    ), "Path doesn't exist. Probably that the prefix need to be changed to fit the current machine used"
 
     hp["json_file"] = _get_results_json_file_path_in_dir(hp["data_dir"])
     hp["ckpt_per_welfare"] = _get_checkpoints_for_each_welfare_in_dir(
@@ -150,17 +206,17 @@ def _get_vanilla_amTFT_eval_config(hp, final_eval_over_n_epi):
     stop_config, env_config, rllib_config = amtft_various_env.get_rllib_config(
         hp_eval, welfare_fn=postprocessing.WELFARE_INEQUITY_AVERSION, eval=True
     )
-    rllib_config = amtft_various_env.modify_config_for_evaluation(
-        rllib_config, hp_eval, env_config
+    rllib_config, stop_config = amtft_various_env.modify_config_for_evaluation(
+        rllib_config, hp_eval, env_config, stop_config
     )
     hp_eval["n_self_play_per_checkpoint"] = None
     hp_eval["n_cross_play_per_checkpoint"] = None
     hp_eval[
         "x_axis_metric"
-    ] = f"policy_reward_mean.{env_config['players_ids'][0]}"
+    ] = f"policy_reward_mean/{env_config['players_ids'][0]}"
     hp_eval[
         "y_axis_metric"
-    ] = f"policy_reward_mean.{env_config['players_ids'][1]}"
+    ] = f"policy_reward_mean/{env_config['players_ids'][1]}"
 
     return rllib_config, hp_eval, env_config, stop_config
 
@@ -168,8 +224,10 @@ def _get_vanilla_amTFT_eval_config(hp, final_eval_over_n_epi):
 def _modify_config_to_use_welfare_coordinators(
     rllib_config, env_config, hp_eval
 ):
-    all_welfare_pairs_wt_payoffs = _get_all_welfare_pairs_wt_payoffs(
-        hp_eval, env_config["players_ids"]
+    all_welfare_pairs_wt_payoffs = (
+        _get_all_welfare_pairs_wt_cross_play_payoffs(
+            hp_eval, env_config["players_ids"]
+        )
     )
 
     rllib_config["multiagent"]["policies_to_train"] = ["None"]
@@ -192,17 +250,11 @@ def _modify_config_to_use_welfare_coordinators(
                 "all_welfare_pairs_wt_payoffs": all_welfare_pairs_wt_payoffs,
                 "own_player_idx": policy_idx,
                 "opp_player_idx": opp_policy_idx,
-                # "own_default_welfare_fn": postprocessing.WELFARE_INEQUITY_AVERSION
-                # if policy_idx
-                # else postprocessing.WELFARE_UTILITARIAN,
-                # "opp_default_welfare_fn": postprocessing.WELFARE_INEQUITY_AVERSION
-                # if opp_policy_idx
-                # else postprocessing.WELFARE_UTILITARIAN,
                 "own_default_welfare_fn": "inequity aversion"
-                if policy_idx
+                if policy_idx == 1
                 else "utilitarian",
                 "opp_default_welfare_fn": "inequity aversion"
-                if opp_policy_idx
+                if opp_policy_idx == 1
                 else "utilitarian",
                 "policy_id_to_load": policy_id,
                 "policy_checkpoints": hp_eval["ckpt_per_welfare"],
@@ -227,7 +279,7 @@ def _mix_rllib_config(all_rllib_configs, hp_eval):
         hp_eval["n_self_play_in_final_meta_game"] == 0
         and hp_eval["n_cross_play_in_final_meta_game"] != 0
     ):
-        master_config = _mix_configs_policies(
+        master_config = cross_play.utils.mix_policies_in_given_rllib_configs(
             all_rllib_configs,
             n_mix_per_config=hp_eval["n_cross_play_in_final_meta_game"],
         )
@@ -236,100 +288,15 @@ def _mix_rllib_config(all_rllib_configs, hp_eval):
         raise ValueError()
 
 
-def _mix_configs_policies(all_rllib_configs, n_mix_per_config):
-    assert n_mix_per_config <= len(all_rllib_configs) - 1
-    policy_ids = all_rllib_configs[0]["multiagent"]["policies"].keys()
-    assert len(policy_ids) == 2
-    _assert_all_config_use_the_same_policies(all_rllib_configs, policy_ids)
-
-    policy_config_variants = _gather_policy_variant_per_policy_id(
-        all_rllib_configs, policy_ids
-    )
-
-    master_config = _create_one_master_config(
-        all_rllib_configs, policy_config_variants, policy_ids, n_mix_per_config
-    )
-    return master_config
-
-
-def _create_one_master_config(
-    all_rllib_configs, policy_config_variants, policy_ids, n_mix_per_config
-):
-    all_policy_mix = []
-    player_1, player_2 = policy_ids
-    for config_idx, p1_policy_config in enumerate(
-        policy_config_variants[player_1]
-    ):
-        policies_mixes = _produce_n_mix_with_player_2_policies(
-            policy_config_variants,
-            player_2,
-            config_idx,
-            n_mix_per_config,
-            player_1,
-            p1_policy_config,
-        )
-        all_policy_mix.extend(policies_mixes)
-
-    master_config = copy.deepcopy(all_rllib_configs[0])
-    master_config["multiagent"]["policies"] = tune.grid_search(all_policy_mix)
-    return master_config
-
-
-def _produce_n_mix_with_player_2_policies(
-    policy_config_variants,
-    player_2,
-    config_idx,
-    n_mix_per_config,
-    player_1,
-    p1_policy_config,
-):
-    p2_policy_configs_sampled = _get_p2_policies_samples_excluding_self(
-        policy_config_variants, player_2, config_idx, n_mix_per_config
-    )
-    policies_mixes = []
-    for p2_policy_config in p2_policy_configs_sampled:
-        policy_mix = {
-            player_1: p1_policy_config,
-            player_2: p2_policy_config,
-        }
-        policies_mixes.append(policy_mix)
-    return policies_mixes
-
-
-def _get_p2_policies_samples_excluding_self(
-    policy_config_variants, player_2, config_idx, n_mix_per_config
-):
-    p2_policy_config_variants = copy.deepcopy(policy_config_variants[player_2])
-    p2_policy_config_variants.pop(config_idx)
-    p2_policy_configs_sampled = random.sample(
-        p2_policy_config_variants, n_mix_per_config
-    )
-    return p2_policy_configs_sampled
-
-
-def _assert_all_config_use_the_same_policies(all_rllib_configs, policy_ids):
-    for rllib_config in all_rllib_configs:
-        assert rllib_config["multiagent"]["policies"].keys() == policy_ids
-
-
-def _gather_policy_variant_per_policy_id(all_rllib_configs, policy_ids):
-    policy_config_variants = {}
-    for policy_id in policy_ids:
-        policy_config_variants[policy_id] = []
-        for rllib_config in all_rllib_configs:
-            policy_config_variants[policy_id].append(
-                copy.deepcopy(
-                    rllib_config["multiagent"]["policies"][policy_id]
-                )
-            )
-    return policy_config_variants
-
-
-def _extract_metrics(tune_analysis, hp_eval):
-    player_1_payoffs = miscellaneous.extract_metric_values_per_trials(
+def extract_metrics(tune_analysis, hp_eval):
+    # TODO PROBLEM using last result but there are several episodes with
+    #  different welfare functions !! => BUT plot is good
+    # Metric from the last result means the metric average over the last
+    # training iteration and we have only one training iteration here.
+    player_1_payoffs = utils.tune_analysis.extract_metrics_for_each_trials(
         tune_analysis, metric=hp_eval["x_axis_metric"]
     )
-    player_2_payoffs = miscellaneous.extract_metric_values_per_trials(
+    player_2_payoffs = utils.tune_analysis.extract_metrics_for_each_trials(
         tune_analysis, metric=hp_eval["y_axis_metric"]
     )
     mean_player_1_payoffs = sum(player_1_payoffs) / len(player_1_payoffs)
@@ -339,33 +306,50 @@ def _extract_metrics(tune_analysis, hp_eval):
         mean_player_1_payoffs,
         mean_player_2_payoffs,
     )
-    return mean_player_1_payoffs, mean_player_2_payoffs
+    return (
+        mean_player_1_payoffs,
+        mean_player_2_payoffs,
+        player_1_payoffs,
+        player_2_payoffs,
+    )
 
 
-def _save_to_json(exp_name, object):
-    exp_dir = os.path.join("~/ray_results", exp_name)
-    exp_dir = os.path.expanduser(exp_dir)
-    json_file = os.path.join(exp_dir, "final_eval_in_base_game.json")
+class NumpyEncoder(json.JSONEncoder):
+    """ Special json encoder for numpy types """
+
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
+
+
+def save_to_json(exp_name, object, filename="final_eval_in_base_game.json"):
+    exp_dir = _get_exp_dir_from_exp_name(exp_name)
+    json_file = os.path.join(exp_dir, filename)
+    if not os.path.exists(exp_dir):
+        os.makedirs(exp_dir)
     with open(json_file, "w") as outfile:
         json.dump(object, outfile)
 
 
-def _plot_results(exp_name, results, hp_eval):
-    exp_dir = os.path.join("~/ray_results", exp_name)
-    exp_dir = os.path.expanduser(exp_dir)
+def plot_results(exp_name, results, hp_eval, format_fn, jitter=0.0):
+    exp_dir = _get_exp_dir_from_exp_name(exp_name)
+    data_groups_per_mode = format_fn(results)
 
-    data_groups_per_mode = _format_result_for_plotting(results)
+    background_area_coord = None
+    if "CoinGame" not in hp_eval["env_name"] and "env_class" in hp_eval.keys():
+        background_area_coord = hp_eval["env_class"].PAYOFF_MATRIX
 
-    if "CoinGame" in hp_eval["env_name"]:
-        background_area_coord = None
-    else:
-        background_area_coord = hp_eval["env_class"].PAYOUT_MATRIX
     plot_config = plot.PlotConfig(
         save_dir_path=exp_dir,
         xlim=hp_eval["x_limits"],
         ylim=hp_eval["y_limits"],
         markersize=5,
-        jitter=hp_eval["jitter"],
+        jitter=jitter,
         xlabel="player 1 payoffs",
         ylabel="player 2 payoffs",
         x_scale_multiplier=hp_eval["plot_axis_scale_multipliers"][0],
@@ -377,12 +361,9 @@ def _plot_results(exp_name, results, hp_eval):
     plot_helper.plot_dots(data_groups_per_mode)
 
 
-def _format_result_for_plotting(results):
+def format_result_for_plotting(results):
     data_groups_per_mode = {}
-    for (
-        tau,
-        (mean_player_1_payoffs, mean_player_2_payoffs),
-    ) in results:
+    for (tau, (mean_player_1_payoffs, mean_player_2_payoffs), _) in results:
         df_row_dict = {}
         df_row_dict[f"mean"] = (
             mean_player_1_payoffs,
@@ -394,7 +375,7 @@ def _format_result_for_plotting(results):
 
 
 def test_meta_solver(debug):
-    hp = _get_hyperparameters(debug)
+    hp = get_hyperparameters(debug)
     hp = _load_base_game_results(hp, load_base_replicate_i=0)
     stop, env_config, rllib_config = amtft_various_env.get_rllib_config(
         hp, welfare_fn=postprocessing.WELFARE_INEQUITY_AVERSION, eval=True
@@ -422,8 +403,10 @@ def test_meta_solver(debug):
             )
         )
 
-        all_welfare_pairs_wt_payoffs = _get_all_welfare_pairs_wt_payoffs(
-            hp, env_config["players_ids"]
+        all_welfare_pairs_wt_payoffs = (
+            _get_all_welfare_pairs_wt_cross_play_payoffs(
+                hp, env_config["players_ids"]
+            )
         )
         print("all_welfare_pairs_wt_payoffs", all_welfare_pairs_wt_payoffs)
         player_meta_policy.setup_meta_game(
@@ -469,118 +452,94 @@ def _get_results_json_file_path_in_dir(data_dir):
 
 def _eval_dir(data_dir):
     eval_dir_parents_2 = os.path.join(data_dir, "eval")
-    eval_dir_parents_1 = _get_unique_child_dir(eval_dir_parents_2)
-    eval_dir = _get_unique_child_dir(eval_dir_parents_1)
+    eval_dir_parents_1 = path.get_unique_child_dir(eval_dir_parents_2)
+    eval_dir = path.get_unique_child_dir(eval_dir_parents_1)
     return eval_dir
 
 
 def _get_json_results_path(eval_dir):
-    all_files_filtered = _get_children_paths_wt_selecting_filter(
-        eval_dir, _filter=self_and_cross_perf.RESULTS_SUMMARY_FILENAME_PREFIX
+    all_files_filtered = path.get_children_paths_wt_selecting_filter(
+        eval_dir,
+        _filter=cross_play.evaluator.RESULTS_SUMMARY_FILENAME_PREFIX,
     )
     all_files_filtered = [
         file_path for file_path in all_files_filtered if ".json" in file_path
+    ]
+    all_files_filtered = [
+        file_path
+        for file_path in all_files_filtered
+        if os.path.split(file_path)[-1].startswith("plotself")
+        or not os.path.split(file_path)[-1].startswith("plot")
     ]
     assert len(all_files_filtered) == 1, f"{all_files_filtered}"
     json_result_path = os.path.join(eval_dir, all_files_filtered[0])
     return json_result_path
 
 
-def _get_unique_child_dir(_dir):
-    list_dir = os.listdir(_dir)
-    assert len(list_dir) == 1, f"{list_dir}"
-    unique_child_dir = os.path.join(_dir, list_dir[0])
-    return unique_child_dir
-
-
 def _get_checkpoints_for_each_welfare_in_dir(data_dir, hp):
+    """Get the checkpoints of the base game policies in self-play"""
     ckpt_per_welfare = {}
     for welfare_fn, welfare_name in hp["welfare_functions"]:
         welfare_training_save_dir = os.path.join(data_dir, welfare_fn, "coop")
-        all_replicates_save_dir = _get_dir_of_each_replicate(
-            welfare_training_save_dir
+        all_replicates_save_dir = _get_replicates_dir_for_all_possible_config(
+            hp, welfare_training_save_dir
         )
-        ckpts = _get_checkpoint_for_each_replicates(all_replicates_save_dir)
+        all_replicates_save_dir = _filter_checkpoints_if_utilitarians(
+            all_replicates_save_dir, hp
+        )
+        ckpts = restore.get_checkpoint_for_each_replicates(
+            all_replicates_save_dir
+        )
+        print("len(ckpts)", len(ckpts))
         ckpt_per_welfare[welfare_name.replace("_", " ")] = ckpts
     return ckpt_per_welfare
 
 
-def _get_dir_of_each_replicate(welfare_training_save_dir):
-    return _get_children_paths_wt_selecting_filter(
-        welfare_training_save_dir, _filter="DQN_"
-    )
+def _get_replicates_dir_for_all_possible_config(hp, welfare_training_save_dir):
+    if "use_r2d2" in hp and hp["use_r2d2"]:
+        all_replicates_save_dir = get_dir_of_each_replicate(
+            welfare_training_save_dir, str_in_dir="R2D2_"
+        )
+    else:
+        all_replicates_save_dir = get_dir_of_each_replicate(
+            welfare_training_save_dir, str_in_dir="DQN_"
+        )
+    return all_replicates_save_dir
 
 
-def _get_checkpoint_for_each_replicates(all_replicates_save_dir):
-    ckpt_dir_per_replicate = []
-    for replicate_dir_path in all_replicates_save_dir:
-        ckpt_dir_path = _get_ckpt_dir_for_one_replicate(replicate_dir_path)
-        ckpt_path = _get_ckpt_fro_ckpt_dir(ckpt_dir_path)
-        ckpt_dir_per_replicate.append(ckpt_path)
-    return ckpt_dir_per_replicate
-
-
-def _get_ckpt_dir_for_one_replicate(replicate_dir_path):
-    partialy_filtered_ckpt_dir = _get_children_paths_wt_selecting_filter(
-        replicate_dir_path, _filter="checkpoint_"
-    )
-    ckpt_dir = [
-        file_path
-        for file_path in partialy_filtered_ckpt_dir
-        if ".is_checkpoint" not in file_path
+def _filter_checkpoints_if_utilitarians(all_replicates_save_dir, hp):
+    util_or_inequity_aversion = [
+        path.split("/")[-3] for path in all_replicates_save_dir
     ]
-    assert len(ckpt_dir) == 1, f"{ckpt_dir}"
-    return ckpt_dir[0]
+    print("util_or_inequity_aversion", util_or_inequity_aversion)
+    if all(
+        welfare == "utilitarian_welfare"
+        for welfare in util_or_inequity_aversion
+    ):
+        all_replicates_save_dir = (
+            utils.path.filter_list_of_replicates_by_results(
+                all_replicates_save_dir,
+                filter_key="episode_reward_mean",
+                filter_mode=tune_analysis.ABOVE,
+                filter_threshold=95,
+            )
+        )
+        if len(all_replicates_save_dir) > hp["max_n_replicates_in_base_game"]:
+            all_replicates_save_dir = all_replicates_save_dir[
+                : hp["max_n_replicates_in_base_game"]
+            ]
+    else:
+        print(
+            "not filtering ckpts. all_replicates_save_dir[0]",
+            all_replicates_save_dir[0],
+        )
+    return all_replicates_save_dir
 
 
-def _get_ckpt_fro_ckpt_dir(ckpt_dir_path):
-    partialy_filtered_ckpt_path = _get_children_paths_wt_discarding_filter(
-        ckpt_dir_path, _filter="tune_metadata"
+def get_dir_of_each_replicate(welfare_training_save_dir, str_in_dir="DQN_"):
+    return path.get_children_paths_wt_selecting_filter(
+        welfare_training_save_dir, _filter=str_in_dir
     )
-    ckpt_path = [
-        file_path
-        for file_path in partialy_filtered_ckpt_path
-        if ".is_checkpoint" not in file_path
-    ]
-    assert len(ckpt_path) == 1, f"{ckpt_path}"
-    return ckpt_path[0]
-
-
-def _get_children_paths_wt_selecting_filter(parent_dir_path, _filter):
-    return _get_children_paths_filters(
-        parent_dir_path, selecting_filter=_filter
-    )
-
-
-def _get_children_paths_wt_discarding_filter(parent_dir_path, _filter):
-    return _get_children_paths_filters(
-        parent_dir_path, discarding_filter=_filter
-    )
-
-
-def _get_children_paths_filters(
-    parent_dir_path: str,
-    selecting_filter: str = None,
-    discarding_filter: str = None,
-):
-    filtered_children = os.listdir(parent_dir_path)
-    if selecting_filter is not None:
-        filtered_children = [
-            filename
-            for filename in filtered_children
-            if selecting_filter in filename
-        ]
-    if discarding_filter is not None:
-        filtered_children = [
-            filename
-            for filename in filtered_children
-            if discarding_filter not in filename
-        ]
-    filtered_children_path = [
-        os.path.join(parent_dir_path, filename)
-        for filename in filtered_children
-    ]
-    return filtered_children_path
 
 
 def _convert_policy_config_to_meta_policy_config(
@@ -601,18 +560,18 @@ def _convert_policy_config_to_meta_policy_config(
     return meta_policy_config
 
 
-def _get_all_welfare_pairs_wt_payoffs(hp, player_ids):
+def _get_all_welfare_pairs_wt_cross_play_payoffs(hp, player_ids):
     with open(hp["json_file"]) as json_file:
         json_data = json.load(json_file)
 
-    cross_play_data = _keep_only_cross_play_values(json_data)
+    cross_play_data = keep_only_cross_play_values(json_data)
     cross_play_means = _keep_only_mean_values(cross_play_data)
     all_welfare_pairs_wt_payoffs = _order_players(cross_play_means, player_ids)
 
     return all_welfare_pairs_wt_payoffs
 
 
-def _keep_only_cross_play_values(json_data):
+def keep_only_cross_play_values(json_data):
     return {
         _format_eval_mode(eval_mode): v
         for eval_mode, v in json_data.items()
@@ -623,7 +582,7 @@ def _keep_only_cross_play_values(json_data):
 def _format_eval_mode(eval_mode):
     k_wtout_kind_of_play = eval_mode.split(":")[-1].strip()
     both_welfare_fn = k_wtout_kind_of_play.split(" vs ")
-    return welfare_coordination.WelfareCoordinationTorchPolicy._from_pair_of_welfare_names_to_key(
+    return welfare_coordination.WelfareCoordinationTorchPolicy.from_pair_of_welfare_names_to_key(
         *both_welfare_fn
     )
 
@@ -648,6 +607,118 @@ def _order_players(cross_play_means, player_ids):
     }
 
 
+def extract_stats_on_welfare_announced(
+    players_ids, exp_name=None, exp_dir=None, nested_info=False
+):
+    if exp_dir is None:
+        exp_dir = _get_exp_dir_from_exp_name(exp_name)
+    all_in_exp_dir = utils.path.get_children_paths_wt_discarding_filter(
+        exp_dir, _filter=None
+    )
+    all_dirs = utils.path.keep_dirs_only(all_in_exp_dir)
+    dir_name_by_tau = _group_dir_name_by_tau(all_dirs, nested_info)
+    dir_name_by_tau = _order_by_tau(dir_name_by_tau)
+    _get_stats_for_each_tau(dir_name_by_tau, players_ids, exp_dir)
+
+
+def _get_exp_dir_from_exp_name(exp_name: str):
+    exp_dir = os.path.join("~/ray_results", exp_name)
+    exp_dir = os.path.expanduser(exp_dir)
+    return exp_dir
+
+
+def _group_dir_name_by_tau(all_dirs: List[str], nested_info) -> Dict:
+    dirs_by_tau = {}
+    for trial_dir in all_dirs:
+        tau, welfare_set_annonced = _get_tau_value(trial_dir, nested_info)
+        if tau is None:
+            continue
+        if tau not in dirs_by_tau.keys():
+            dirs_by_tau[tau] = []
+        dirs_by_tau[tau].append((trial_dir, welfare_set_annonced))
+    return dirs_by_tau
+
+
+def _get_tau_value(trial_dir_path, nested_info=False):
+    full_epi_file_path = os.path.join(
+        trial_dir_path, "full_episodes_logs.json"
+    )
+    if os.path.exists(full_epi_file_path):
+        full_epi_logs = utils.path._read_all_lines_of_file(full_epi_file_path)
+        first_epi_first_step = json.loads(full_epi_logs[1])
+        tau = []
+        welfare_set_annonced = {}
+        for policy_id, policy_info in first_epi_first_step.items():
+            print('policy_info["info"]', policy_info["info"])
+            if nested_info:
+                meta_policy_info = policy_info["info"][
+                    f"meta_policy/{policy_id}"
+                ]
+            else:
+                meta_policy_info = policy_info["info"][f"meta_policy"]
+            for k, v in meta_policy_info.items():
+                if k.startswith("tau_"):
+                    tau_value = float(k.split("_")[-1])
+                    tau.append(tau_value)
+                    welfare_set_annonced[policy_id] = v["welfare_set_annonced"]
+        tau = set(tau)
+        assert len(tau) == 1, f"tau {tau}"
+        tau = list(tau)[0]
+        assert len(welfare_set_annonced.keys()) == 2
+        return tau, welfare_set_annonced
+    else:
+        return None, None
+
+
+def _order_by_tau(dir_name_by_tau):
+    return collections.OrderedDict(sorted(dir_name_by_tau.items()))
+
+
+def _get_stats_for_each_tau(dir_name_by_tau, players_ids, exp_dir):
+    file_path = os.path.join(exp_dir, "welfare_announced_by_tau.txt")
+    with open(file_path, "w") as f:
+        for tau, dirs_data in dir_name_by_tau.items():
+            all_welfares_player_1 = []
+            all_welfares_player_2 = []
+            for dir, welfare_announced in dirs_data:
+                all_welfares_player_1.append(welfare_announced[players_ids[0]])
+                all_welfares_player_2.append(welfare_announced[players_ids[1]])
+            all_welfares_player_1 = _format_in_same_order(
+                all_welfares_player_1
+            )
+            all_welfares_player_2 = _format_in_same_order(
+                all_welfares_player_2
+            )
+            count_announced_p1 = collections.Counter(all_welfares_player_1)
+            count_announced_p2 = collections.Counter(all_welfares_player_2)
+            msg = (
+                f"===== Welfare sets announced with tau = {tau} =====\n"
+                f"Player 1: {count_announced_p1}\n"
+                f"Player 2: {count_announced_p2}\n"
+            )
+            print(msg)
+            f.write(msg)
+
+
+def _format_in_same_order(all_welfares_player_n):
+    formatted_welfare_announced = []
+    for welfare_announced in all_welfares_player_n:
+        formated_name = ""
+        if "utilitarian" in welfare_announced:
+            formated_name += "utilitarian + "
+        if (
+            "inequity" in welfare_announced
+            or "egalitarian" in welfare_announced
+        ):
+            formated_name += "egalitarian + "
+        if "mixed" in welfare_announced:
+            formated_name += "mixed"
+        if formated_name.endswith(" + "):
+            formated_name = formated_name[:-3]
+        formatted_welfare_announced.append(formated_name)
+    return formatted_welfare_announced
+
+
 if __name__ == "__main__":
-    debug_mode = False
+    debug_mode = True
     main(debug_mode)

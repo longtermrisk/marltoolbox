@@ -18,10 +18,7 @@ from marltoolbox.algos.amTFT.base import (
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
     IteratedPrisonersDilemma,
 )
-from marltoolbox.experiments.rllib_api.amtft_various_env import (
-    get_rllib_config,
-    get_hyperparameters,
-)
+from marltoolbox.experiments.rllib_api import amtft_various_env
 from marltoolbox.utils import postprocessing, log
 from test_base_policy import init_amTFT, generate_fake_discrete_actions
 
@@ -46,14 +43,22 @@ def test_compute_actions_overwrite():
         (fake_actions, fake_state_out, fake_extra_fetches),
         (fake_actions_2nd, fake_state_out_2nd, fake_extra_fetches_2nd),
     ]
-    actions, state_out, extra_fetches = am_tft_policy.compute_actions(
-        observations[env.players_ids[0]]
+    actions, state_out, extra_fetches = am_tft_policy._compute_action_helper(
+        observations[env.players_ids[0]],
+        state_batches=None,
+        seq_lens=1,
+        explore=True,
+        timestep=0,
     )
     assert actions == fake_actions
     assert state_out == fake_state_out
     assert extra_fetches == fake_extra_fetches
-    actions, state_out, extra_fetches = am_tft_policy.compute_actions(
-        observations[env.players_ids[0]]
+    actions, state_out, extra_fetches = am_tft_policy._compute_action_helper(
+        observations[env.players_ids[0]],
+        state_batches=None,
+        seq_lens=1,
+        explore=True,
+        timestep=0,
     )
     assert actions == fake_actions_2nd
     assert state_out == fake_state_out_2nd
@@ -65,28 +70,38 @@ def test__select_algo_to_use_in_eval():
         policy_class=amTFT.AmTFTRolloutsTorchPolicy
     )
 
-    def assert_(working_state_idx, active_algo_idx):
+    def assert_active_algo_idx(working_state_idx, active_algo_idx):
         am_tft_policy.working_state = base_policy.WORKING_STATES[
             working_state_idx
         ]
-        am_tft_policy._select_witch_algo_to_use()
-        assert am_tft_policy.active_algo_idx == active_algo_idx
+        am_tft_policy._select_witch_algo_to_use(None)
+        assert (
+            am_tft_policy.active_algo_idx == active_algo_idx
+        ), f"{am_tft_policy.active_algo_idx} == {active_algo_idx}"
 
     am_tft_policy.use_opponent_policies = False
     am_tft_policy.n_steps_to_punish = 0
-    assert_(working_state_idx=2, active_algo_idx=base.OWN_COOP_POLICY_IDX)
+    assert_active_algo_idx(
+        working_state_idx=2, active_algo_idx=base.OWN_COOP_POLICY_IDX
+    )
     am_tft_policy.use_opponent_policies = False
     am_tft_policy.n_steps_to_punish = 1
-    assert_(working_state_idx=2, active_algo_idx=base.OWN_SELFISH_POLICY_IDX)
+    assert_active_algo_idx(
+        working_state_idx=2, active_algo_idx=base.OWN_SELFISH_POLICY_IDX
+    )
 
     am_tft_policy.use_opponent_policies = True
     am_tft_policy.performing_rollouts = True
     am_tft_policy.n_steps_to_punish_opponent = 0
-    assert_(working_state_idx=2, active_algo_idx=base.OPP_COOP_POLICY_IDX)
+    assert_active_algo_idx(
+        working_state_idx=2, active_algo_idx=base.OPP_COOP_POLICY_IDX
+    )
     am_tft_policy.use_opponent_policies = True
     am_tft_policy.performing_rollouts = True
     am_tft_policy.n_steps_to_punish_opponent = 1
-    assert_(working_state_idx=2, active_algo_idx=base.OPP_SELFISH_POLICY_IDX)
+    assert_active_algo_idx(
+        working_state_idx=2, active_algo_idx=base.OPP_SELFISH_POLICY_IDX
+    )
 
 
 def test__duration_found_or_continue_search():
@@ -156,11 +171,21 @@ class FakeEnvWtActionAsReward(IteratedPrisonersDilemma):
         return observations, rewards, epi_is_done, info
 
 
-def make_FakePolicyWtDefinedActions(list_actions_to_play, ParentPolicyCLass):
+def make_fake_policy_class_wt_defined_actions(
+    list_actions_to_play, ParentPolicyCLass
+):
     class FakePolicyWtDefinedActions(ParentPolicyCLass):
-        def compute_actions(self, *args, **kwargs):
+        def _compute_action_helper(self, *args, **kwargs):
+            print("len", len(list_actions_to_play))
             action = list_actions_to_play.pop(0)
             return np.array([action]), [], {}
+
+        def _initialize_loss_from_dummy_batch(
+            self,
+            auto_remove_unneeded_view_reqs: bool = True,
+            stats_fn=None,
+        ) -> None:
+            pass
 
     return FakePolicyWtDefinedActions
 
@@ -178,20 +203,23 @@ def init_worker(
     debug = True
     exp_name, _ = log.log_in_current_day_dir("testing")
 
-    hparams = get_hyperparameters(
+    hparams = amtft_various_env.get_hyperparameters(
         debug,
         train_n_replicates,
         filter_utilitarian=False,
         env="IteratedPrisonersDilemma",
     )
 
-    _, _, rllib_config = get_rllib_config(
+    stop, env_config, rllib_config = amtft_various_env.get_rllib_config(
         hparams, welfare_fn=postprocessing.WELFARE_UTILITARIAN
     )
 
     rllib_config["env"] = FakeEnvWtActionAsReward
     rllib_config["env_config"]["max_steps"] = max_steps
-    rllib_config["seed"] = int(time.time())
+    rllib_config = _remove_dynamic_values_from_config(
+        rllib_config, hparams, env_config, stop
+    )
+
     for policy_id in FakeEnvWtActionAsReward({}).players_ids:
         policy_to_modify = list(
             rllib_config["multiagent"]["policies"][policy_id]
@@ -202,31 +230,36 @@ def init_worker(
         if actions_list_0 is not None:
             policy_to_modify[3]["nested_policies"][0][
                 "Policy_class"
-            ] = make_FakePolicyWtDefinedActions(
+            ] = make_fake_policy_class_wt_defined_actions(
                 copy.deepcopy(actions_list_0), DEFAULT_NESTED_POLICY_COOP
             )
         if actions_list_1 is not None:
             policy_to_modify[3]["nested_policies"][1][
                 "Policy_class"
-            ] = make_FakePolicyWtDefinedActions(
+            ] = make_fake_policy_class_wt_defined_actions(
                 copy.deepcopy(actions_list_1), DEFAULT_NESTED_POLICY_SELFISH
             )
         if actions_list_2 is not None:
             policy_to_modify[3]["nested_policies"][2][
                 "Policy_class"
-            ] = make_FakePolicyWtDefinedActions(
+            ] = make_fake_policy_class_wt_defined_actions(
                 copy.deepcopy(actions_list_2), DEFAULT_NESTED_POLICY_COOP
             )
         if actions_list_3 is not None:
             policy_to_modify[3]["nested_policies"][3][
                 "Policy_class"
-            ] = make_FakePolicyWtDefinedActions(
+            ] = make_fake_policy_class_wt_defined_actions(
                 copy.deepcopy(actions_list_3), DEFAULT_NESTED_POLICY_SELFISH
             )
         rllib_config["multiagent"]["policies"][policy_id] = tuple(
             policy_to_modify
         )
+    rllib_config["exploration_config"]["temperature_schedule"] = rllib_config[
+        "exploration_config"
+    ]["temperature_schedule"].func(rllib_config)
+    import ray
 
+    ray.tune.sample
     dqn_trainer = DQNTrainer(
         rllib_config, logger_creator=_get_logger_creator(exp_name)
     )
@@ -236,8 +269,33 @@ def init_worker(
     am_tft_policy_col = worker.get_policy("player_col")
     am_tft_policy_row.working_state = WORKING_STATES[2]
     am_tft_policy_col.working_state = WORKING_STATES[2]
+    print("env setup")
 
     return worker, am_tft_policy_row, am_tft_policy_col
+
+
+def _remove_dynamic_values_from_config(
+    rllib_config, hparams, env_config, stop
+):
+    rllib_config["seed"] = int(time.time())
+    rllib_config["learning_starts"] = int(
+        rllib_config["env_config"]["max_steps"]
+        * rllib_config["env_config"]["bs_epi_mul"]
+    )
+    rllib_config["buffer_size"] = int(
+        env_config["max_steps"]
+        * env_config["buf_frac"]
+        * stop["episodes_total"]
+    )
+    rllib_config["train_batch_size"] = int(
+        env_config["max_steps"] * env_config["bs_epi_mul"]
+    )
+    rllib_config["training_intensity"] = int(
+        rllib_config["num_envs_per_worker"]
+        * rllib_config["num_workers"]
+        * hparams["training_intensity"]
+    )
+    return rllib_config
 
 
 def _get_logger_creator(exp_name):
@@ -266,7 +324,9 @@ def _get_logger_creator(exp_name):
 
 
 def test__compute_debit_using_rollouts():
-    def assert_(worker_, am_tft_policy, last_obs, opp_action, assert_debit):
+    def assert_debit_value_computed(
+        worker_, am_tft_policy, last_obs, opp_action, assert_debit
+    ):
         worker_.foreach_env(lambda env: env.reset())
         debit = am_tft_policy._compute_debit_using_rollouts(
             last_obs, opp_action, worker_
@@ -291,14 +351,14 @@ def test__compute_debit_using_rollouts():
     worker, am_tft_policy_row, am_tft_policy_col = init_no_extra_reward(
         max_steps
     )
-    assert_(
+    assert_debit_value_computed(
         worker,
         am_tft_policy_row,
         {"player_row": 0, "player_col": 0},
         opp_action=0,
         assert_debit=0,
     )
-    assert_(
+    assert_debit_value_computed(
         worker,
         am_tft_policy_col,
         {"player_row": 1, "player_col": 0},
@@ -309,14 +369,14 @@ def test__compute_debit_using_rollouts():
     worker, am_tft_policy_row, am_tft_policy_col = init_no_extra_reward(
         max_steps
     )
-    assert_(
+    assert_debit_value_computed(
         worker,
         am_tft_policy_row,
         {"player_row": 1, "player_col": 0},
         opp_action=1,
         assert_debit=1,
     )
-    assert_(
+    assert_debit_value_computed(
         worker,
         am_tft_policy_col,
         {"player_row": 1, "player_col": 1},
@@ -342,14 +402,14 @@ def test__compute_debit_using_rollouts():
     worker, am_tft_policy_row, am_tft_policy_col = init_selfish_opp_advantaged(
         max_steps
     )
-    assert_(
+    assert_debit_value_computed(
         worker,
         am_tft_policy_row,
         {"player_row": 0, "player_col": 0},
         opp_action=0,
         assert_debit=0,
     )
-    assert_(
+    assert_debit_value_computed(
         worker,
         am_tft_policy_col,
         {"player_row": 1, "player_col": 0},
@@ -375,14 +435,14 @@ def test__compute_debit_using_rollouts():
     worker, am_tft_policy_row, am_tft_policy_col = init_coop_opp_advantaged(
         max_steps
     )
-    assert_(
+    assert_debit_value_computed(
         worker,
         am_tft_policy_row,
         {"player_row": 1, "player_col": 0},
         opp_action=1,
         assert_debit=0,
     )
-    assert_(
+    assert_debit_value_computed(
         worker,
         am_tft_policy_col,
         {"player_row": 1, "player_col": 1},
