@@ -291,5 +291,5 @@ def _add_empty_tune_analysis(
 
 
 if __name__ == "__main__":
-    debug_mode = True
+    debug_mode = False
     main(debug_mode)

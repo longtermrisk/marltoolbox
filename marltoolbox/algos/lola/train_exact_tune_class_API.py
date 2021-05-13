@@ -85,41 +85,6 @@ def corrections_func(mainQN, corrections, gamma, pseudo, reg, n_actions=2):
     theta_1_all = mainQN[0].p_act
     theta_2_all = mainQN[1].p_act
 
-    # theta_1_all_one_act = theta_1_all[:, 0]
-    # theta_2_all_one_act = theta_2_all[:, 0]
-    # theta_1_all_one_act = tf.reshape(theta_1_all_one_act, [-1, 1])
-    # theta_2_all_one_act = tf.reshape(theta_2_all_one_act, [-1, 1])
-    # theta_1 = tf.slice(theta_1_all_one_act, [0, 0], [4, 1])
-    # theta_2 = tf.slice(theta_2_all_one_act, [0, 0], [4, 1])
-    #
-    # theta_1_0 = tf.slice(theta_1_all_one_act, [4, 0], [1, 1])
-    # theta_2_0 = tf.slice(theta_2_all_one_act, [4, 0], [1, 1])
-    #
-    # p_1 = tf.nn.sigmoid(theta_1)
-    # p_2 = tf.nn.sigmoid(theta_2)
-    # mainQN[0].policy = tf.nn.sigmoid(theta_1_all)
-    # mainQN[1].policy = tf.nn.sigmoid(theta_2_all)
-    #
-    # p_1_0 = tf.nn.sigmoid(theta_1_0)
-    # p_2_0 = tf.nn.sigmoid(theta_2_0)
-    # print_opts.append(tf.print("p_1", p_1))
-    # print_opts.append(tf.print("p_1_0", p_1_0))
-    # p_1_0_v = tf.concat([p_1_0, (1 - p_1_0)], 0)
-    # p_2_0_v = tf.concat([p_2_0, (1 - p_2_0)], 0)
-    # print_opts.append(tf.print("p_1_0_v", p_1_0_v))
-    # s_0 = tf.reshape(tf.matmul(p_1_0_v, tf.transpose(p_2_0_v)), [-1, 1])
-    #
-    # # CC, CD, DC, DD
-    # P = tf.concat(
-    #     [
-    #         tf.multiply(p_1, p_2),
-    #         tf.multiply(p_1, 1 - p_2),
-    #         tf.multiply(1 - p_1, p_2),
-    #         tf.multiply(1 - p_1, 1 - p_2),
-    #     ],
-    #     1,
-    # )
-
     # Using sigmoid + normalize to keep values similar to the official
     # implementation
     pi_player_1_for_all_states = tf.nn.sigmoid(theta_1_all)
@@ -182,36 +147,47 @@ def corrections_func(mainQN, corrections, gamma, pseudo, reg, n_actions=2):
 
     pi_p1 = tf.reshape(pi_player_1_for_states_in_game, [n_states - 1, -1, 1])
     pi_p2 = tf.reshape(pi_player_2_for_states_in_game, [n_states - 1, -1, 1])
-    if n_actions == 2:
-        # CC, CD, DC, DD
 
-        P = tf.concat(
-            [
-                tf.multiply(pi_p1[:, 0], pi_p2[:, 0]),
-                tf.multiply(pi_p1[:, 0], pi_p2[:, 1]),
-                tf.multiply(pi_p1[:, 1], pi_p2[:, 0]),
-                tf.multiply(pi_p1[:, 1], pi_p2[:, 1]),
-            ],
-            1,
-        )
-    elif n_actions == 3:
-        # CC, CD, CN, DC, DD, DN, NC, ND, NN
-        P = tf.concat(
-            [
-                tf.multiply(pi_p1[:, 0], pi_p2[:, 0]),
-                tf.multiply(pi_p1[:, 0], pi_p2[:, 1]),
-                tf.multiply(pi_p1[:, 0], pi_p2[:, 2]),
-                tf.multiply(pi_p1[:, 1], pi_p2[:, 0]),
-                tf.multiply(pi_p1[:, 1], pi_p2[:, 1]),
-                tf.multiply(pi_p1[:, 1], pi_p2[:, 2]),
-                tf.multiply(pi_p1[:, 2], pi_p2[:, 0]),
-                tf.multiply(pi_p1[:, 2], pi_p2[:, 1]),
-                tf.multiply(pi_p1[:, 2], pi_p2[:, 2]),
-            ],
-            1,
-        )
-    else:
-        raise ValueError(f"n_actions {n_actions}")
+    all_actions_proba_pairs = []
+    for action_p1 in range(n_actions):
+        for action_p2 in range(n_actions):
+            all_actions_proba_pairs.append(
+                tf.multiply(pi_p1[:, action_p1], pi_p2[:, action_p2])
+            )
+    P = tf.concat(
+        all_actions_proba_pairs,
+        1,
+    )
+    # if n_actions == 2:
+    #     # CC, CD, DC, DD
+    #
+    #     P = tf.concat(
+    #         [
+    #             tf.multiply(pi_p1[:, 0], pi_p2[:, 0]),
+    #             tf.multiply(pi_p1[:, 0], pi_p2[:, 1]),
+    #             tf.multiply(pi_p1[:, 1], pi_p2[:, 0]),
+    #             tf.multiply(pi_p1[:, 1], pi_p2[:, 1]),
+    #         ],
+    #         1,
+    #     )
+    # elif n_actions == 3:
+    #     # CC, CD, CN, DC, DD, DN, NC, ND, NN
+    #     P = tf.concat(
+    #         [
+    #             tf.multiply(pi_p1[:, 0], pi_p2[:, 0]),
+    #             tf.multiply(pi_p1[:, 0], pi_p2[:, 1]),
+    #             tf.multiply(pi_p1[:, 0], pi_p2[:, 2]),
+    #             tf.multiply(pi_p1[:, 1], pi_p2[:, 0]),
+    #             tf.multiply(pi_p1[:, 1], pi_p2[:, 1]),
+    #             tf.multiply(pi_p1[:, 1], pi_p2[:, 2]),
+    #             tf.multiply(pi_p1[:, 2], pi_p2[:, 0]),
+    #             tf.multiply(pi_p1[:, 2], pi_p2[:, 1]),
+    #             tf.multiply(pi_p1[:, 2], pi_p2[:, 2]),
+    #         ],
+    #         1,
+    #     )
+    # else:
+    #     raise ValueError(f"n_actions {n_actions}")
     # R_1 = tf.placeholder(shape=[4, 1], dtype=tf.float32)
     # R_2 = tf.placeholder(shape=[4, 1], dtype=tf.float32)
     R_1 = tf.placeholder(shape=[n_actions ** 2, 1], dtype=tf.float32)

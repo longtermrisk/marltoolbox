@@ -9,7 +9,6 @@ from ray import tune
 from ray.rllib.agents import dqn
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy, pg_loss_stats
-from ray.tune.integration.wandb import WandbLoggerCallback
 
 from marltoolbox import utils
 from marltoolbox.algos import population, welfare_coordination
@@ -26,6 +25,7 @@ from marltoolbox.experiments.tune_class_api import (
     lola_exact_meta_game,
     lola_exact_official,
 )
+from marltoolbox.experiments.tune_class_api import sos_exact_official
 from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
 from marltoolbox.utils import (
     log,
@@ -83,6 +83,7 @@ BASE_AMTFT = "amTFT"
 BASE_LOLAExact = "base LOLA-Exact"
 META_LOLAExact = "meta LOLA-Exact"
 META_PG = "PG"
+META_SOS = "SOS"
 META_APLHA_RANK = "alpha-rank"
 META_APLHA_PURE = "alpha-rank pure strategy"
 META_REPLICATOR_DYNAMIC = "replicator dynamic"
@@ -347,7 +348,8 @@ def _train_meta_policies(hp):
         meta_policies = _train_meta_policy_using_replicator_dynamic(hp)
     elif hp["meta_game_policies"] == META_RANDOM:
         meta_policies = _get_random_meta_policy(hp)
-
+    elif hp["meta_game_policies"] == META_SOS:
+        meta_policies = _train_meta_policy_using_sos_exact(hp)
     else:
         raise ValueError()
 
@@ -491,6 +493,38 @@ def _extract_policy_lola_exact(tune_analysis):
         print("policy_player_1 ", policy_player_1)
         print("policy_player_2 ", policy_player_2)
     return policies
+
+
+def _train_meta_policy_using_sos_exact(hp):
+    lola_exact_hp = sos_exact_official.get_hyperparameters(hp["debug"])
+
+    tune_config, stop_config, _ = sos_exact_official.get_tune_config(
+        lola_exact_hp
+    )
+
+    tune_config, stop_config = _modify_tune_config_for_meta_sos_exact(
+        hp, tune_config, stop_config
+    )
+
+    tune_analysis = _train_with_tune(
+        tune_config, stop_config, hp, LOLAExactTrainer
+    )
+    return _extract_policy_lola_exact(tune_analysis)
+
+
+def _modify_tune_config_for_meta_sos_exact(hp, tune_config, stop_config):
+    tune_config["env_name"] = None
+    tune_config["all_welfares_fn"] = hp["actions_possible"]
+    tune_config["method"] = "sos"
+    tune_config["linked_data"] = _get_payoff_matrix_grid_search(hp)
+    tune_config["seed"] = tune.sample_from(
+        lambda spec: spec.config["linked_data"][0]
+    )
+    tune_config["custom_payoff_matrix"] = tune.sample_from(
+        lambda spec: spec.config["linked_data"][1]
+    )
+
+    return tune_config, stop_config
 
 
 def _train_with_tune(
@@ -690,7 +724,6 @@ def _change_simple_rllib_config_for_final_base_game_eval(
 def _change_rllib_config_to_use_welfare_coordination(
     hp, rllib_config, meta_game_idx, env_config
 ):
-
     global payoffs_per_groups
     all_welfare_pairs_wt_payoffs = payoffs_per_groups[meta_game_idx][0]
 
@@ -868,7 +901,6 @@ def _format_result_for_plotting(results):
 
 
 def _train_meta_policy_using_alpha_rank(hp, pure_strategy=False):
-
     payoff_matrices = copy.deepcopy(hp["payoff_matrices"])
 
     policies = []
@@ -956,7 +988,6 @@ def _train_meta_policy_using_replicator_dynamic(hp):
 
 
 def _get_random_meta_policy(hp):
-
     payoff_matrices = copy.deepcopy(hp["payoff_matrices"])
     policies = []
     for payoff_matrix in payoff_matrices:
@@ -983,12 +1014,14 @@ if __name__ == "__main__":
     if loop_over_main:
         base_game_algo_to_eval = (BASE_LOLAExact,)
         meta_game_algo_to_eval = (
-            META_LOLAExact,
             # META_APLHA_RANK,
             # META_APLHA_PURE,
             # META_REPLICATOR_DYNAMIC,
             # META_REPLICATOR_DYNAMIC_ZERO_INIT,
             META_RANDOM,
+            META_PG,
+            META_LOLAExact,
+            META_SOS,
         )
         for base_game_algo in base_game_algo_to_eval:
             for meta_game_algo in meta_game_algo_to_eval:

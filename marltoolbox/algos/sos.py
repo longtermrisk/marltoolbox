@@ -22,25 +22,47 @@ class SOSTrainer(tune.Trainable):
         self.gamma = self.config.get("gamma")
         self.learning_rate = self.config.get("lr")
         self.method = self.config.get("method")
+        self.use_single_weights = False
 
-        self._set_environment(self.config.get("env_name"))
+        self._set_environment()
         self.init_weigths(std=self.config.get("inital_weights_std"))
+        if self.use_single_weights:
+            self._exact_loss_matrix_game = (
+                self._exact_loss_matrix_game_two_by_two_actions
+            )
+        else:
+            self._exact_loss_matrix_game = self._exact_loss_matrix_game_generic
 
-    def _set_environment(self, env_name):
+    def _set_environment(self):
 
-        if env_name == "IteratedPrisonersDilemma":
+        if self.config.get("env_name") == "IteratedPrisonersDilemma":
             env_class = IteratedPrisonersDilemma
-        elif env_name == "IteratedAsymBoS":
+            payoff_matrix = env_class.PAYOFF_MATRIX
+            self.players_ids = env_class({}).players_ids
+        elif self.config.get("env_name") == "IteratedAsymBoS":
             env_class = IteratedAsymBoS
+            payoff_matrix = env_class.PAYOFF_MATRIX
+            self.players_ids = env_class({}).players_ids
+        elif "custom_payoff_matrix" in self.config.keys():
+            payoff_matrix = self.config["custom_payoff_matrix"]
+            self.players_ids = IteratedPrisonersDilemma({}).players_ids
         else:
             raise NotImplementedError()
 
-        payoff_matrix = env_class.PAYOFF_MATRIX
-        self.dims = [5, 5]
-        self.players_ids = env_class({}).players_ids
-        self.exact_loss_function = (
-            self._exact_loss_matrix_game_two_by_two_actions
-        )
+        self.n_actions_p1 = np.array(payoff_matrix).shape[0]
+        self.n_actions_p2 = np.array(payoff_matrix).shape[1]
+        self.n_non_init_states = self.n_actions_p1 * self.n_actions_p2
+
+        if self.use_single_weights:
+            self.dims = [
+                (self.n_non_init_states + 1,),
+                (self.n_non_init_states + 1,),
+            ]
+        else:
+            self.dims = [
+                (self.n_non_init_states + 1, self.n_actions_p1),
+                (self.n_non_init_states + 1, self.n_actions_p2),
+            ]
 
         self.payoff_matrix_player_row = torch.tensor(
             payoff_matrix[:, :, 0]
@@ -61,6 +83,7 @@ class SOSTrainer(tune.Trainable):
         return to_log
 
     def _exact_loss_matrix_game_two_by_two_actions(self):
+
         pi_player_row_init_state = torch.sigmoid(
             self.weights_per_players[0][0:1]
         )
@@ -101,9 +124,65 @@ class SOSTrainer(tune.Trainable):
         )
         return [L_1, L_2]
 
+    def _exact_loss_matrix_game_generic(self):
+        pi_player_row = torch.sigmoid(self.weights_per_players[0])
+        pi_player_col = torch.sigmoid(self.weights_per_players[1])
+        sum_1 = torch.sum(pi_player_row, dim=1)
+        sum_1 = torch.stack([sum_1 for _ in range(self.n_actions_p1)], dim=1)
+        sum_2 = torch.sum(pi_player_col, dim=1)
+        sum_2 = torch.stack([sum_2 for _ in range(self.n_actions_p2)], dim=1)
+        pi_player_row = pi_player_row / sum_1
+        pi_player_col = pi_player_col / sum_2
+
+        pi_player_row_init_state = pi_player_row[:1, :]
+        pi_player_col_init_state = pi_player_col[:1, :]
+        all_initial_actions_proba_pairs = []
+        for action_p1 in range(self.n_actions_p1):
+            for action_p2 in range(self.n_actions_p2):
+                all_initial_actions_proba_pairs.append(
+                    pi_player_row_init_state[:, action_p1]
+                    * pi_player_col_init_state[:, action_p2]
+                )
+        p = torch.cat(
+            all_initial_actions_proba_pairs,
+        )
+
+        pi_player_row_other_states = pi_player_row[1:, :]
+        pi_player_col_other_states = pi_player_col[1:, :]
+        all_actions_proba_pairs = []
+        for action_p1 in range(self.n_actions_p1):
+            for action_p2 in range(self.n_actions_p2):
+                all_actions_proba_pairs.append(
+                    pi_player_row_other_states[:, action_p1]
+                    * pi_player_col_other_states[:, action_p2]
+                )
+        P = torch.stack(
+            all_actions_proba_pairs,
+            1,
+        )
+
+        M = -torch.matmul(
+            p,
+            torch.inverse(torch.eye(self.n_non_init_states) - self.gamma * P),
+        )
+        L_1 = torch.matmul(
+            M,
+            torch.reshape(
+                self.payoff_matrix_player_row, (self.n_non_init_states, 1)
+            ),
+        )
+        L_2 = torch.matmul(
+            M,
+            torch.reshape(
+                self.payoff_matrix_player_col, (self.n_non_init_states, 1)
+            ),
+        )
+        return [L_1, L_2]
+
     def init_weigths(self, std):
         self.weights_per_players = []
-        for i in range(len(self.dims)):
+        self.n_players = len(self.dims)
+        for i in range(self.n_players):
             if std > 0:
                 init = torch.nn.init.normal_(
                     torch.empty(self.dims[i], requires_grad=True), std=std
@@ -120,7 +199,7 @@ class SOSTrainer(tune.Trainable):
         ep=0.1,
         lss_lam=0.1,
     ):
-        losses = self.exact_loss_function()
+        losses = self._exact_loss_matrix_game()
 
         grads = self._compute_gradients_wt_selected_method(
             a,
@@ -137,19 +216,19 @@ class SOSTrainer(tune.Trainable):
     def _compute_gradients_wt_selected_method(
         self, a, b, ep, gam, losses, lss_lam
     ):
-        n_states = len(self.weights_per_players)
+        n_players = self.n_players
 
         grad_L = _compute_vanilla_gradients(
-            losses, n_states, self.weights_per_players
+            losses, n_players, self.weights_per_players
         )
 
         if self.method == "la":
             grads = _get_la_gradients(
-                self.learning_rate, grad_L, n_states, self.weights_per_players
+                self.learning_rate, grad_L, n_players, self.weights_per_players
             )
         elif self.method == "lola":
             grads = _get_lola_exact_gradients(
-                self.learning_rate, grad_L, n_states, self.weights_per_players
+                self.learning_rate, grad_L, n_players, self.weights_per_players
             )
         elif self.method == "sos":
             grads = _get_sos_gradients(
@@ -157,35 +236,35 @@ class SOSTrainer(tune.Trainable):
                 self.learning_rate,
                 b,
                 grad_L,
-                n_states,
+                n_players,
                 self.weights_per_players,
             )
         elif self.method == "sga":
             grads = _get_sga_gradients(
-                ep, grad_L, n_states, self.weights_per_players
+                ep, grad_L, n_players, self.weights_per_players
             )
         elif self.method == "co":
             grads = _get_co_gradients(
-                gam, grad_L, n_states, self.weights_per_players
+                gam, grad_L, n_players, self.weights_per_players
             )
         elif self.method == "eg":
             grads = _get_eg_gradients(
-                self.exact_loss_function,
+                self._exact_loss_matrix_game,
                 self.learning_rate,
                 losses,
-                n_states,
+                n_players,
                 self.weights_per_players,
             )
         elif self.method == "cgd":  # Slow implementation (matrix inversion)
             grads = _get_cgd_gradients(
-                self.learning_rate, grad_L, n_states, self.weights_per_players
+                self.learning_rate, grad_L, n_players, self.weights_per_players
             )
         elif self.method == "lss":  # Slow implementation (matrix inversion)
             grads = _get_lss_gradients(
-                grad_L, lss_lam, n_states, self.weights_per_players
+                grad_L, lss_lam, n_players, self.weights_per_players
             )
         elif self.method == "naive":  # Naive Learning
-            grads = _get_naive_learning_gradients(grad_L, n_states)
+            grads = _get_naive_learning_gradients(grad_L, n_players)
         else:
             raise ValueError(f"algo: {self.method}")
         return grads
@@ -237,11 +316,20 @@ class SOSTrainer(tune.Trainable):
             agent_to_use = self._get_agent_to_use(policy_id)
             obs = self._preprocess_obs(single_obs, agent_to_use)
             policy = torch.sigmoid(self.weights_per_players[agent_to_use])
-            coop_proba = policy[obs]
-            if coop_proba > random.random():
-                action = np.array(0)
+
+            if self.use_single_weights:
+                coop_proba = policy[obs]
+                if coop_proba > random.random():
+                    action = np.array(0)
+                else:
+                    action = np.array(1)
             else:
-                action = np.array(1)
+                probabilities = policy[obs, :]
+                probabilities = torch.tensor(probabilities)
+                policy_for_this_state = torch.distributions.Categorical(
+                    probs=probabilities
+                )
+                action = np.array(policy_for_this_state.sample())
 
         action = self._post_process_action(action)
 
@@ -250,11 +338,22 @@ class SOSTrainer(tune.Trainable):
         return action, state_out, extra_fetches
 
 
+def _compute_vanilla_gradients(losses, n, th):
+    grad_L = [
+        [get_gradient(losses[j], th[i]) for j in range(n)] for i in range(n)
+    ]
+    return grad_L
+
+
 def _get_la_gradients(alpha, grad_L, n, th):
     terms = [
         sum(
             [
-                torch.dot(grad_L[j][i], grad_L[j][j].detach())
+                # torch.dot(grad_L[j][i], grad_L[j][j].detach())
+                torch.matmul(
+                    grad_L[j][i],
+                    torch.transpose(grad_L[j][j].detach(), 0, 1),
+                )
                 for j in range(n)
                 if j != i
             ]
@@ -270,7 +369,15 @@ def _get_la_gradients(alpha, grad_L, n, th):
 def _get_lola_exact_gradients(alpha, grad_L, n, th):
     terms = [
         sum(
-            [torch.dot(grad_L[j][i], grad_L[j][j]) for j in range(n) if j != i]
+            # [torch.dot(grad_L[j][i], grad_L[j][j]) for j in range(n) if j != i]
+            [
+                torch.matmul(
+                    grad_L[j][i],
+                    torch.transpose(grad_L[j][j].unsqueeze(dim=1), 0, 1),
+                )
+                for j in range(n)
+                if j != i
+            ]
         )
         for i in range(n)
     ]
@@ -286,7 +393,11 @@ def _get_sos_gradients(a, alpha, b, grad_L, n, th):
         get_gradient(
             sum(
                 [
-                    torch.dot(grad_L[j][i].detach(), grad_L[j][j])
+                    # torch.dot(grad_L[j][i].detach(), grad_L[j][j])
+                    torch.matmul(
+                        grad_L[j][i].detach(),
+                        torch.transpose(grad_L[j][j], 0, 1),
+                    )
                     for j in range(n)
                     if j != i
                 ]
@@ -296,7 +407,11 @@ def _get_sos_gradients(a, alpha, b, grad_L, n, th):
         for i in range(n)
     ]
     # Compute p
-    dot = torch.dot(-alpha * torch.cat(chi), torch.cat(xi_0))
+    # dot = torch.dot(-alpha * torch.cat(chi), torch.cat(xi_0))
+    dot = torch.matmul(
+        -alpha * torch.cat(chi),
+        torch.transpose(torch.cat(xi_0), 0, 1),
+    ).sum()
     p1 = 1 if dot >= 0 else min(1, -a * torch.norm(torch.cat(xi_0)) ** 2 / dot)
     xi = torch.cat([grad_L[i][i] for i in range(n)])
     xi_norm = torch.norm(xi)
@@ -378,15 +493,10 @@ def _get_cgd_gradients(alpha, grad_L, n, th):
     return grads
 
 
-def _compute_vanilla_gradients(losses, n, th):
-    grad_L = [
-        [get_gradient(losses[j], th[i]) for j in range(n)] for i in range(n)
-    ]
-    return grad_L
-
-
 def get_gradient(function, param):
-    grad = torch.autograd.grad(function, param, create_graph=True)[0]
+    grad = torch.autograd.grad(torch.sum(function), param, create_graph=True)[
+        0
+    ]
     return grad
 
 
