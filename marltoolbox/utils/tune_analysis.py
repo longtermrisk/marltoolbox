@@ -118,7 +118,13 @@ def filter_trials(
     )
     for trial_idx, trial in enumerate(experiement_analysis.trials):
         available_metrics = trial.metric_analysis
-        metric_value = available_metrics[metric][metric_mode]
+        try:
+            metric_value = available_metrics[metric][metric_mode]
+        except KeyError:
+            raise KeyError(
+                f"failed to read metric key:{metric} in "
+                f"available_metrics:{available_metrics}"
+            )
         print(
             f"trial_idx {trial_idx} "
             f"available_metrics[{metric}][{metric_mode}] "
@@ -132,6 +138,7 @@ def filter_trials(
             trials_filtered.append(trial)
         else:
             print(f"filtering out trial {trial_idx}")
+
     experiement_analysis.trials = trials_filtered
     print("After trial filtering:", len(experiement_analysis.trials), "trials")
     return experiement_analysis

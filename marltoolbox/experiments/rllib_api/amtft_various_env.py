@@ -219,7 +219,6 @@ def modify_hyperparams_for_the_selected_env(hp):
         + aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS
     )
 
-    hp["punishment_multiplier"] = 3.0
     hp["buf_frac"] = 0.125
     hp["training_intensity"] = 1 if hp["debug"] else 40
     # hp["rollout_length"] = 6
@@ -250,12 +249,13 @@ def modify_hyperparams_for_the_selected_env(hp):
         )
 
         hp["debit_threshold"] = 3.0
+        hp["punishment_multiplier"] = 6.0
         hp["jitter"] = 0.0
         hp["filter_utilitarian"] = False
 
         hp["buf_frac"] = 0.5
         hp["target_network_update_freq"] = 30 * hp["n_steps_per_epi"]
-        hp["last_exploration_temp_value"] = 0.003
+        hp["last_exploration_temp_value"] = 0.003 / 4
 
         hp["lr_steps_config"] = [
             (0, 1.0),
@@ -273,8 +273,8 @@ def modify_hyperparams_for_the_selected_env(hp):
             hp["y_limits"] = (-0.8, 0.8)
             hp["env_class"] = coin_game.AsymCoinGame
         elif "SSDMixedMotiveCoinGame" in hp["env_name"]:
-            hp["x_limits"] = (-0.1, 1.5)
-            hp["y_limits"] = (-0.1, 1.5)
+            hp["x_limits"] = (-0.02, 0.8)
+            hp["y_limits"] = (-0.02, 1.5)
             hp["env_class"] = ssd_mixed_motive_coin_game.SSDMixedMotiveCoinGame
             hp["both_players_can_pick_the_same_coin"] = True
             # hp["beta"] = 0.5 / 2
@@ -305,6 +305,7 @@ def modify_hyperparams_for_the_selected_env(hp):
         hp["sgd_momentum"] = 0.0
 
         hp["debit_threshold"] = 10.0
+        hp["punishment_multiplier"] = 3.0
 
         hp["target_network_update_freq"] = 30 * hp["n_steps_per_epi"]
         hp["last_exploration_temp_value"] = 0.1

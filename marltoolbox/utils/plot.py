@@ -7,6 +7,7 @@ import numpy as np
 
 plt.switch_backend("agg")
 plt.style.use("seaborn-whitegrid")
+plt.rcParams.update({"font.size": 12})
 
 COLORS = list(mcolors.TABLEAU_COLORS) + list(mcolors.XKCD_COLORS)
 RANDOM_MARKERS = ["1", "2", "3", "4", "8", "s", "p", "P", "*", "h", "H", "+"]
@@ -23,7 +24,7 @@ class PlotConfig:
         xlabel: str = None,
         ylabel: str = None,
         display_legend: bool = True,
-        legend_fontsize: str = "small",
+        legend_fontsize: str = "medium",
         save_dir_path: str = None,
         title: str = None,
         xlim: str = None,
@@ -77,6 +78,7 @@ class PlotConfig:
 class PlotHelper:
     def __init__(self, plot_config: PlotConfig):
         self.plot_cfg = plot_config
+        self.additional_filename_suffix = ""
 
     def plot_lines(self, data_groups: dict):
         """
@@ -160,13 +162,32 @@ class PlotHelper:
             label = group_id
         return label
 
-    def _finalize_plot(self, fig):
+    def _finalize_plot(self, fig, remove_err_bars_from_legend=False):
         if self.plot_cfg.display_legend:
-            plt.legend(
-                numpoints=1,
-                frameon=True,
-                fontsize=self.plot_cfg.legend_fontsize,
-            )
+            if remove_err_bars_from_legend:
+                ax = plt.gca()
+                # get handles
+                handles, labels = ax.get_legend_handles_labels()
+                # remove the errorbars
+                handles = [h[0] for h in handles]
+                # use them in the legend
+                ax.legend(
+                    handles,
+                    labels,
+                    numpoints=1,
+                    frameon=True,
+                    fontsize=self.plot_cfg.legend_fontsize,
+                )
+            else:
+                plt.legend(
+                    numpoints=1,
+                    frameon=True,
+                    fontsize=self.plot_cfg.legend_fontsize,
+                )
+
+            #     bbox_to_anchor = (0.66, -0.20),
+            #     # loc="upper left",
+            # )
         if self.plot_cfg.xlabel is not None:
             plt.xlabel(self.plot_cfg.xlabel)
         if self.plot_cfg.ylabel is not None:
@@ -179,10 +200,11 @@ class PlotHelper:
             plt.ylim(self.plot_cfg.ylim)
         if self.plot_cfg.background_area_coord is not None:
             self._add_background_area()
+        # plt.tight_layout(rect=[0, -0.05, 1.0, 1.0])
         if self.plot_cfg.save_dir_path is not None:
             file_name = (
                 f"{self.plot_cfg.filename_prefix}_{self.plot_cfg.ylabel}_vs"
-                f"_{self.plot_cfg.xlabel}.png"
+                f"_{self.plot_cfg.xlabel}{self.additional_filename_suffix}.png"
             )
             file_name = file_name.replace("/", "_")
             file_path = os.path.join(self.plot_cfg.save_dir_path, file_name)
@@ -198,6 +220,19 @@ class PlotHelper:
         :param data_groups: dict of groups (same color and label prefix) containing a DataFrame containing (x,
         y) tuples. Each column in a group DataFrame has a different marker.
         """
+        self._plot_dots_multiple_points(data_groups)
+        self._plot_dots_one_point_wt_std_dev_bars(data_groups)
+
+    def _plot_dots_multiple_points(self, data_groups: dict):
+        return self._plot_dots_customizable(data_groups)
+
+    def _plot_dots_one_point_wt_std_dev_bars(self, data_groups: dict):
+        self.additional_filename_suffix = "_wt_err_bars"
+        plot_filname = self._plot_dots_customizable(data_groups, err_bars=True)
+        self.additional_filename_suffix = ""
+        return plot_filname
+
+    def _plot_dots_customizable(self, data_groups: dict, err_bars=False):
         fig = self._init_plot()
 
         self.counter_labels = 0
@@ -206,38 +241,81 @@ class PlotHelper:
             data_groups.items()
         ):
             new_labels_plotted = self._plot_dotes_for_one_group(
-                self.plot_cfg.colors[group_index], group_id, group_df
+                self.plot_cfg.colors[group_index], group_id, group_df, err_bars
             )
             all_label_plotted.extend(new_labels_plotted)
         print("all_label_plotted", all_label_plotted)
 
-        return self._finalize_plot(fig)
+        return self._finalize_plot(fig, remove_err_bars_from_legend=err_bars)
 
-    def _plot_dotes_for_one_group(self, group_color, group_id, group_df):
+    def _plot_dotes_for_one_group(
+        self, group_color, group_id, group_df, err_bars=False
+    ):
         label_plotted = []
         for col in group_df.columns:
-            x, y = self._select_n_points_to_plot(group_df, col)
-            x, y = self._add_jitter_to_points(x, y)
-            x, y = self._apply_scale_multiplier(x, y)
-            label = self._get_label(group_id, col)
-
-            plt.plot(
-                x,
-                y,
-                markerfacecolor="none"
-                if self.plot_cfg.empty_markers
-                else group_color,
-                markeredgecolor=group_color,
-                linestyle="None",
-                marker=self.plot_cfg.markers[self.counter_labels],
-                color=group_color,
-                label=label,
-                alpha=self.plot_cfg.alpha,
-                markersize=self.plot_cfg.markersize,
-            )
-            self.counter_labels += 1
+            if not err_bars:
+                label = self._plot_wtout_err_bars(
+                    group_df, col, group_id, group_color
+                )
+            else:
+                label = self._plot_wt_err_bars(
+                    group_df, col, group_id, group_color
+                )
             label_plotted.append(label)
         return label_plotted
+
+    def _plot_wtout_err_bars(self, group_df, col, group_id, group_color):
+        x, y = self._select_n_points_to_plot(group_df, col)
+        x, y = self._add_jitter_to_points(x, y)
+        x, y = self._apply_scale_multiplier(x, y)
+        label = self._get_label(group_id, col)
+
+        plt.plot(
+            x,
+            y,
+            markerfacecolor="none"
+            if self.plot_cfg.empty_markers
+            else group_color,
+            markeredgecolor=group_color,
+            linestyle="None",
+            marker=self.plot_cfg.markers[self.counter_labels],
+            color=group_color,
+            label=label,
+            alpha=self.plot_cfg.alpha,
+            markersize=self.plot_cfg.markersize,
+        )
+        self.counter_labels += 1
+        return label
+
+    def _plot_wt_err_bars(self, group_df, col, group_id, group_color):
+        x, y = self._select_all_points_to_plot(group_df, col)
+        x, y = self._apply_scale_multiplier(x, y)
+        label = self._get_label(group_id, col)
+        x_mean = np.array(x).mean()
+        y_mean = np.array(y).mean()
+        x_std_err = np.array(x).std() / np.sqrt(len(x))
+        y_std_err = np.array(y).std() / np.sqrt(len(y))
+
+        plt.errorbar(
+            x_mean,
+            y_mean,
+            xerr=x_std_err,
+            yerr=y_std_err,
+            markerfacecolor="none"
+            if self.plot_cfg.empty_markers
+            else group_color,
+            markeredgecolor=group_color,
+            linestyle="None",
+            marker=self.plot_cfg.markers[self.counter_labels],
+            color=group_color,
+            label=label,
+            alpha=self.plot_cfg.alpha,
+            markersize=36 * 2.0
+            if self.plot_cfg.markersize is None
+            else self.plot_cfg.markersize * 2.0,
+        )
+        self.counter_labels += 1
+        return label
 
     def _select_n_points_to_plot(self, group_df, col):
         if self.plot_cfg.plot_max_n_points is not None:
@@ -245,8 +323,14 @@ class PlotHelper:
                 self.plot_cfg.plot_max_n_points, len(group_df)
             )
             print(f"Selected {n_points_to_plot} n_points_to_plot")
+            return self._get_points_to_plot(group_df, n_points_to_plot, col)
         else:
-            n_points_to_plot = len(group_df)
+            return self._select_all_points_to_plot(group_df, col)
+
+    def _select_all_points_to_plot(self, group_df, col):
+        return self._get_points_to_plot(group_df, len(group_df), col)
+
+    def _get_points_to_plot(self, group_df, n_points_to_plot, col):
         group_df_sample = group_df.sample(n=int(n_points_to_plot))
         points = group_df_sample[col].tolist()
         x, y = [p[0] for p in points], [p[1] for p in points]

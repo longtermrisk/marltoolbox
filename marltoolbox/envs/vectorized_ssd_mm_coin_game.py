@@ -26,6 +26,7 @@ class VectSSDMixedMotiveCG(
 ):
     def __init__(self, config: dict = {}):
         super().__init__(config)
+        self.punishment_helped = config.get("punishment_helped", False)
 
         self.OBSERVATION_SPACE = gym.spaces.Box(
             low=0,
@@ -129,6 +130,7 @@ class VectSSDMixedMotiveCG(
             self.blue_coin_pos,
             self.grid_size,
             self.red_coin,
+            self.punishment_helped,
         )
 
         if self.output_additional_info:
@@ -239,6 +241,7 @@ def vectorized_step_wt_numba_optimization(
     blue_coin_pos,
     grid_size: int,
     red_coin,
+    punishment_helped,
 ):
     red_pos, blue_pos = move_players(
         batch_size, actions, red_pos, blue_pos, grid_size
@@ -254,7 +257,13 @@ def vectorized_step_wt_numba_optimization(
         picked_red_coop,
         picked_blue_coop,
     ) = compute_reward(
-        batch_size, red_pos, blue_pos, red_coin_pos, blue_coin_pos, red_coin
+        batch_size,
+        red_pos,
+        blue_pos,
+        red_coin_pos,
+        blue_coin_pos,
+        red_coin,
+        punishment_helped,
     )
 
     (
@@ -301,7 +310,13 @@ def vectorized_step_wt_numba_optimization(
 
 @jit(nopython=True)
 def compute_reward(
-    batch_size, red_pos, blue_pos, red_coin_pos, blue_coin_pos, red_coin
+    batch_size,
+    red_pos,
+    blue_pos,
+    red_coin_pos,
+    blue_coin_pos,
+    red_coin,
+    punishment_helped,
 ):
     reward_red = np.zeros(batch_size)
     reward_blue = np.zeros(batch_size)
@@ -325,6 +340,10 @@ def compute_reward(
                 reward_red[i] += 1.0
                 red_pick_any += 1
                 red_pick_red += 1
+                if punishment_helped and _same_pos(
+                    blue_pos[i], red_coin_pos[i]
+                ):
+                    reward_red[i] -= 0.75
         elif _same_pos(blue_pos[i], blue_coin_pos[i]):
             if not red_coin[i] and _same_pos(red_pos[i], blue_coin_pos[i]):
                 # Blue coin is a coop coin
@@ -340,6 +359,10 @@ def compute_reward(
                 reward_blue[i] += 1.0
                 blue_pick_any += 1
                 blue_pick_blue += 1
+                if punishment_helped and _same_pos(
+                    red_pos[i], blue_coin_pos[i]
+                ):
+                    reward_blue[i] -= 0.75
 
     reward = [reward_red, reward_blue]
 

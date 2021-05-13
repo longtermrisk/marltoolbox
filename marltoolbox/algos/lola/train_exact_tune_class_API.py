@@ -210,6 +210,8 @@ def corrections_func(mainQN, corrections, gamma, pseudo, reg, n_actions=2):
             ],
             1,
         )
+    else:
+        raise ValueError(f"n_actions {n_actions}")
     # R_1 = tf.placeholder(shape=[4, 1], dtype=tf.float32)
     # R_2 = tf.placeholder(shape=[4, 1], dtype=tf.float32)
     R_1 = tf.placeholder(shape=[n_actions ** 2, 1], dtype=tf.float32)

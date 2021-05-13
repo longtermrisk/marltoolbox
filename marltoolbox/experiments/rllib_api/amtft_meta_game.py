@@ -250,12 +250,6 @@ def _modify_config_to_use_welfare_coordinators(
                 "all_welfare_pairs_wt_payoffs": all_welfare_pairs_wt_payoffs,
                 "own_player_idx": policy_idx,
                 "opp_player_idx": opp_policy_idx,
-                # "own_default_welfare_fn": postprocessing.WELFARE_INEQUITY_AVERSION
-                # if policy_idx
-                # else postprocessing.WELFARE_UTILITARIAN,
-                # "opp_default_welfare_fn": postprocessing.WELFARE_INEQUITY_AVERSION
-                # if opp_policy_idx
-                # else postprocessing.WELFARE_UTILITARIAN,
                 "own_default_welfare_fn": "inequity aversion"
                 if policy_idx == 1
                 else "utilitarian",
@@ -320,9 +314,24 @@ def extract_metrics(tune_analysis, hp_eval):
     )
 
 
-def save_to_json(exp_name, object):
+class NumpyEncoder(json.JSONEncoder):
+    """ Special json encoder for numpy types """
+
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
+
+
+def save_to_json(exp_name, object, filename="final_eval_in_base_game.json"):
     exp_dir = _get_exp_dir_from_exp_name(exp_name)
-    json_file = os.path.join(exp_dir, "final_eval_in_base_game.json")
+    json_file = os.path.join(exp_dir, filename)
+    if not os.path.exists(exp_dir):
+        os.makedirs(exp_dir)
     with open(json_file, "w") as outfile:
         json.dump(object, outfile)
 

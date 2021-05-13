@@ -2,6 +2,7 @@ import itertools
 import logging
 import random
 
+import torch
 import numpy as np
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override
@@ -27,6 +28,7 @@ DEFAULT_CONFIG = merge_dicts(
         "opp_player_idx": None,
         "own_default_welfare_fn": None,
         "opp_default_welfare_fn": None,
+        "distrib_over_welfare_sets_to_annonce": False,
     },
 )
 
@@ -74,7 +76,7 @@ class MetaGameSolver:
                 welfare_pairs_key
             ):
                 all_welfare_fn.append(welfare_fn)
-        return tuple(set(all_welfare_fn))
+        return sorted(tuple(set(all_welfare_fn)))
 
     @staticmethod
     def key_to_pair_of_welfare_names(key):
@@ -95,7 +97,7 @@ class MetaGameSolver:
                 frozenset(combi) for combi in combinations_object
             ]
             welfare_fn_sets.extend(combinations_set)
-        self.welfare_fn_sets = tuple(set(welfare_fn_sets))
+        self.welfare_fn_sets = sorted(tuple(set(welfare_fn_sets)))
 
     def solve_meta_game(self, tau):
         """
@@ -181,18 +183,18 @@ class MetaGameSolver:
         welfare_fn_intersection = own_welfare_set & opp_welfare_set
 
         if len(welfare_fn_intersection) == 0:
-            return self._get_own_payoff_for_default_strategies()
+            return self._read_payoffs_for_default_strategies()
         else:
-            return self._get_own_payoff_averaging_over_welfare_intersection(
+            return self._read_payoffs_and_average_over_welfare_intersection(
                 welfare_fn_intersection
             )
 
-    def _get_own_payoff_for_default_strategies(self):
+    def _read_payoffs_for_default_strategies(self):
         return self._read_own_payoff_from_data(
             self.own_default_welfare_fn, self.opp_default_welfare_fn
         )
 
-    def _get_own_payoff_averaging_over_welfare_intersection(
+    def _read_payoffs_and_average_over_welfare_intersection(
         self, welfare_fn_intersection
     ):
         payoffs_player_1 = []
@@ -279,13 +281,46 @@ class WelfareCoordinationTorchPolicy(
             **kwargs,
         )
 
+        assert (
+            self._use_distribution_over_sets()
+            or self.config["solve_meta_game_after_init"]
+        )
         if self.config["solve_meta_game_after_init"]:
+            assert not self.config["distrib_over_welfare_sets_to_annonce"]
             self._choose_which_welfare_set_to_annonce()
+        if self._use_distribution_over_sets():
+            self._init_distribution_over_sets_to_announce()
 
         self._welfare_set_annonced = False
         self._welfare_set_in_use = None
         self._welfare_chosen_for_epi = False
         self._intersection_of_welfare_sets = None
+
+    def _init_distribution_over_sets_to_announce(self):
+        assert not self.config["solve_meta_game_after_init"]
+        self.setup_meta_game(
+            all_welfare_pairs_wt_payoffs=self.config[
+                "all_welfare_pairs_wt_payoffs"
+            ],
+            own_player_idx=self.config["own_player_idx"],
+            opp_player_idx=self.config["opp_player_idx"],
+            own_default_welfare_fn=self.config["own_default_welfare_fn"],
+            opp_default_welfare_fn=self.config["opp_default_welfare_fn"],
+        )
+        self.stochastic_announcement_policy = torch.distributions.Categorical(
+            probs=self.config["distrib_over_welfare_sets_to_annonce"]
+        )
+        self._stochastic_selection_of_welfare_set_to_announce()
+
+    def _stochastic_selection_of_welfare_set_to_announce(self):
+        welfare_set_idx_selected = self.stochastic_announcement_policy.sample()
+        self.welfare_set_to_annonce = self.welfare_fn_sets[
+            welfare_set_idx_selected
+        ]
+        self._to_log["welfare_set_to_annonce"] = str(
+            self.welfare_set_to_annonce
+        )
+        print("self.welfare_set_to_annonce", self.welfare_set_to_annonce)
 
     def _choose_which_welfare_set_to_annonce(self):
         self.setup_meta_game(
@@ -435,6 +470,12 @@ class WelfareCoordinationTorchPolicy(
             self.algorithms[self.active_algo_idx].on_episode_end(
                 *args, **kwargs
             )
+        if self._use_distribution_over_sets():
+            self._stochastic_selection_of_welfare_set_to_announce()
+            self._welfare_set_annonced = False
+
+    def _use_distribution_over_sets(self):
+        return not self.config["distrib_over_welfare_sets_to_annonce"] is False
 
     @property
     @override(population.PopulationOfIdenticalAlgo)

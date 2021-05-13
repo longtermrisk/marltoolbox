@@ -181,13 +181,11 @@ def _load_base_game_results(hp, load_base_replicate_i):
             prefix + "LOLA_Exact/2021_05_05/15_48_22",  # 30 replicates
             # instance-60-cpu-4-preemtible
             prefix2 + "LOLA_Exact/2021_05_07/07_52_32",  # 30 replicates
-            # prefix2 + "LOLA_Exact/2021_05_07/08_02_21",  # 30 replicates
             prefix2 + "LOLA_Exact/2021_05_07/08_02_38",  # 30 replicates
             prefix2 + "LOLA_Exact/2021_05_07/08_02_49",  # 30 replicates
             prefix2 + "LOLA_Exact/2021_05_07/08_03_03",  # 30 replicates
             prefix2 + "LOLA_Exact/2021_05_07/08_54_58",  # 30 replicates
             prefix2 + "LOLA_Exact/2021_05_07/08_55_34",  # 30 replicates
-            # prefix2 + "LOLA_Exact/2021_05_07/08_56_00",  # 30 replicates
             prefix2 + "LOLA_Exact/2021_05_07/09_04_07",  # 30 replicates
             prefix2 + "LOLA_Exact/2021_05_07/09_09_30",  # 30 replicates
             prefix2 + "LOLA_Exact/2021_05_07/09_09_42",  # 30 replicates

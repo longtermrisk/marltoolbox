@@ -31,6 +31,7 @@ from marltoolbox.envs import (
     matrix_sequential_social_dilemma,
 )
 from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
+from marltoolbox import utils
 from marltoolbox.utils import policy, log, cross_play
 from marltoolbox.utils.plot import PlotConfig
 from marltoolbox.experiments.tune_class_api import lola_exact_official
@@ -46,7 +47,7 @@ def main(debug: bool, env=None):
     :param debug: selection of debug mode using less compute
     :param env: option to overwrite the env selection
     """
-    train_n_replicates = 2 if debug else 1
+    train_n_replicates = 2 if debug else 10
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
 
@@ -57,7 +58,7 @@ def main(debug: bool, env=None):
     )
 
     if tune_hparams["load_plot_data"] is None:
-        ray.init(num_cpus=os.cpu_count() // 4, num_gpus=0, local_mode=debug)
+        ray.init(num_cpus=10, num_gpus=0, local_mode=debug)
         tune_analysis_per_exp = _train(tune_hparams)
     else:
         tune_analysis_per_exp = None
@@ -91,10 +92,12 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
         #
         # "env_name": "IteratedPrisonersDilemma" if env is None else env,
         # "env_name": "IteratedAsymBoS" if env is None else env,
-        # "env_name": "VectorizedCoinGame" if env is None else env,
+        "env_name": "VectorizedCoinGame" if env is None else env,
         # "env_name": "AsymVectorizedCoinGame" if env is None else env,
         # "env_name": "VectorizedMixedMotiveCoinGame" if env is None else env,
-        "env_name": "VectorizedSSDMixedMotiveCoinGame" if env is None else env,
+        # "env_name": "VectorizedSSDMixedMotiveCoinGame" if env is None else env,
+        "remove_trials_below_speed": False,
+        # "remove_trials_below_speed": 0.15,
         "pseudo": False,
         "grid_size": 3,
         "lola_update": True,
@@ -130,7 +133,7 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
             ("total_reward",),
             ("entrop",),
         ],
-        "use_normalized_rewards": True,
+        "use_normalized_rewards": False,
         "use_centered_reward": False,
         "use_rolling_avg_actor_grad": False,
         "process_reward_after_rolling": False,
@@ -138,6 +141,7 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
         "use_rolling_avg_reward": False,
         "reward_processing_bais": False,
         "center_and_normalize_with_rolling_avg": False,
+        "punishment_helped": False,
     }
 
     if gamma == 0.5:
@@ -192,25 +196,30 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
                 "trace_length": 10 if debug else 40,
                 "weigth_decay": 0.03 / 16,
                 "lola_correction_multiplier": 8,
-                "entropy_coeff": 0.002 * 10,
+                "entropy_coeff": 0.02,
                 "batch_size": 12 if debug else 1024,
-                "use_normalized_rewards": True,
+                "use_normalized_rewards": False,
                 "reward_processing_bais": 0.1,
-                "center_and_normalize_with_rolling_avg": True,
+                "center_and_normalize_with_rolling_avg": False,
+                # "num_episodes": tune.grid_search(
+                #     [
+                #         1000,
+                #         2000,
+                #         4000,
+                #     ]
+                # ),
                 # "weigth_decay": tune.grid_search(
                 #     [
-                #         0.03 / 16,
+                #         # 0.03 / 16,
                 #         0.03 / 16 * 10,
-                #         0.03 / 16 * 100,
+                #         # 0.03 / 16 * 100,
                 #     ]
                 # ),
                 # "entropy_coeff": tune.grid_search(
                 #     [
-                #         0.002 * 10,
-                #         0.002 * 10 * 3,
-                #         0.002 * 10 * 10,
-                #         0.002 * 10 * 30,
-                #         0.002 * 10 * 100,
+                #         0.02 / 2,
+                #         0.02,
+                #         0.02 * 2,
                 #     ]
                 # ),
                 # "use_normalized_rewards": tune.grid_search([False, True]),
@@ -218,10 +227,7 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
                 #     [False, True]
                 # ),
                 # "lola_correction_multiplier": tune.grid_search(
-                #     [
-                #         0.0,
-                #         8.0,
-                #     ]
+                #     [8.0 / 2.0, 8.0, 8.0 * 2.0]
                 # ),
             }
         )
@@ -272,6 +278,9 @@ def _train(tune_hp):
         ],
     )
 
+    if tune_hp["remove_trials_below_speed"]:
+        tune_analysis = _remove_failed_trials(tune_analysis, tune_hp)
+
     if tune_hp["classify_into_welfare_fn"]:
         tune_analysis_per_exp = _split_tune_results_wt_welfare(
             tune_analysis, tune_hp
@@ -286,6 +295,24 @@ def _train(tune_hp):
     )
 
     return tune_analysis_per_exp
+
+
+def _remove_failed_trials(results, tune_hp):
+    results = utils.tune_analysis.filter_trials(
+        results,
+        metric=f"player_red_pick_speed",
+        metric_threshold=tune_hp["remove_trials_below_speed"],
+        metric_mode="last-5-avg",
+        threshold_mode="above",
+    )
+    results = utils.tune_analysis.filter_trials(
+        results,
+        metric=f"player_blue_pick_speed",
+        metric_threshold=tune_hp["remove_trials_below_speed"],
+        metric_mode="last-5-avg",
+        threshold_mode="above",
+    )
+    return results
 
 
 def _get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
@@ -354,6 +381,7 @@ def _get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
             or tune_config["env_name"] == "VectorizedSSDMixedMotiveCoinGame",
             "force_vectorize": False,
             "same_obs_for_each_player": True,
+            "punishment_helped": tune_config["punishment_helped"],
         }
         tune_config["metric"] = "player_blue_pick_speed"
         tune_config["plot_keys"] += (
@@ -609,12 +637,18 @@ def _get_trial_welfare(trial, hp):
 
 
 def lola_pg_classify_fn(pick_own_player_1, pick_own_player_2, hp):
-    if pick_own_player_1 > 0.75:
-        return EGALITARIAN
+    if hp["env_name"] == "VectorizedSSDMixedMotiveCoinGame":
+        if pick_own_player_1 < 0.75:
+            return UTILITARIAN
+        else:
+            return EGALITARIAN
     else:
-        return UTILITARIAN
+        if pick_own_player_1 > 0.75:
+            return EGALITARIAN
+        else:
+            return UTILITARIAN
 
 
 if __name__ == "__main__":
-    debug_mode = True
+    debug_mode = False
     main(debug_mode)
