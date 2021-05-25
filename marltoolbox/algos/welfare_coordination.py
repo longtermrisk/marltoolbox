@@ -87,6 +87,8 @@ class MetaGameSolver:
         """
         Each conbinaison is a potentiel action in the meta game
         """
+        from ordered_set import OrderedSet
+
         welfare_fn_sets = []
         for n_items in range(1, len(self.all_welfare_fn) + 1):
             combinations_object = itertools.combinations(
@@ -94,10 +96,12 @@ class MetaGameSolver:
             )
             combinations_object = list(combinations_object)
             combinations_set = [
-                frozenset(combi) for combi in combinations_object
+                OrderedSet(combi) for combi in combinations_object
             ]
-            welfare_fn_sets.extend(combinations_set)
-        self.welfare_fn_sets = sorted(tuple(set(welfare_fn_sets)))
+            for el in combinations_set:
+                if el not in welfare_fn_sets:
+                    welfare_fn_sets.append(el)
+        self.welfare_fn_sets = tuple(sorted(welfare_fn_sets, key=str))
 
     def solve_meta_game(self, tau):
         """

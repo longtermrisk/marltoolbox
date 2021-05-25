@@ -1,5 +1,7 @@
 import copy
 import os
+import pickle
+import random
 
 import numpy as np
 import pandas as pd
@@ -10,9 +12,9 @@ from ray.rllib.agents import dqn
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy, pg_loss_stats
 
-from marltoolbox import utils
 from marltoolbox.algos import population, welfare_coordination
 from marltoolbox.algos.lola.train_exact_tune_class_API import LOLAExactTrainer
+from marltoolbox.algos.sos import SOSTrainer
 from marltoolbox.algos.stochastic_population import StochasticPopulation
 from marltoolbox.algos.welfare_coordination import MetaGameSolver
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
@@ -26,12 +28,15 @@ from marltoolbox.experiments.tune_class_api import (
     lola_exact_official,
 )
 from marltoolbox.experiments.tune_class_api import sos_exact_official
-from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
-from marltoolbox.utils import (
-    log,
-    miscellaneous,
-    callbacks,
+from marltoolbox.scripts import (
+    aggregate_and_plot_tensorboard_data,
+    plot_meta_policies,
 )
+from marltoolbox.utils import log, miscellaneous, callbacks, exp_analysis, path
+
+EPSILON = 1e-6
+POLICY_ID_PL0 = "player_row"
+POLICY_ID_PL1 = "player_col"
 
 
 def main(debug, base_game_algo=None, meta_game_algo=None):
@@ -80,8 +85,9 @@ def _extract_metric_and_log_and_plot(tune_analysis, hparams, hp_eval):
 
 
 BASE_AMTFT = "amTFT"
-BASE_LOLAExact = "base LOLA-Exact"
-META_LOLAExact = "meta LOLA-Exact"
+BASE_LOLA_EXACT = "base LOLA-Exact"
+BASE_NEGOTIATION = "base negociation"
+META_LOLA_EXACT = "meta LOLA-Exact"
 META_PG = "PG"
 META_SOS = "SOS"
 META_APLHA_RANK = "alpha-rank"
@@ -89,6 +95,7 @@ META_APLHA_PURE = "alpha-rank pure strategy"
 META_REPLICATOR_DYNAMIC = "replicator dynamic"
 META_REPLICATOR_DYNAMIC_ZERO_INIT = "replicator dynamic with zero init"
 META_RANDOM = "Random"
+META_UNIFORM = "Robustness tau=0.0"
 
 
 def _get_hyperparameters(
@@ -96,17 +103,20 @@ def _get_hyperparameters(
 ):
     hp = {
         # "base_game_policies": BASE_AMTFT,
-        "base_game_policies": BASE_LOLAExact,
+        # "base_game_policies": BASE_LOLA_EXACT,
+        "base_game_policies": BASE_NEGOTIATION,
         #
         # "meta_game_policies": META_PG,
-        # "meta_game_policies": META_LOLAExact,
+        # "meta_game_policies": META_LOLA_EXACT,
         # "meta_game_policies": META_APLHA_RANK,
         # "meta_game_policies": META_APLHA_PURE,
         # "meta_game_policies": META_REPLICATOR_DYNAMIC,
         # "meta_game_policies": META_REPLICATOR_DYNAMIC_ZERO_INIT,
         "meta_game_policies": META_RANDOM,
+        # "meta_game_policies": META_UNIFORM,
         #
         "apply_announcement_protocol": True,
+        "negotitation_process": 2,
         #
         "players_ids": ["player_row", "player_col"],
         "use_r2d2": True,
@@ -117,14 +127,29 @@ def _get_hyperparameters(
     if meta_game_algo is not None:
         hp["meta_game_policies"] = meta_game_algo
 
+    hp["load_meta_game_payoff_matrices"] = (
+        hp["base_game_policies"] == BASE_NEGOTIATION
+    )
+    hp["evaluate_meta_policies_reading_meta_game_payoff_matrices"] = (
+        hp["base_game_policies"] == BASE_NEGOTIATION
+    )
+
+    if hp["load_meta_game_payoff_matrices"]:
+        assert hp["base_game_policies"] == BASE_NEGOTIATION
+    if hp["evaluate_meta_policies_reading_meta_game_payoff_matrices"]:
+        assert hp["base_game_policies"] == BASE_NEGOTIATION
+
     if hp["base_game_policies"] == BASE_AMTFT:
         hp.update(
             amtft_meta_game.get_hyperparameters(
                 debug=debug, use_r2d2=hp["use_r2d2"]
             )
         )
-    elif hp["base_game_policies"] == BASE_LOLAExact:
+    elif hp["base_game_policies"] == BASE_LOLA_EXACT:
         hp.update(lola_exact_meta_game.get_hyperparameters(debug=debug))
+    elif hp["base_game_policies"] == BASE_NEGOTIATION:
+        hp.update(_get_negociation_hyperparameters(debug=debug))
+        assert hp["evaluate_meta_policies_reading_meta_game_payoff_matrices"]
     else:
         raise ValueError()
 
@@ -152,8 +177,43 @@ def _get_hyperparameters(
 payoffs_per_groups = None
 
 
+def _get_negociation_hyperparameters(debug):
+    hp = {
+        "n_replicates_over_full_exp": 2 if debug else 40,
+        "n_self_play_in_final_meta_game": 0,
+        "n_cross_play_in_final_meta_game": 1 if debug else 10,
+        "env_name": "Nogetiation",
+        "x_limits": (0.0, 1.0),
+        "y_limits": (0.0, 1.0),
+        "plot_axis_scale_multipliers": (1, 1),
+        "plot_keys": aggregate_and_plot_tensorboard_data.PLOT_KEYS,
+        "plot_assemblage_tags": aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS,
+        "data_prefix": (
+            "/home/maxime/ssd_space/CLR/marltoolbox/marltoolbox/experiments"
+            "/tune_class_api/"
+        ),
+        # "data_prefix": (
+        #         "/home/maxime-riche/marltoolbox/marltoolbox/experiments"
+        #         "/tune_class_api/"
+        # ),
+    }
+    return hp
+
+
 def _form_n_matrices_from_base_game_payoffs(hp):
     global payoffs_per_groups
+    if hp["load_meta_game_payoff_matrices"]:
+        (
+            payoffs_matrices,
+            actions_possible,
+            base_ckpt_per_replicat,
+            payoffs_per_groups,
+        ) = _load_payoffs_matrices(hp)
+        return (
+            payoffs_matrices,
+            actions_possible,
+            base_ckpt_per_replicat,
+        )
     payoffs_per_groups = _get_payoffs_for_every_group_of_base_game_replicates(
         hp
     )
@@ -164,7 +224,7 @@ def _form_n_matrices_from_base_game_payoffs(hp):
             n_steps_per_epi = 20
         else:
             n_steps_per_epi = 100
-    elif hp["base_game_policies"] == BASE_LOLAExact:
+    elif hp["base_game_policies"] == BASE_LOLA_EXACT:
         if hp["debug"]:
             n_steps_per_epi = 40
         else:
@@ -189,16 +249,17 @@ def _form_n_matrices_from_base_game_payoffs(hp):
             payoffs_per_groups, n_steps_per_epi, hp
         )
 
+    assert len(payoffs_matrices) == hp["n_replicates_over_full_exp"]
     return payoffs_matrices, actions_possible, base_ckpt_per_replicat
 
 
 def _get_payoffs_for_every_group_of_base_game_replicates(hp):
     if hp["base_game_policies"] == BASE_AMTFT:
         module = amtft_meta_game
-    elif hp["base_game_policies"] == BASE_LOLAExact:
+    elif hp["base_game_policies"] == BASE_LOLA_EXACT:
         module = lola_exact_meta_game
     else:
-        raise ValueError()
+        raise ValueError(f'base_game_policies {hp["base_game_policies"]}')
 
     payoffs_per_groups = []
     for i in range(hp["n_replicates_over_full_exp"]):
@@ -222,7 +283,7 @@ def _aggregate_payoffs_groups_into_matrices_wt_announcement_protocol(
 ):
     payoffs_matrices = []
     ckpt_per_replicat = []
-    all_welfare_fn_sets = []
+    previous_welfare_fn_sets = None
     for i, (payoffs_for_one_group, hp_replicat_i) in enumerate(
         payoffs_per_groups
     ):
@@ -240,6 +301,10 @@ def _aggregate_payoffs_groups_into_matrices_wt_announcement_protocol(
         )
 
         welfare_fn_sets = announcement_protocol_solver_p1.welfare_fn_sets
+        if previous_welfare_fn_sets is not None:
+            assert welfare_fn_sets == previous_welfare_fn_sets
+        previous_welfare_fn_sets = welfare_fn_sets
+        print("\nwelfare_fn_sets", welfare_fn_sets)
         n_set_of_welfare_sets = len(welfare_fn_sets)
         payoff_matrix = np.empty(
             shape=(n_set_of_welfare_sets, n_set_of_welfare_sets, 2),
@@ -264,12 +329,13 @@ def _aggregate_payoffs_groups_into_matrices_wt_announcement_protocol(
                 )
         amtft_meta_game.save_to_json(
             exp_name=hp["exp_name"],
-            object=payoff_matrix.tolist(),
+            object={
+                "welfare_fn_sets": str(welfare_fn_sets),
+                "payoff_matrix": payoff_matrix.tolist(),
+            },
             filename=f"payoffs_matrices_{i}.json",
         )
         payoffs_matrices.append(payoff_matrix)
-        all_welfare_fn_sets.append(tuple(welfare_fn_sets))
-    assert len(set(all_welfare_fn_sets)) == 1
     return payoffs_matrices, welfare_fn_sets, ckpt_per_replicat
 
 
@@ -328,12 +394,109 @@ def _aggregate_payoffs_in_one_matrix(payoffs_for_one_group, n_steps_per_epi):
     return payoff_matrix, all_welfares_fn
 
 
+def _load_payoffs_matrices(hp):
+    if hp["base_game_policies"] == BASE_NEGOTIATION:
+        if hp["negotitation_process"] == 1:
+            return _load_payoffs_matrices_negotiation_process1(hp)
+        elif hp["negotitation_process"] == 2:
+            return _load_payoffs_matrices_negotiation_process2(hp)
+    else:
+        raise NotImplementedError()
+
+
+def _load_payoffs_matrices_negotiation_process1(hp):
+    file_path = os.path.join(
+        hp["data_prefix"], "negociation_game_replicates_list.pickle"
+    )
+    with open(file_path, "rb") as f:
+        content = pickle.load(f)
+
+    principal0_replicates = content[:20]
+    hp["principal0_replicates"] = principal0_replicates
+    payoffs_matrices = []
+    n_actions = None
+    for i, (mat_pl0, mat_pl1, _, _) in enumerate(principal0_replicates):
+        if n_actions is None:
+            n_actions = mat_pl0.shape[0]
+        assert n_actions == mat_pl0.shape[0] == mat_pl0.shape[1]
+        assert n_actions == mat_pl1.shape[0] == mat_pl1.shape[1]
+        payoffs_matrices.append(np.stack([mat_pl0, mat_pl1], axis=-1))
+    print("payoffs_matrices[0].shape", payoffs_matrices[0].shape)
+
+    actions_possible = []
+    for i in range(n_actions):
+        actions_possible.append(f"meta_action_{str(i)}")
+
+    base_ckpt_per_replicat = None
+    payoffs_per_groups = None
+
+    return (
+        payoffs_matrices,
+        actions_possible,
+        base_ckpt_per_replicat,
+        payoffs_per_groups,
+    )
+
+
+def _load_payoffs_matrices_negotiation_process2(hp):
+    file_path = os.path.join(
+        hp["data_prefix"], "bootstrapped_replicates_prosociality_coeff_0.3"
+    )
+    with open(file_path, "rb") as f:
+        content = pickle.load(f)
+    load_from_n_principals = 2
+    load_n_bootstrapped_by_principals = (
+        hp["n_replicates_over_full_exp"] // load_from_n_principals
+    )
+    print("load_from_n_principals", load_from_n_principals)
+    print(
+        "load_n_bootstrapped_by_principals", load_n_bootstrapped_by_principals
+    )
+    all_principal_replicates = []
+    meta_game_matrix_pos_to_principal_idx = []
+    for principal_i in range(load_from_n_principals):
+        principal_i_replicates = content[principal_i][
+            :load_n_bootstrapped_by_principals
+        ]
+        hp[f"principal{principal_i}_replicates"] = principal_i_replicates
+        all_principal_replicates.extend(principal_i_replicates)
+        meta_game_matrix_pos_to_principal_idx.extend(
+            [principal_i] * len(principal_i_replicates)
+        )
+    hp[
+        "meta_game_matrix_pos_to_principal_idx"
+    ] = meta_game_matrix_pos_to_principal_idx
+    hp["load_n_bootstrapped_by_principals"] = load_n_bootstrapped_by_principals
+    payoffs_matrices = []
+    n_actions = None
+    for i, (mat_pl0, _, _) in enumerate(all_principal_replicates):
+        if n_actions is None:
+            n_actions = mat_pl0.shape[0]
+        assert n_actions == mat_pl0.shape[0] == mat_pl0.shape[1]
+        payoffs_matrices.append(mat_pl0)
+    # print("payoffs_matrices[0].shape", payoffs_matrices[0].shape)
+
+    actions_possible = []
+    for i in range(n_actions):
+        actions_possible.append(f"meta_action_{str(i)}")
+
+    base_ckpt_per_replicat = None
+    payoffs_per_groups = None
+
+    return (
+        payoffs_matrices,
+        actions_possible,
+        base_ckpt_per_replicat,
+        payoffs_per_groups,
+    )
+
+
 def _train_meta_policies(hp):
     hp["exp_name"] = os.path.join(hp["exp_name"], "meta_game")
 
     if hp["meta_game_policies"] == META_PG:
         meta_policies = _train_meta_policy_using_pg(hp)
-    elif hp["meta_game_policies"] == META_LOLAExact:
+    elif hp["meta_game_policies"] == META_LOLA_EXACT:
         meta_policies = _train_meta_policy_using_lola_exact(hp)
     elif hp["meta_game_policies"] == META_APLHA_RANK:
         meta_policies = _train_meta_policy_using_alpha_rank(hp)
@@ -350,12 +513,123 @@ def _train_meta_policies(hp):
         meta_policies = _get_random_meta_policy(hp)
     elif hp["meta_game_policies"] == META_SOS:
         meta_policies = _train_meta_policy_using_sos_exact(hp)
+    elif hp["meta_game_policies"] == META_UNIFORM:
+        meta_policies = _train_meta_policy_using_robustness(hp)
     else:
         raise ValueError()
 
-    meta_policies = _clamp_policies_normalize(meta_policies)
+    if hp["base_game_policies"] == BASE_NEGOTIATION:
+        if hp["meta_game_policies"] != META_RANDOM:
+            meta_policies = (
+                _convert_negociation_meta_policies_to_original_space(
+                    meta_policies, hp
+                )
+            )
 
-    return meta_policies
+    clamped_meta_policies = _clamp_policies_normalize(meta_policies)
+
+    amtft_meta_game.save_to_json(
+        exp_name=hp["exp_name"],
+        object={
+            "clamped_meta_policies": _convert_to_list(clamped_meta_policies),
+            "meta_policies": _convert_to_list(meta_policies),
+        },
+        filename=f"meta_policies.json",
+    )
+
+    exp_dir_path = path.get_exp_dir_from_exp_name(hp["exp_name"])
+    plot_meta_policies.plot_policies(
+        _convert_to_list(meta_policies),
+        hp["actions_possible"],
+        title=f'META({hp["meta_game_policies"]}) BASE('
+        f'{hp["base_game_policies"]})',
+        path_prefix=exp_dir_path + "/",
+        announcement_protocol=hp["apply_announcement_protocol"]
+        and hp["base_game_policies"] != BASE_NEGOTIATION,
+    )
+
+    return clamped_meta_policies
+
+
+def _convert_negociation_meta_policies_to_original_space(meta_policies, hp):
+    meta_policies_in_original_space = []
+    for meta_pi_idx, meta_policy in enumerate(meta_policies):
+        policy_player_1 = _order_meta_game_policy(
+            meta_policy["player_row"], hp, meta_pi_idx, POLICY_ID_PL0
+        )
+        policy_player_2 = _order_meta_game_policy(
+            meta_policy["player_col"], hp, meta_pi_idx, POLICY_ID_PL1
+        )
+        policy_player_1 = torch.tensor(policy_player_1)
+        policy_player_2 = torch.tensor(policy_player_2)
+        meta_policy_in_original_space = {
+            "player_row": policy_player_1,
+            "player_col": policy_player_2,
+        }
+        meta_policies_in_original_space.append(meta_policy_in_original_space)
+    return meta_policies_in_original_space
+
+
+def _order_meta_game_policy(meta_pi, hp, meta_policy_idx, player_id):
+    """Assemble policies to fit the order in the original pmeta game payoff
+    matrix (not the bootstrapepd one)"""
+    if hp["negotitation_process"] == 1:
+        return _order_meta_game_policy_process1(
+            meta_pi, hp, meta_policy_idx, player_id
+        )
+    elif hp["negotitation_process"] == 2:
+        return _order_meta_game_policy_process2(
+            meta_pi, hp, meta_policy_idx, player_id
+        )
+
+
+def _order_meta_game_policy_process1(meta_pi, hp, meta_policy_idx, player_id):
+    _, x_indices, y_indices = hp["principal0_replicates"][meta_policy_idx]
+    if player_id == "player_row":
+        indices = x_indices
+    elif player_id == "player_col":
+        indices = y_indices
+    else:
+        raise ValueError()
+    meta_pi_original_space = np.zeros_like(meta_pi)
+    for i, val in enumerate(meta_pi):
+        original_index = indices[i]
+        meta_pi_original_space[original_index] += val
+
+    return meta_pi_original_space
+
+
+def _order_meta_game_policy_process2(meta_pi, hp, meta_policy_idx, player_id):
+    principal_idx = hp["meta_game_matrix_pos_to_principal_idx"][
+        meta_policy_idx
+    ]
+    idx_in_principal = (
+        meta_policy_idx % hp["load_n_bootstrapped_by_principals"]
+    )
+    _, x_indices, y_indices = hp[f"principal{principal_idx}_replicates"][
+        idx_in_principal
+    ]
+    print("principal_idx", principal_idx)
+    print("idx_in_principal", idx_in_principal)
+    if player_id == "player_row":
+        indices = x_indices
+    elif player_id == "player_col":
+        indices = y_indices
+    else:
+        raise ValueError()
+    meta_pi_original_space = np.zeros_like(meta_pi)
+    for i, val in enumerate(meta_pi):
+        original_index = indices[i]
+        meta_pi_original_space[original_index] += val
+
+    return meta_pi_original_space
+
+
+def _convert_to_list(list_dict_tensors):
+    return [
+        {k: v.tolist() for k, v in dict_.items()}
+        for dict_ in list_dict_tensors
+    ]
 
 
 def _clamp_policies_normalize(meta_policies):
@@ -413,7 +687,6 @@ def _extract_policy_pg(tune_analysis):
 def _modify_rllib_config_for_meta_pg_policy(rllib_config, stop_config, hp):
     rllib_config["env"] = TwoPlayersCustomizableMatrixGame
     rllib_config["env_config"]["NUM_ACTIONS"] = len(hp["actions_possible"])
-    rllib_config["env_config"]["all_welfares_fn"] = hp["actions_possible"]
     rllib_config["env_config"]["max_steps"] = 1
     rllib_config["model"] = {
         # Number of hidden layers for fully connected net
@@ -506,15 +779,12 @@ def _train_meta_policy_using_sos_exact(hp):
         hp, tune_config, stop_config
     )
 
-    tune_analysis = _train_with_tune(
-        tune_config, stop_config, hp, LOLAExactTrainer
-    )
-    return _extract_policy_lola_exact(tune_analysis)
+    tune_analysis = _train_with_tune(tune_config, stop_config, hp, SOSTrainer)
+    return _extract_policy_sos_exact(tune_analysis)
 
 
 def _modify_tune_config_for_meta_sos_exact(hp, tune_config, stop_config):
     tune_config["env_name"] = None
-    tune_config["all_welfares_fn"] = hp["actions_possible"]
     tune_config["method"] = "sos"
     tune_config["linked_data"] = _get_payoff_matrix_grid_search(hp)
     tune_config["seed"] = tune.sample_from(
@@ -527,12 +797,27 @@ def _modify_tune_config_for_meta_sos_exact(hp, tune_config, stop_config):
     return tune_config, stop_config
 
 
+def _extract_policy_sos_exact(tune_analysis):
+    policies = []
+    for trial in tune_analysis.trials:
+        policy_player_1 = trial.last_result["policy1"][0, :]
+        policy_player_2 = trial.last_result["policy2"][0, :]
+        policy_player_1 = torch.tensor(policy_player_1)
+        policy_player_2 = torch.tensor(policy_player_2)
+        policies.append(
+            {"player_row": policy_player_1, "player_col": policy_player_2}
+        )
+        print("SOS-Exact meta policy extracted")
+        print("policy_player_1 ", policy_player_1)
+        print("policy_player_2 ", policy_player_2)
+    return policies
+
+
 def _train_with_tune(
     rllib_config,
     stop_config,
     hp,
     trainer,
-    wandb=True,
     plot_aggregates=True,
 ):
     tune_analysis = tune.run(
@@ -540,17 +825,6 @@ def _train_with_tune(
         config=rllib_config,
         stop=stop_config,
         name=hp["exp_name"],
-        # log_to_file=False if hp["debug"] else True,
-        # callbacks=None
-        # if hp["debug"] or not wandb
-        # else [
-        #     WandbLoggerCallback(
-        #         project=hp["wandb"]["project"],
-        #         group=hp["wandb"]["group"],
-        #         api_key_file=hp["wandb"]["api_key_file"],
-        #         log_config=True,
-        #     ),
-        # ],
     )
 
     if not hp["debug"] and plot_aggregates:
@@ -567,7 +841,6 @@ def _modify_tune_config_for_meta_lola_exact(hp, tune_config, stop_config):
     tune_config["re_init_every_n_epi"] *= tune_config["trace_length"]
     tune_config["trace_length"] = 1
     tune_config["env_name"] = "custom_payoff_matrix"
-    tune_config["all_welfares_fn"] = hp["actions_possible"]
     tune_config["linked_data"] = _get_payoff_matrix_grid_search(hp)
     tune_config["seed"] = tune.sample_from(
         lambda spec: spec.config["linked_data"][0]
@@ -580,9 +853,6 @@ def _modify_tune_config_for_meta_lola_exact(hp, tune_config, stop_config):
 
 
 def _get_payoff_matrix_grid_search(hp):
-    # payoff_matrices = [
-    #     payoff_matrice_data for payoff_matrice_data in hp["payoff_matrices"]
-    # ]
     payoff_matrices = copy.deepcopy(hp["payoff_matrices"])
     seeds = miscellaneous.get_random_seeds(len(payoff_matrices))
     linked_data = [
@@ -593,6 +863,356 @@ def _get_payoff_matrix_grid_search(hp):
 
 def _evaluate_in_base_game(hp):
     hp["exp_name"] = os.path.join(hp["exp_name"], "final_base_game")
+    assert hp["n_replicates_over_full_exp"] > 0
+
+    if hp["evaluate_meta_policies_reading_meta_game_payoff_matrices"]:
+        if hp["base_game_policies"] == BASE_NEGOTIATION:
+            if hp["negotitation_process"] == 1:
+                return _evaluate_by_reading_meta_payoff_matrices_process1(hp)
+            elif hp["negotitation_process"] == 2:
+                return _evaluate_by_reading_meta_payoff_matrices_process2(hp)
+        else:
+            raise NotImplementedError()
+    else:
+        return _evaluate_by_playing_in_base_game(hp)
+
+
+ORIGNAL_NEGOTIATION_PAYOFFS = np.stack(
+    [
+        np.array(
+            [
+                [
+                    0.73076171,
+                    0.72901064,
+                    0.73216635,
+                    0.66135818,
+                    0.56392801,
+                    0.46451038,
+                    0.45376301,
+                ],
+                [
+                    0.38869923,
+                    0.38534233,
+                    0.37598014,
+                    0.73307645,
+                    0.72625536,
+                    0.73916543,
+                    0.72769892,
+                ],
+                [
+                    0.7302742,
+                    0.73917222,
+                    0.72813082,
+                    0.66200578,
+                    0.66214889,
+                    0.56320196,
+                    0.56070906,
+                ],
+                [
+                    0.46352547,
+                    0.45852849,
+                    0.45295322,
+                    0.39153525,
+                    0.38613006,
+                    0.38181722,
+                    0.37838927,
+                ],
+                [
+                    0.64827693,
+                    0.65012288,
+                    0.6471073,
+                    0.6198647,
+                    0.57871825,
+                    0.51521456,
+                    0.51886076,
+                ],
+                [
+                    0.47413245,
+                    0.59999102,
+                    0.59605861,
+                    0.59867841,
+                    0.59904635,
+                    0.57479459,
+                    0.54586047,
+                ],
+                [
+                    0.50140649,
+                    0.47044769,
+                    0.46821448,
+                    0.57101083,
+                    0.56979507,
+                    0.57035708,
+                    0.57534903,
+                ],
+            ]
+        ),
+        np.array(
+            [
+                [
+                    0.30082142,
+                    0.29890773,
+                    0.3002491,
+                    0.30846024,
+                    0.30522716,
+                    0.29359573,
+                    0.28792399,
+                ],
+                [
+                    0.27443337,
+                    0.27473691,
+                    0.27099788,
+                    0.29374766,
+                    0.29737911,
+                    0.29684028,
+                    0.30397776,
+                ],
+                [
+                    0.30072445,
+                    0.29653731,
+                    0.3035537,
+                    0.3089233,
+                    0.31072533,
+                    0.30742073,
+                    0.30733863,
+                ],
+                [
+                    0.28808233,
+                    0.29138255,
+                    0.29195258,
+                    0.27400267,
+                    0.27413243,
+                    0.26937005,
+                    0.26969171,
+                ],
+                [
+                    0.38675746,
+                    0.38473225,
+                    0.39369282,
+                    0.40118337,
+                    0.4028841,
+                    0.39932922,
+                    0.40290347,
+                ],
+                [
+                    0.3954556,
+                    0.39829046,
+                    0.39688903,
+                    0.39803576,
+                    0.39812419,
+                    0.41143295,
+                    0.41318333,
+                ],
+                [
+                    0.41149494,
+                    0.41419694,
+                    0.41467997,
+                    0.4051294,
+                    0.39407712,
+                    0.40370235,
+                    0.40058476,
+                ],
+            ]
+        ),
+    ],
+    axis=-1,
+)
+
+
+def _evaluate_by_reading_meta_payoff_matrices_process1(hp):
+    all_meta_games_idx = list(range(hp["n_replicates_over_full_exp"]))
+    trials_results = []
+    for _ in all_meta_games_idx:
+        # TODO don't use this ppayoff table
+        payoff_matrix = copy.deepcopy(ORIGNAL_NEGOTIATION_PAYOFFS)
+        meta_games_idx_available = copy.deepcopy(all_meta_games_idx)
+
+        for cross_play_idx in range(hp["n_cross_play_in_final_meta_game"]):
+            (
+                meta_pi_pl0,
+                meta_pi_pl1,
+                meta_pi_pl0_idx,
+                meta_pi_pl1_idx,
+            ) = _select_cross_play_meta_policies_for_payoff_reading(
+                hp, meta_games_idx_available
+            )
+
+            min_, max_ = payoff_matrix.min(), payoff_matrix.max()
+            joint_proba = _compute_joint_meta_pi_proba(
+                meta_pi_pl0, meta_pi_pl1
+            )
+            weighted_avg = payoff_matrix * joint_proba
+            payoff_per_player = np.sum(np.sum(weighted_avg, axis=0), axis=0)
+            assert np.all(
+                payoff_per_player - max_ < EPSILON
+            ), f"{payoff_per_player - max_}"
+            assert np.all(
+                payoff_per_player - min_ > -EPSILON
+            ), f"{payoff_per_player - min_}"
+            trials_results.append(
+                {
+                    "policy_reward_mean.player_row": payoff_per_player[0],
+                    "policy_reward_mean.player_col": payoff_per_player[1],
+                }
+            )
+
+    fake_experiment_analysis = (
+        exp_analysis.create_fake_experiment_analysis_wt_metrics_only(
+            trials_results
+        )
+    )
+    return fake_experiment_analysis, hp
+
+
+def _evaluate_by_reading_meta_payoff_matrices_process2(hp):
+    file_path = os.path.join(
+        hp["data_prefix"], "empirical_game_matrices_prosociality_coeff_0.3"
+    )
+    with open(file_path, "rb") as f:
+        payoff_matrix_35x35 = pickle.load(f)
+
+    all_meta_games_idx = list(range(hp["n_replicates_over_full_exp"]))
+    trials_results = []
+    for meta_games_idx in all_meta_games_idx:
+        print("meta_games_idx", meta_games_idx)
+        (
+            meta_pi_pl0,
+            meta_games_idx_available_pl1,
+            pl0_principal_i,
+        ) = _load_pi_pl_0_and_available_pi_pl1(
+            hp, meta_games_idx, all_meta_games_idx
+        )
+
+        for cross_play_idx in range(hp["n_cross_play_in_final_meta_game"]):
+            payoff_matrix, meta_pi_pl1 = _load_pi_pl1_and_payoff_matrix(
+                hp,
+                meta_games_idx_available_pl1,
+                pl0_principal_i,
+                payoff_matrix_35x35,
+            )
+
+            min_, max_ = payoff_matrix.min(), payoff_matrix.max()
+            joint_proba = _compute_joint_meta_pi_proba(
+                meta_pi_pl0, meta_pi_pl1
+            )
+            weighted_avg = payoff_matrix * joint_proba
+            payoff_per_player = np.sum(np.sum(weighted_avg, axis=0), axis=0)
+            assert np.all(
+                payoff_per_player - max_ < EPSILON
+            ), f"{payoff_per_player - max_}"
+            assert np.all(
+                payoff_per_player - min_ > -EPSILON
+            ), f"{payoff_per_player - min_}"
+            trials_results.append(
+                {
+                    "policy_reward_mean.player_row": payoff_per_player[0],
+                    "policy_reward_mean.player_col": payoff_per_player[1],
+                }
+            )
+
+    fake_experiment_analysis = (
+        exp_analysis.create_fake_experiment_analysis_wt_metrics_only(
+            trials_results
+        )
+    )
+    return fake_experiment_analysis, hp
+
+
+def _load_pi_pl_0_and_available_pi_pl1(hp, meta_games_idx, all_meta_games_idx):
+    meta_pi_pl0_idx = meta_games_idx
+    pl0_principal_i = hp["meta_game_matrix_pos_to_principal_idx"][
+        meta_pi_pl0_idx
+    ]
+    meta_pi_pl0 = hp["meta_game_policy_distributions"][meta_pi_pl0_idx][
+        POLICY_ID_PL0
+    ]
+    print(
+        "meta_games_idx",
+        meta_games_idx,
+        "pl0_principal_i",
+        pl0_principal_i,
+    )
+    assert pl0_principal_i == (
+        meta_games_idx // hp["load_n_bootstrapped_by_principals"]
+    )
+    meta_games_idx_available_pl1 = copy.deepcopy(all_meta_games_idx)
+    for meta_policy_i, principal_j in enumerate(
+        hp["meta_game_matrix_pos_to_principal_idx"]
+    ):
+        if principal_j == pl0_principal_i:
+            meta_games_idx_available_pl1.remove(meta_policy_i)
+    print("meta_games_idx_available_pl1", meta_games_idx_available_pl1)
+    assert (
+        len(meta_games_idx_available_pl1)
+        == len(all_meta_games_idx) - hp["load_n_bootstrapped_by_principals"]
+    )
+    return meta_pi_pl0, meta_games_idx_available_pl1, pl0_principal_i
+
+
+def _load_pi_pl1_and_payoff_matrix(
+    hp, meta_games_idx_available_pl1, pl0_principal_i, payoff_matrix_35x35
+):
+    meta_pi_pl1_idx = random.choice(meta_games_idx_available_pl1)
+    meta_pi_pl1 = hp["meta_game_policy_distributions"][meta_pi_pl1_idx][
+        POLICY_ID_PL1
+    ]
+    pl1_principal_i = hp["meta_game_matrix_pos_to_principal_idx"][
+        meta_pi_pl1_idx
+    ]
+
+    n_meta_actions = 7
+    payoff_matrix = copy.deepcopy(
+        payoff_matrix_35x35[
+            pl0_principal_i
+            * n_meta_actions : (pl0_principal_i + 1)
+            * n_meta_actions,
+            pl1_principal_i
+            * n_meta_actions : (pl1_principal_i + 1)
+            * n_meta_actions,
+            :,
+        ]
+    )
+    print("cross_play_payoff_matrix", payoff_matrix)
+
+    return payoff_matrix, meta_pi_pl1
+
+
+def _select_cross_play_meta_policies_for_payoff_reading(
+    hp, meta_games_idx_available
+):
+    meta_pi_pl0_idx = random.choice(meta_games_idx_available)
+    meta_pi_pl0 = hp["meta_game_policy_distributions"][meta_pi_pl0_idx][
+        POLICY_ID_PL0
+    ]
+
+    meta_games_idx_available_pl1 = copy.deepcopy(meta_games_idx_available)
+    meta_games_idx_available_pl1.remove(meta_pi_pl0_idx)
+
+    meta_pi_pl1_idx = random.choice(meta_games_idx_available_pl1)
+    meta_pi_pl1 = hp["meta_game_policy_distributions"][meta_pi_pl1_idx][
+        POLICY_ID_PL1
+    ]
+
+    return meta_pi_pl0, meta_pi_pl1, meta_pi_pl0_idx, meta_pi_pl1_idx
+
+
+def _compute_joint_meta_pi_proba(meta_pi_pl0, meta_pi_pl1):
+    meta_pi_pl0 = np.expand_dims(meta_pi_pl0, axis=-1)
+    meta_pi_pl0 = np.expand_dims(meta_pi_pl0, axis=-1)
+    meta_pi_pl0_ext = np.tile(meta_pi_pl0, (1, len(meta_pi_pl1), 2))
+    meta_pi_pl1 = np.expand_dims(meta_pi_pl1, axis=0)
+    meta_pi_pl1 = np.expand_dims(meta_pi_pl1, axis=-1)
+    meta_pi_pl1_ext = np.tile(meta_pi_pl1, (len(meta_pi_pl0), 1, 2))
+    joint_proba = meta_pi_pl0_ext * meta_pi_pl1_ext
+    n_players = 2
+    assert np.abs(joint_proba.sum() - n_players) < EPSILON, (
+        f"joint_proba.sum()" f" {joint_proba.sum()}"
+    )
+    assert np.all(joint_proba >= 0.0 - EPSILON), f"joint_proba {joint_proba}"
+    assert np.all(joint_proba <= 1.0 + EPSILON), f"joint_proba {joint_proba}"
+    return joint_proba
+
+
+def _evaluate_by_playing_in_base_game(hp):
     all_rllib_configs = []
     for meta_game_idx in range(hp["n_replicates_over_full_exp"]):
         (
@@ -612,7 +1232,6 @@ def _evaluate_in_base_game(hp):
         stop_config,
         hp,
         trainer,
-        wandb=False,
         plot_aggregates=False,
     )
     return tune_analysis, hp_eval
@@ -627,7 +1246,7 @@ def _get_final_base_game_rllib_config(hp, meta_game_idx):
             trainer,
             hp_eval,
         ) = _get_rllib_config_for_base_amTFT_policy(hp)
-    elif hp["base_game_policies"] == BASE_LOLAExact:
+    elif hp["base_game_policies"] == BASE_LOLA_EXACT:
         (
             stop_config,
             env_config,
@@ -635,6 +1254,14 @@ def _get_final_base_game_rllib_config(hp, meta_game_idx):
             trainer,
             hp_eval,
         ) = _get_rllib_config_for_base_lola_exact_policy(hp)
+    elif hp["base_game_policies"] == BASE_NEGOTIATION:
+        (
+            stop_config,
+            env_config,
+            rllib_config,
+            trainer,
+            hp_eval,
+        ) = _get_rllib_config_for_base_negociation_policy(hp)
     else:
         raise ValueError()
 
@@ -701,6 +1328,25 @@ def _get_rllib_config_for_base_lola_exact_policy(hp):
     return stop_config, env_config, rllib_config, trainer, lola_exact_hp
 
 
+def _get_rllib_config_for_base_negociation_policy(hp):
+    raise NotImplementedError()
+    from marltoolbox.algos.alternating_offers import alt_offers_training
+
+    lola_exact_hp = alt_offers_training.get_hyperparameters()
+    (
+        hp_eval,
+        rllib_config,
+        policies_to_load,
+        trainable_class,
+        stop_config,
+        env_config,
+    ) = alt_offers_training.generate_eval_config(lola_exact_hp)
+
+    trainer = alt_offers_training.AltOffersTraining
+
+    return stop_config, env_config, rllib_config, trainer, lola_exact_hp
+
+
 def _change_simple_rllib_config_for_final_base_game_eval(
     hp, rllib_config, stop_config
 ):
@@ -709,7 +1355,7 @@ def _change_simple_rllib_config_for_final_base_game_eval(
         callbacks.PolicyCallbacks,
         log.get_logging_callbacks_class(
             log_full_epi=True,
-            log_full_epi_interval=1,
+            # log_full_epi_interval=1,
             log_from_policy_in_evaluation=True,
         ),
     )
@@ -874,10 +1520,10 @@ def _create_one_vanilla_population_config(
 
 
 def _extract_metrics(tune_analysis, hp_eval):
-    player_1_payoffs = utils.tune_analysis.extract_value_from_last_training_iteration_for_each_trials(
+    player_1_payoffs = exp_analysis.extract_metrics_for_each_trials(
         tune_analysis, metric=hp_eval["x_axis_metric"]
     )
-    player_2_payoffs = utils.tune_analysis.extract_value_from_last_training_iteration_for_each_trials(
+    player_2_payoffs = exp_analysis.extract_metrics_for_each_trials(
         tune_analysis, metric=hp_eval["y_axis_metric"]
     )
     print("player_1_payoffs", player_1_payoffs)
@@ -941,8 +1587,8 @@ def _compute_policy_wt_alpha_rank(payoff_tables_per_player):
     ) = psro_v2_utils.get_alpharank_marginals(
         payoff_tables_per_player, joint_arank
     )
-    print("policy_player_1", policy_player_1)
-    print("policy_player_2", policy_player_2)
+    print("meta policy_player_1", policy_player_1)
+    print("meta policy_player_2", policy_player_2)
     policy_player_1 = torch.tensor(policy_player_1)
     policy_player_2 = torch.tensor(policy_player_2)
     return policy_player_1, policy_player_2
@@ -1007,21 +1653,47 @@ def _get_random_meta_policy(hp):
     return policies
 
 
+def _train_meta_policy_using_robustness(hp):
+
+    payoff_matrices = copy.deepcopy(hp["payoff_matrices"])
+    policies = []
+    for payoff_matrix in payoff_matrices:
+        robustness_score_pl0 = payoff_matrix[:, :, 0].mean(axis=1)
+        robustness_score_pl1 = payoff_matrix[:, :, 1].mean(axis=0)
+
+        pl0_action = np.argmax(robustness_score_pl0, axis=0)
+        pl1_action = np.argmax(robustness_score_pl1, axis=0)
+
+        policy_player_1 = torch.zeros((payoff_matrix.shape[0],))
+        policy_player_2 = torch.zeros((payoff_matrix.shape[1],))
+        policy_player_1[pl0_action] = 1.0
+        policy_player_2[pl1_action] = 1.0
+        policies.append(
+            {"player_row": policy_player_1, "player_col": policy_player_2}
+        )
+    print("replicator dynamic meta policies", policies)
+    return policies
+
+
 if __name__ == "__main__":
-    debug_mode = True
+    debug_mode = False
     loop_over_main = True
 
     if loop_over_main:
-        base_game_algo_to_eval = (BASE_LOLAExact,)
+        base_game_algo_to_eval = (
+            # BASE_LOLA_EXACT,
+            BASE_NEGOTIATION,
+        )
         meta_game_algo_to_eval = (
-            # META_APLHA_RANK,
-            # META_APLHA_PURE,
+            META_APLHA_RANK,
+            META_APLHA_PURE,
             # META_REPLICATOR_DYNAMIC,
             # META_REPLICATOR_DYNAMIC_ZERO_INIT,
-            META_RANDOM,
-            META_PG,
-            META_LOLAExact,
-            META_SOS,
+            # META_RANDOM,
+            # META_PG,
+            # META_LOLA_EXACT,
+            # META_SOS,
+            # META_UNIFORM,
         )
         for base_game_algo in base_game_algo_to_eval:
             for meta_game_algo in meta_game_algo_to_eval:

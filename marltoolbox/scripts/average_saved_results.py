@@ -54,35 +54,63 @@ def _get_inputs():
             200,
             "instance-60-cpu-4-preemtible/meta_game_compare/2021_05_07/11_24_50/final_base_game/final_eval_in_base_game.json",
         ),
+        #
+        #
+        # BELOW WT ANNOUNCEMENT
         (  # 20 x 10 replicates in meta wt 30 x 5 replicates in base
             "META(Uniform(announcement+tau=0))  & BASE(announcement + LOLA-Exact)",
             200,
-            "instance-60-cpu-4-preemtible/LOLA_Exact/2021_05_07/15_47_51/final_eval_in_base_game.json",
+            "instance-60-cpu-4-preemtible/LOLA_Exact/2021_05_14/13_50_55"
+            "/final_eval_in_base_game.json",
             "2nd_format_placeholder",
         ),
         (  # 20 x 10 replicates in meta wt 30 x 5 replicates in base
             "META(alpha-rank mixed on welfare sets)  & BASE(announcement + "
             "LOLA-Exact)",
             200,
-            "instance-60-cpu-4-preemtible/meta_game_compare/2021_05_11/10_10_14/meta_game/final_base_game/final_eval_in_base_game.json",
+            "instance-60-cpu-4-preemtible/meta_game_compare/2021_05_14"
+            "/10_37_24/meta_game/final_base_game/final_eval_in_base_game.json",
         ),
         (  # 20 x 10 replicates in meta wt 30 x 5 replicates in base
             "META(alpha-rank pure on welfare sets)  & BASE(announcement + "
             "LOLA-Exact)",
             200,
-            "instance-60-cpu-4-preemtible/meta_game_compare/2021_05_11/10_12_43/meta_game/final_base_game/final_eval_in_base_game.json",
+            "instance-60-cpu-4-preemtible/meta_game_compare/2021_05_14/10_39_47/meta_game/final_base_game/final_eval_in_base_game.json",
         ),
         (  # 20 x 10 replicates in meta wt 30 x 5 replicates in base
             "META(replicator dynamic random init on welfare sets)  & BASE("
             "announcement + LOLA-Exact)",
             200,
-            "instance-60-cpu-4-preemtible/meta_game_compare/2021_05_11/10_15_06/meta_game/final_base_game/final_eval_in_base_game.json",
+            "instance-60-cpu-4-preemtible/meta_game_compare/2021_05_14/10_42_10/meta_game/final_base_game/final_eval_in_base_game.json",
         ),
         (  # 20 x 10 replicates in meta wt 30 x 5 replicates in base
             "META(replicator dynamic default init on welfare sets)  & BASE("
             "announcement + LOLA-Exact)",
             200,
-            "instance-60-cpu-4-preemtible/meta_game_compare/2021_05_11/10_19_15/meta_game/final_base_game/final_eval_in_base_game.json",
+            "instance-60-cpu-4-preemtible/meta_game_compare/2021_05_14/10_46_23/meta_game/final_base_game/final_eval_in_base_game.json",
+        ),
+        (  # 20 x 10 replicates in meta wt 30 x 5 replicates in base
+            "META(baseline random)  & BASE(" "announcement + LOLA-Exact)",
+            200,
+            "instance-60-cpu-4-preemtible/meta_game_compare/2021_05_14"
+            "/10_50_36/meta_game/final_base_game/final_eval_in_base_game.json",
+        ),
+        (  # 20 x 10 replicates in meta wt 30 x 5 replicates in base
+            "META(PG)  & BASE(" "announcement + LOLA-Exact)",
+            200,
+            "instance-60-cpu-4-preemtible/meta_game_compare/2021_05_14/10_52_43/meta_game/final_base_game/final_eval_in_base_game.json",
+        ),
+        (  # 20 x 10 replicates in meta wt 30 x 5 replicates in base
+            "META(LOLA-Exact)  & BASE(" "announcement + LOLA-Exact)",
+            200,
+            "instance-60-cpu-4-preemtible/meta_game_compare/2021_05_14"
+            "/11_00_02/meta_game/final_base_game/final_eval_in_base_game.json",
+        ),
+        (  # 20 x 10 replicates in meta wt 30 x 5 replicates in base
+            "META(SOS-Exact)  & BASE(" "announcement + LOLA-Exact)",
+            200,
+            "instance-60-cpu-4-preemtible/meta_game_compare/2021_05_14"
+            "/12_38_59/meta_game/final_base_game/final_eval_in_base_game.json",
         ),
     )
     n_players = 2

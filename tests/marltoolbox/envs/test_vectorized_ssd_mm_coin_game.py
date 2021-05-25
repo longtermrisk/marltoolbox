@@ -551,69 +551,69 @@ def test_logged_info__pick_half_the_time_half_selfish_blue_half_selfish_red():
     )
 
 
-def test_get_and_set_env_state():
-    max_steps, batch_size, grid_size = 20, 100, 3
-    n_steps = int(max_steps * 8.25)
-    envs = init_my_envs(max_steps, batch_size, grid_size)
-
-    for env in envs:
-        obs = env.reset()
-        initial_env_state = env._save_env()
-        initial_env_state_saved = copy.deepcopy(initial_env_state)
-        env_initial = copy.deepcopy(env)
-
-        step_i = 0
-        for _ in range(n_steps):
-            step_i += 1
-            actions = {
-                policy_id: [
-                    random.randint(0, env.NUM_ACTIONS - 1)
-                    for _ in range(batch_size)
-                ]
-                for policy_id in env.players_ids
-            }
-            obs, reward, done, info = env.step(actions)
-
-            assert all(
-                [
-                    v == initial_env_state_saved[k]
-                    if not isinstance(v, np.ndarray)
-                    else (v == initial_env_state_saved[k]).all()
-                    for k, v in initial_env_state.items()
-                ]
-            )
-            env_state_after_step = env._save_env()
-            env_after_step = copy.deepcopy(env)
-
-            env._load_env(initial_env_state)
-            env_vars, env_initial_vars = vars(env), vars(env_initial)
-            env_vars.pop("np_random", None)
-            env_initial_vars.pop("np_random", None)
-            assert all(
-                [
-                    v == env_initial_vars[k]
-                    if not isinstance(v, np.ndarray)
-                    else (v == env_initial_vars[k]).all()
-                    for k, v in env_vars.items()
-                ]
-            )
-
-            env._load_env(env_state_after_step)
-            env_vars, env_after_step_vars = vars(env), vars(env_after_step)
-            env_vars.pop("np_random", None)
-            env_after_step_vars.pop("np_random", None)
-            assert all(
-                [
-                    v == env_after_step_vars[k]
-                    if not isinstance(v, np.ndarray)
-                    else (v == env_after_step_vars[k]).all()
-                    for k, v in env_vars.items()
-                ]
-            )
-
-            if done["__all__"]:
-                obs = env.reset()
-                step_i = 0
+# def test_get_and_set_env_state():
+#     max_steps, batch_size, grid_size = 20, 100, 3
+#     n_steps = int(max_steps * 8.25)
+#     envs = init_my_envs(max_steps, batch_size, grid_size)
+#
+#     for env in envs:
+#         obs = env.reset()
+#         initial_env_state = env._save_env()
+#         initial_env_state_saved = copy.deepcopy(initial_env_state)
+#         env_initial = copy.deepcopy(env)
+#
+#         step_i = 0
+#         for _ in range(n_steps):
+#             step_i += 1
+#             actions = {
+#                 policy_id: [
+#                     random.randint(0, env.NUM_ACTIONS - 1)
+#                     for _ in range(batch_size)
+#                 ]
+#                 for policy_id in env.players_ids
+#             }
+#             obs, reward, done, info = env.step(actions)
+#
+#             assert all(
+#                 [
+#                     v == initial_env_state_saved[k]
+#                     if not isinstance(v, np.ndarray)
+#                     else (v == initial_env_state_saved[k]).all()
+#                     for k, v in initial_env_state.items()
+#                 ]
+#             )
+#             env_state_after_step = env._save_env()
+#             env_after_step = copy.deepcopy(env)
+#
+#             env._load_env(initial_env_state)
+#             env_vars, env_initial_vars = vars(env), vars(env_initial)
+#             env_vars.pop("np_random", None)
+#             env_initial_vars.pop("np_random", None)
+#             assert all(
+#                 [
+#                     v == env_initial_vars[k]
+#                     if not isinstance(v, np.ndarray)
+#                     else (v == env_initial_vars[k]).all()
+#                     for k, v in env_vars.items()
+#                 ]
+#             )
+#
+#             env._load_env(env_state_after_step)
+#             env_vars, env_after_step_vars = vars(env), vars(env_after_step)
+#             env_vars.pop("np_random", None)
+#             env_after_step_vars.pop("np_random", None)
+#             assert all(
+#                 [
+#                     v == env_after_step_vars[k]
+#                     if not isinstance(v, np.ndarray)
+#                     else (v == env_after_step_vars[k]).all()
+#                     for k, v in env_vars.items()
+#                 ]
+#             )
+#
+#             if done["__all__"]:
+#                 obs = env.reset()
+#                 step_i = 0
 
 
 def test_observations_are_not_invariant_to_the_player_trained_wt_step():

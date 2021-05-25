@@ -49,8 +49,8 @@ def main():
             "metrics.pickle",
         )
     )
-    best_checkpoints = utils.restore.extract_checkpoints_from_tune_analysis(
-        analysis
+    best_checkpoints = (
+        utils.restore.extract_checkpoints_from_experiment_analysis(analysis)
     )
     print(best_checkpoints)
 

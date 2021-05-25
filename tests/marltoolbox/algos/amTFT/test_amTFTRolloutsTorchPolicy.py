@@ -254,12 +254,9 @@ def init_worker(
         rllib_config["multiagent"]["policies"][policy_id] = tuple(
             policy_to_modify
         )
-    rllib_config["exploration_config"]["temperature_schedule"] = rllib_config[
-        "exploration_config"
-    ]["temperature_schedule"].func(rllib_config)
-    import ray
+    rllib_config["lr_schedule"] = None
+    rllib_config["exploration_config"]["temperature_schedule"] = None
 
-    ray.tune.sample
     dqn_trainer = DQNTrainer(
         rllib_config, logger_creator=_get_logger_creator(exp_name)
     )
@@ -329,7 +326,7 @@ def test__compute_debit_using_rollouts():
     ):
         worker_.foreach_env(lambda env: env.reset())
         debit = am_tft_policy._compute_debit_using_rollouts(
-            last_obs, opp_action, worker_
+            last_obs, opp_action, worker_, worker.async_env
         )
         assert debit == assert_debit
 

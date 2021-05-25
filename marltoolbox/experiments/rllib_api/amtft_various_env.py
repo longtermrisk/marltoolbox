@@ -10,12 +10,10 @@ from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.tune.integration.wandb import WandbLoggerCallback
 
-from marltoolbox import utils
 from marltoolbox.algos import amTFT, augmented_r2d2
 from marltoolbox.envs import (
     matrix_sequential_social_dilemma,
     coin_game,
-    mixed_motive_coin_game,
     ssd_mixed_motive_coin_game,
 )
 from marltoolbox.envs.utils.wrappers import (
@@ -31,6 +29,7 @@ from marltoolbox.utils import (
     callbacks,
     cross_play,
     config_helper,
+    exp_analysis,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,27 +55,27 @@ def main(
 
         # Train
         if hparams["load_policy_data"] is None:
-            tune_analysis_per_welfare = train_for_each_welfare_function(
+            experiment_analysis_per_welfare = train_for_each_welfare_function(
                 hparams
             )
         else:
-            tune_analysis_per_welfare = load_tune_analysis(
+            experiment_analysis_per_welfare = load_experiment_analysis(
                 hparams["load_policy_data"]
             )
         # Eval & Plot
         analysis_metrics_per_mode = config_and_evaluate_cross_play(
-            tune_analysis_per_welfare, hparams
+            experiment_analysis_per_welfare, hparams
         )
 
         ray.shutdown()
     else:
-        tune_analysis_per_welfare = None
+        experiment_analysis_per_welfare = None
         # Plot
         analysis_metrics_per_mode = config_and_evaluate_cross_play(
-            tune_analysis_per_welfare, hparams
+            experiment_analysis_per_welfare, hparams
         )
 
-    return tune_analysis_per_welfare, analysis_metrics_per_mode
+    return experiment_analysis_per_welfare, analysis_metrics_per_mode
 
 
 def get_hyperparameters(
@@ -177,7 +176,6 @@ def get_hyperparameters(
         # "env_name": "IteratedBoS" if env is None else env,
         # "env_name": "CoinGame" if env is None else env,
         # "env_name": "AsymCoinGame" if env is None else env,
-        # "env_name": "MixedMotiveCoinGame" if env is None else env,
         "env_name": "SSDMixedMotiveCoinGame" if env is None else env,
         "overwrite_reward": True,
         "explore_during_evaluation": True,
@@ -194,20 +192,22 @@ def get_hyperparameters(
     return hparams
 
 
-def load_tune_analysis(grouped_checkpoints_paths: dict):
-    tune_analysis = {}
-    msg = "start load_tune_analysis"
+def load_experiment_analysis(grouped_checkpoints_paths: dict):
+    experiment_analysis = {}
+    msg = "start load_experiment_analysis"
     print(msg)
     logger.info(msg)
     for group_name, checkpoints_paths in grouped_checkpoints_paths.items():
-        one_tune_analysis = miscellaneous.load_one_tune_analysis(
-            checkpoints_paths, n_dir_level_between_ckpt_and_exp_state=3
+        one_experiment_analysis = (
+            exp_analysis.load_experiment_analysis_wt_ckpt_only(
+                checkpoints_paths, n_dir_level_between_ckpt_and_exp_state=3
+            )
         )
-        tune_analysis[group_name] = one_tune_analysis
-    msg = "end load_tune_analysis"
+        experiment_analysis[group_name] = one_experiment_analysis
+    msg = "end load_experiment_analysis"
     print(msg)
     logger.info(msg)
-    return tune_analysis
+    return experiment_analysis
 
 
 def modify_hyperparams_for_the_selected_env(hp):
@@ -221,7 +221,6 @@ def modify_hyperparams_for_the_selected_env(hp):
 
     hp["buf_frac"] = 0.125
     hp["training_intensity"] = 1 if hp["debug"] else 40
-    # hp["rollout_length"] = 6
     hp["rollout_length"] = 20
     hp["n_rollout_replicas"] = 10
     hp["beta_steps_config"] = [
@@ -243,7 +242,6 @@ def modify_hyperparams_for_the_selected_env(hp):
 
         hp["lambda"] = 0.96
         hp["alpha"] = 0.0
-        # hp["beta"] = 0.5 / 4
         hp["beta"] = config_helper.configurable_linear_scheduler(
             "beta_steps_config"
         )
@@ -277,15 +275,9 @@ def modify_hyperparams_for_the_selected_env(hp):
             hp["y_limits"] = (-0.02, 1.5)
             hp["env_class"] = ssd_mixed_motive_coin_game.SSDMixedMotiveCoinGame
             hp["both_players_can_pick_the_same_coin"] = True
-            # hp["beta"] = 0.5 / 2
-        elif "MixedMotiveCoinGame" in hp["env_name"]:
-            hp["x_limits"] = (-2.0, 2.0)
-            hp["y_limits"] = (-0.5, 3.0)
-            hp["env_class"] = mixed_motive_coin_game.MixedMotiveCoinGame
-            hp["both_players_can_pick_the_same_coin"] = True
         else:
-            hp["x_limits"] = (-0.5, 0.6)
-            hp["y_limits"] = (-0.5, 0.6)
+            hp["x_limits"] = (-0.1, 0.6)
+            hp["y_limits"] = (-0.1, 0.6)
             hp["env_class"] = coin_game.CoinGame
     else:
 
@@ -360,7 +352,7 @@ def modify_hyperparams_for_the_selected_env(hp):
 
 
 def train_for_each_welfare_function(hp):
-    tune_analysis_per_welfare = {}
+    experiment_analysis_per_welfare = {}
     for welfare_fn, welfare_group_name in hp["welfare_functions"]:
         print("==============================================")
         print(
@@ -398,8 +390,8 @@ def train_for_each_welfare_function(hp):
             results, hp = postprocess_utilitarian_results(
                 results, env_config, hp
             )
-        tune_analysis_per_welfare[welfare_group_name] = results
-    return tune_analysis_per_welfare
+        experiment_analysis_per_welfare[welfare_group_name] = results
+    return experiment_analysis_per_welfare
 
 
 def preprocess_utilitarian_config(hp):
@@ -478,6 +470,7 @@ def get_rllib_config(hp, welfare_fn, eval=False):
             amTFT.AmTFTCallbacks,
             log.get_logging_callbacks_class(
                 log_full_epi=hp["num_envs_per_worker"] == 1,
+                log_model_sumamry=True,
             ),
         ),
         "logger_config": {
@@ -550,6 +543,8 @@ def get_rllib_config(hp, welfare_fn, eval=False):
             "sgd_momentum": hp["sgd_momentum"],
         },
         # "log_level": "DEBUG",
+        "evaluation_interval": None,
+        "evaluation_parallel_to_training": False,
     }
 
     rllib_config = _modify_config_for_coin_game(rllib_config, env_config, hp)
@@ -726,7 +721,9 @@ def _modify_config_for_r2d2(rllib_config, hp, stop_config, eval=False):
             rllib_config["env_config"]["bs_epi_mul"] = 4
             if "CoinGame" in hp["env_name"]:
                 rllib_config["training_intensity"] = tune.sample_from(
-                    lambda spec: spec.config["num_envs_per_worker"] * 40
+                    lambda spec: spec.config["num_envs_per_worker"]
+                    * max(1, spec.config["num_workers"])
+                    * hp["training_intensity"]
                 )
                 if not eval:
                     stop_config["episodes_total"] = 8000
@@ -744,7 +741,7 @@ def postprocess_utilitarian_results(results, env_config, hp):
             hp_cp["train_n_replicates"]
             // hp_cp["n_times_more_utilitarians_seeds"]
         )
-        results = utils.tune_analysis.filter_trials(
+        results = exp_analysis.filter_trials(
             results,
             metric=f"policy_reward_mean/{env_config['players_ids'][0]}",
             metric_threshold=hp_cp["utilitarian_filtering_threshold"]
@@ -759,15 +756,15 @@ def postprocess_utilitarian_results(results, env_config, hp):
     return results, hp_cp
 
 
-def config_and_evaluate_cross_play(tune_analysis_per_welfare, hp):
+def config_and_evaluate_cross_play(experiment_analysis_per_welfare, hp):
     config_eval, env_config, stop, hp_eval = _generate_eval_config(hp)
     return evaluate_self_play_cross_play(
-        tune_analysis_per_welfare, config_eval, env_config, stop, hp_eval
+        experiment_analysis_per_welfare, config_eval, env_config, stop, hp_eval
     )
 
 
 def evaluate_self_play_cross_play(
-    tune_analysis_per_welfare, config_eval, env_config, stop, hp_eval
+    experiment_analysis_per_welfare, config_eval, env_config, stop, hp_eval
 ):
     exp_name = os.path.join(hp_eval["exp_name"], "eval")
     evaluator = cross_play.evaluator.SelfAndCrossPlayEvaluator(
@@ -780,7 +777,7 @@ def evaluate_self_play_cross_play(
         policies_to_load_from_checkpoint=copy.deepcopy(
             env_config["players_ids"]
         ),
-        tune_analysis_per_exp=tune_analysis_per_welfare,
+        experiment_analysis_per_welfare=experiment_analysis_per_welfare,
         rllib_trainer_class=dqn.r2d2.R2D2Trainer
         if hp_eval["use_r2d2"]
         else dqn.DQNTrainer,
@@ -918,5 +915,5 @@ def print_inequity_aversion_welfare(env_config, analysis_metrics_per_mode):
 
 if __name__ == "__main__":
     use_r2d2 = True
-    debug_mode = False
+    debug_mode = True
     main(debug_mode, use_r2d2=use_r2d2)

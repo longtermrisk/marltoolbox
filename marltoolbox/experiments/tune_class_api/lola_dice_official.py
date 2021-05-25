@@ -85,7 +85,7 @@ def main(debug):
 def train(hp):
     tune_config, stop, _ = get_tune_config(hp)
     # Train with the Tune Class API (not RLLib Class)
-    tune_analysis = tune.run(
+    experiment_analysis = tune.run(
         LOLADICE,
         name=hp["exp_name"],
         config=tune_config,
@@ -104,8 +104,8 @@ def train(hp):
             )
         ],
     )
-    tune_analysis_per_exp = {"": tune_analysis}
-    return tune_analysis_per_exp
+    experiment_analysis_per_welfare = {"": experiment_analysis}
+    return experiment_analysis_per_welfare
 
 
 def get_tune_config(hp: dict) -> dict:
@@ -181,7 +181,7 @@ def get_tune_config(hp: dict) -> dict:
     return config, stop, env_config
 
 
-def evaluate(tune_analysis_per_exp, hp, debug):
+def evaluate(experiment_analysis_per_welfare, hp, debug):
     (
         rllib_hp,
         rllib_config_eval,
@@ -198,7 +198,7 @@ def evaluate(tune_analysis_per_exp, hp, debug):
         trainable_class,
         stop,
         env_config,
-        tune_analysis_per_exp,
+        experiment_analysis_per_welfare,
     )
 
 

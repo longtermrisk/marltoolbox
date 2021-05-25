@@ -104,7 +104,7 @@ def load_one_policy_checkpoint(
             )
 
 
-def extract_checkpoints_from_tune_analysis(
+def extract_checkpoints_from_experiment_analysis(
     tune_experiment_analysis: ExperimentAnalysis,
 ) -> List[str]:
     """

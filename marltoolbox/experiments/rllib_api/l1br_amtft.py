@@ -38,33 +38,29 @@ def get_hyperparameters(debug, env):
 
     train_n_replicates = 4 if debug else 8
     pool_of_seeds = miscellaneous.get_random_seeds(train_n_replicates)
-    hparams = {
-        "debug": debug,
-        "use_r2d2": False,
-        "filter_utilitarian": False,
-        "train_n_replicates": train_n_replicates,
-        "seeds": pool_of_seeds,
-        "exp_name": exp_name,
-        "num_envs_per_worker": 16,
-        "welfare_functions": [
-            (postprocessing.WELFARE_UTILITARIAN, "utilitarian")
-        ],
-        "amTFTPolicy": amTFT.AmTFTRolloutsTorchPolicy,
-        "explore_during_evaluation": True,
-        "n_seeds_lvl0": train_n_replicates,
-        "n_seeds_lvl1": train_n_replicates // 2,
-        "gamma": 0.96,
-        "temperature_schedule": False,
-        "jitter": 0.05,
-        "hiddens": [64],
-        "env_name": "IteratedPrisonersDilemma",
-        # "env_name": "IteratedAsymBoS",
-        # "env_name": "IteratedAsymChicken",
-        # "env_name": "CoinGame",
-        # "env_name": "AsymCoinGame",
-        "overwrite_reward": True,
-        "reward_uncertainty": 0.0,
-    }
+
+    hparams = amtft_various_env.get_hyperparameters(debug)
+    hparams.update(
+        {
+            "debug": debug,
+            "use_r2d2": False,
+            "filter_utilitarian": False,
+            "train_n_replicates": train_n_replicates,
+            "seeds": pool_of_seeds,
+            "exp_name": exp_name,
+            "num_envs_per_worker": 16,
+            "welfare_functions": [
+                (postprocessing.WELFARE_UTILITARIAN, "utilitarian")
+            ],
+            "n_seeds_lvl0": train_n_replicates,
+            "n_seeds_lvl1": train_n_replicates // 2,
+            "env_name": "IteratedPrisonersDilemma",
+            # "env_name": "IteratedAsymBoS",
+            # "env_name": "IteratedAsymChicken",
+            # "env_name": "CoinGame",
+            # "env_name": "AsymCoinGame",
+        }
+    )
 
     if env is not None:
         hparams["env_name"] = env
@@ -96,8 +92,10 @@ def train_lvl1_agents(hp_lvl1, tune_analysis_lvl0):
     stop, env_config, rllib_config = amtft_various_env.get_rllib_config(
         hp_lvl1, hp_lvl1["welfare_functions"][0][0]
     )
-    checkpoints_lvl0 = utils.restore.extract_checkpoints_from_tune_analysis(
-        tune_analysis_lvl0
+    checkpoints_lvl0 = (
+        utils.restore.extract_checkpoints_from_experiment_analysis(
+            tune_analysis_lvl0
+        )
     )
     rllib_config = modify_conf_for_lvl1_training(
         hp_lvl1, env_config, rllib_config, checkpoints_lvl0

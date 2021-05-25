@@ -78,7 +78,7 @@ class SelfAndCrossPlayEvaluator:
         evaluation_config,
         stop_config,
         policies_to_load_from_checkpoint,
-        tune_analysis_per_exp: list,
+        experiment_analysis_per_welfare: list,
         rllib_trainer_class=PGTrainer,
         tune_trainer_class=None,
         n_cross_play_per_checkpoint: int = 1,
@@ -93,7 +93,7 @@ class SelfAndCrossPlayEvaluator:
             the checkpoints you are going to provide.
         :param stop_config: Normal stop_config argument provided to tune.run().
         :param policies_to_load_from_checkpoint:
-        :param tune_analysis_per_exp: List of the tune_analysis you want to
+        :param experiment_analysis_per_welfare: List of the tune_analysis you want to
             extract the groups of checkpoints from. All the checkpoints in these
             tune_analysis will be extracted.
         :param rllib_trainer_class: (default is the PGTrainer class) Normal 1st argument (run_or_experiment) provided to
@@ -116,7 +116,7 @@ class SelfAndCrossPlayEvaluator:
                 policies_to_load_from_checkpoint=policies_to_load_from_checkpoint,
             )
             self.preload_checkpoints_from_tune_results(
-                tune_results=tune_analysis_per_exp
+                tune_results=experiment_analysis_per_welfare
             )
             analysis_metrics_per_mode = self.evaluate_performances(
                 n_self_play_per_checkpoint=n_self_play_per_checkpoint,
@@ -217,7 +217,7 @@ class SelfAndCrossPlayEvaluator:
         self, one_tune_result: ExperimentAnalysis, group_name
     ):
         checkpoints_in_one_group = (
-            utils.restore.extract_checkpoints_from_tune_analysis(
+            utils.restore.extract_checkpoints_from_experiment_analysis(
                 one_tune_result
             )
         )
@@ -452,7 +452,7 @@ class SelfAndCrossPlayEvaluator:
     def _split_metadata_per_group_pair_id(self, metadata_for_one_mode, mode):
         analysis_per_group_pair_id = []
 
-        tune_analysis = [
+        experiment_analysis = [
             metadata["results"] for metadata in metadata_for_one_mode
         ]
         pairs_of_group_names = [
@@ -471,7 +471,7 @@ class SelfAndCrossPlayEvaluator:
                 one_pair_of_group_names,
             ) = self._find_and_group_results_for_one_group_pair_id(
                 group_pair_id,
-                tune_analysis,
+                experiment_analysis,
                 ids_of_pairs_of_groups,
                 pairs_of_group_names,
             )

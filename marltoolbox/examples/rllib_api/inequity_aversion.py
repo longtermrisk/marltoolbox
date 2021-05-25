@@ -67,7 +67,7 @@ def main(debug):
     MyPGTrainer = PGTrainer.with_updates(
         default_policy=MyPGTorchPolicy, get_policy_class=None
     )
-    tune_analysis = tune.run(
+    experiment_analysis = tune.run(
         MyPGTrainer,
         stop=stop,
         checkpoint_freq=10,
@@ -75,7 +75,7 @@ def main(debug):
         name=exp_name,
     )
     ray.shutdown()
-    return tune_analysis
+    return experiment_analysis
 
 
 if __name__ == "__main__":

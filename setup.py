@@ -22,6 +22,7 @@ setup(
         "numba>=0.51.2",
         "matplotlib>=3.3.2",
         "wandb",
+        "ordered-set",
     ],
     extras_require={
         "lola": [

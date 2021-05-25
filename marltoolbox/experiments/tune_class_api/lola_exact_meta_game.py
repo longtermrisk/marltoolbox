@@ -62,7 +62,7 @@ def main(debug):
             )
         )
 
-        tune_analysis = ray.tune.run(
+        experiment_analysis = ray.tune.run(
             PGTrainer,
             config=mixed_rllib_configs,
             verbose=1,
@@ -76,7 +76,7 @@ def main(debug):
             mean_player_2_payoffs,
             player_1_payoffs,
             player_2_payoffs,
-        ) = amtft_meta_game.extract_metrics(tune_analysis, hp_eval)
+        ) = amtft_meta_game.extract_metrics(experiment_analysis, hp_eval)
 
         results.append(
             (
@@ -168,17 +168,6 @@ def _load_base_game_results(hp, load_base_replicate_i):
     prefix2 = os.path.expanduser(prefix2)
     if "IteratedAsymBoS" in hp["env_name"]:
         hp["data_dir"] = (
-            # instance-60-cpu-3-preemtible & instance-60-cpu-4-preemtible
-            prefix + "LOLA_Exact/2021_05_05/14_49_18",  # 30 replicates
-            prefix + "LOLA_Exact/2021_05_05/14_50_39",  # 30 replicates
-            prefix + "LOLA_Exact/2021_05_05/14_51_01",  # 30 replicates
-            prefix + "LOLA_Exact/2021_05_05/14_53_56",  # 30 replicates
-            prefix + "LOLA_Exact/2021_05_05/14_56_32",  # 30 replicates
-            prefix + "LOLA_Exact/2021_05_05/15_46_08",  # 30 replicates
-            prefix + "LOLA_Exact/2021_05_05/15_46_23",  # 30 replicates
-            prefix + "LOLA_Exact/2021_05_05/15_46_59",  # 30 replicates
-            prefix + "LOLA_Exact/2021_05_05/15_47_22",  # 30 replicates
-            prefix + "LOLA_Exact/2021_05_05/15_48_22",  # 30 replicates
             # instance-60-cpu-4-preemtible
             prefix2 + "LOLA_Exact/2021_05_07/07_52_32",  # 30 replicates
             prefix2 + "LOLA_Exact/2021_05_07/08_02_38",  # 30 replicates
@@ -193,6 +182,17 @@ def _load_base_game_results(hp, load_base_replicate_i):
             prefix2 + "LOLA_Exact/2021_05_07/10_02_30",  # 30 replicates
             prefix2 + "LOLA_Exact/2021_05_07/10_02_39",  # 30 replicates
             prefix2 + "LOLA_Exact/2021_05_07/10_02_50",  # 30 replicates
+            # instance-60-cpu-3-preemtible & instance-60-cpu-4-preemtible
+            prefix + "LOLA_Exact/2021_05_05/14_49_18",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/14_50_39",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/14_51_01",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/14_53_56",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/14_56_32",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/15_46_08",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/15_46_23",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/15_46_59",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/15_47_22",  # 30 replicates
+            prefix + "LOLA_Exact/2021_05_05/15_48_22",  # 30 replicates
         )[load_base_replicate_i]
     else:
         raise ValueError(f'bad env_name: {hp["env_name"]}')
@@ -299,7 +299,6 @@ def _get_vanilla_lola_exact_eval_config(hp, final_eval_over_n_epi):
         callbacks.PolicyCallbacks,
         log.get_logging_callbacks_class(
             log_full_epi=True,
-            log_full_epi_interval=1,
             log_from_policy_in_evaluation=True,
         ),
     )

@@ -79,10 +79,15 @@ class SOSTrainer(tune.Trainable):
             f"mean_reward_{self.players_ids[0]}": mean_reward_player_row,
             f"mean_reward_{self.players_ids[1]}": mean_reward_player_col,
             "episodes_total": self.training_iteration,
+            "policy1": self.policy_player1,
+            "policy2": self.policy_player2,
         }
         return to_log
 
     def _exact_loss_matrix_game_two_by_two_actions(self):
+
+        self.policy_player1 = torch.sigmoid(self.weights_per_players[0])
+        self.policy_player2 = torch.sigmoid(self.weights_per_players[1])
 
         pi_player_row_init_state = torch.sigmoid(
             self.weights_per_players[0][0:1]
@@ -133,6 +138,8 @@ class SOSTrainer(tune.Trainable):
         sum_2 = torch.stack([sum_2 for _ in range(self.n_actions_p2)], dim=1)
         pi_player_row = pi_player_row / sum_1
         pi_player_col = pi_player_col / sum_2
+        self.policy_player1 = pi_player_row
+        self.policy_player2 = pi_player_col
 
         pi_player_row_init_state = pi_player_row[:1, :]
         pi_player_col_init_state = pi_player_col[:1, :]

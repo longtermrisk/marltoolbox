@@ -7,11 +7,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.tune import Trainable
-from ray.tune import register_trainable
-from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
-from ray.tune.checkpoint_manager import Checkpoint
-from ray.tune.trial import Trial
 
 if TYPE_CHECKING:
     pass
@@ -220,45 +215,6 @@ def fing_longer_substr(str_list):
     elif len(str_list) == 1:
         substr = str_list[0]
     return substr
-
-
-def load_one_tune_analysis(
-    checkpoints_paths: list,
-    result: dict = {"training_iteration": 1, "episode_reward_mean": 1},
-    default_metric: "str" = "episode_reward_mean",
-    default_mode: str = "max",
-    n_dir_level_between_ckpt_and_exp_state=1,
-):
-    """Helper to re-create a fake tune_analysis only containing the
-    checkpoints provided."""
-
-    assert default_metric in result.keys()
-
-    register_trainable("fake trial", Trainable)
-    trials = []
-    for one_checkpoint_path in checkpoints_paths:
-        one_trial = Trial(trainable_name="fake trial")
-        ckpt = Checkpoint(
-            Checkpoint.PERSISTENT, value=one_checkpoint_path, result=result
-        )
-        one_trial.checkpoint_manager.on_checkpoint(ckpt)
-        trials.append(one_trial)
-
-    json_file_path = _get_experiment_state_file_path(
-        checkpoints_paths[0],
-        split_path_n_times=n_dir_level_between_ckpt_and_exp_state,
-    )
-    one_tune_analysis = ExperimentAnalysis(
-        experiment_checkpoint_path=json_file_path,
-        trials=trials,
-        default_mode=default_mode,
-        default_metric=default_metric,
-    )
-
-    for trial in one_tune_analysis.trials:
-        assert len(trial.checkpoint_manager.best_checkpoints()) == 1
-
-    return one_tune_analysis
 
 
 def _get_experiment_state_file_path(one_checkpoint_path, split_path_n_times=1):

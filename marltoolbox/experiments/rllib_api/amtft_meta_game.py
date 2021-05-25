@@ -20,9 +20,10 @@ from marltoolbox.utils import (
     plot,
     path,
     cross_play,
-    tune_analysis,
+    exp_analysis,
     restore,
 )
+from marltoolbox.utils.path import get_exp_dir_from_exp_name
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ def main(debug):
         ) = _produce_rllib_config_for_each_replicates(hp)
 
         mixed_rllib_configs = _mix_rllib_config(all_rllib_config, hp_eval)
-        tune_analysis = ray.tune.run(
+        experiment_analysis = ray.tune.run(
             hp["trainer"],
             config=mixed_rllib_configs,
             verbose=1,
@@ -63,7 +64,7 @@ def main(debug):
             mean_player_2_payoffs,
             player_1_payoffs,
             player_2_payoffs,
-        ) = extract_metrics(tune_analysis, hp_eval)
+        ) = extract_metrics(experiment_analysis, hp_eval)
 
         results.append(
             (
@@ -288,16 +289,16 @@ def _mix_rllib_config(all_rllib_configs, hp_eval):
         raise ValueError()
 
 
-def extract_metrics(tune_analysis, hp_eval):
+def extract_metrics(experiment_analysis, hp_eval):
     # TODO PROBLEM using last result but there are several episodes with
     #  different welfare functions !! => BUT plot is good
     # Metric from the last result means the metric average over the last
     # training iteration and we have only one training iteration here.
-    player_1_payoffs = utils.tune_analysis.extract_metrics_for_each_trials(
-        tune_analysis, metric=hp_eval["x_axis_metric"]
+    player_1_payoffs = utils.exp_analysis.extract_metrics_for_each_trials(
+        experiment_analysis, metric=hp_eval["x_axis_metric"]
     )
-    player_2_payoffs = utils.tune_analysis.extract_metrics_for_each_trials(
-        tune_analysis, metric=hp_eval["y_axis_metric"]
+    player_2_payoffs = utils.exp_analysis.extract_metrics_for_each_trials(
+        experiment_analysis, metric=hp_eval["y_axis_metric"]
     )
     mean_player_1_payoffs = sum(player_1_payoffs) / len(player_1_payoffs)
     mean_player_2_payoffs = sum(player_2_payoffs) / len(player_2_payoffs)
@@ -328,7 +329,7 @@ class NumpyEncoder(json.JSONEncoder):
 
 
 def save_to_json(exp_name, object, filename="final_eval_in_base_game.json"):
-    exp_dir = _get_exp_dir_from_exp_name(exp_name)
+    exp_dir = get_exp_dir_from_exp_name(exp_name)
     json_file = os.path.join(exp_dir, filename)
     if not os.path.exists(exp_dir):
         os.makedirs(exp_dir)
@@ -337,7 +338,7 @@ def save_to_json(exp_name, object, filename="final_eval_in_base_game.json"):
 
 
 def plot_results(exp_name, results, hp_eval, format_fn, jitter=0.0):
-    exp_dir = _get_exp_dir_from_exp_name(exp_name)
+    exp_dir = get_exp_dir_from_exp_name(exp_name)
     data_groups_per_mode = format_fn(results)
 
     background_area_coord = None
@@ -611,7 +612,7 @@ def extract_stats_on_welfare_announced(
     players_ids, exp_name=None, exp_dir=None, nested_info=False
 ):
     if exp_dir is None:
-        exp_dir = _get_exp_dir_from_exp_name(exp_name)
+        exp_dir = get_exp_dir_from_exp_name(exp_name)
     all_in_exp_dir = utils.path.get_children_paths_wt_discarding_filter(
         exp_dir, _filter=None
     )
@@ -619,12 +620,6 @@ def extract_stats_on_welfare_announced(
     dir_name_by_tau = _group_dir_name_by_tau(all_dirs, nested_info)
     dir_name_by_tau = _order_by_tau(dir_name_by_tau)
     _get_stats_for_each_tau(dir_name_by_tau, players_ids, exp_dir)
-
-
-def _get_exp_dir_from_exp_name(exp_name: str):
-    exp_dir = os.path.join("~/ray_results", exp_name)
-    exp_dir = os.path.expanduser(exp_dir)
-    return exp_dir
 
 
 def _group_dir_name_by_tau(all_dirs: List[str], nested_info) -> Dict:

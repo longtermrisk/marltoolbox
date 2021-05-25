@@ -327,7 +327,7 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
 
     if tune_hp["load_population"] is None:
         lvl0_checkpoints = (
-            utils.restore.extract_checkpoints_from_tune_analysis(
+            utils.restore.extract_checkpoints_from_experiment_analysis(
                 results_list_lvl0
             )
         )

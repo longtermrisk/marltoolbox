@@ -66,7 +66,6 @@ class MatrixSequentialSocialDilemma(
 
     def __init__(self, config: Dict = {}):
 
-        assert "reward_randomness" not in config.keys()
         assert self.PAYOFF_MATRIX is not None
         assert self.PAYOFF_MATRIX.shape[0] == self.NUM_ACTIONS
         assert self.PAYOFF_MATRIX.shape[1] == self.NUM_ACTIONS

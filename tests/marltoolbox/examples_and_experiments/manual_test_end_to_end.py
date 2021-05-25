@@ -4,13 +4,13 @@
 import ray
 
 from marltoolbox.utils import postprocessing
-from marltoolbox.utils.tune_analysis import check_learning_achieved
+from marltoolbox.utils.exp_analysis import check_learning_achieved
 
 
-def print_metrics_available(tune_analysis):
+def print_metrics_available(experiment_analysis):
     print(
-        "metric available in tune_analysis:",
-        tune_analysis.results_df.columns.tolist(),
+        "metric available in experiment_analysis:",
+        experiment_analysis.results_df.columns.tolist(),
     )
 
 
@@ -19,16 +19,16 @@ def test_pg_ipd():
 
     # Restart Ray defensively in case the ray connection is lost.
     ray.shutdown()
-    tune_analysis = main(debug=False)
-    print_metrics_available(tune_analysis)
-    check_learning_achieved(tune_results=tune_analysis, max_=-75)
+    experiment_analysis = main(debug=False)
+    print_metrics_available(experiment_analysis)
+    check_learning_achieved(tune_results=experiment_analysis, max_=-75)
     check_learning_achieved(
-        tune_results=tune_analysis,
+        tune_results=experiment_analysis,
         min_=0.9,
         metric="custom_metrics.DD_freq/player_row_mean",
     )
     check_learning_achieved(
-        tune_results=tune_analysis,
+        tune_results=experiment_analysis,
         min_=0.9,
         metric="custom_metrics.DD_freq/player_col_mean",
     )
@@ -39,16 +39,16 @@ def test_r2d2_ipd():
 
     # Restart Ray defensively in case the ray connection is lost.
     ray.shutdown()
-    tune_analysis = main(debug=False)
-    print_metrics_available(tune_analysis)
-    check_learning_achieved(tune_results=tune_analysis, max_=-75)
+    experiment_analysis = main(debug=False)
+    print_metrics_available(experiment_analysis)
+    check_learning_achieved(tune_results=experiment_analysis, max_=-75)
     check_learning_achieved(
-        tune_results=tune_analysis,
+        tune_results=experiment_analysis,
         min_=0.9,
         metric="custom_metrics.DD_freq/player_row_mean",
     )
     check_learning_achieved(
-        tune_results=tune_analysis,
+        tune_results=experiment_analysis,
         min_=0.9,
         metric="custom_metrics.DD_freq/player_col_mean",
     )
@@ -58,35 +58,37 @@ def test_ltft_ipd():
     from marltoolbox.experiments.rllib_api.ltft_various_env import main
 
     ray.shutdown()
-    tune_analysis_self_play, tune_analysis_against_opponent = main(
+    experiment_analysis_self_play, experiment_analysis_against_opponent = main(
         debug=False,
         env="IteratedPrisonersDilemma",
         train_n_replicates=1,
         against_naive_opp=True,
     )
-    print_metrics_available(tune_analysis_self_play)
-    check_learning_achieved(tune_results=tune_analysis_self_play, min_=-42)
+    print_metrics_available(experiment_analysis_self_play)
     check_learning_achieved(
-        tune_results=tune_analysis_self_play,
+        tune_results=experiment_analysis_self_play, min_=-42
+    )
+    check_learning_achieved(
+        tune_results=experiment_analysis_self_play,
         min_=0.9,
         metric="custom_metrics.CC_freq/player_row_mean",
     )
     check_learning_achieved(
-        tune_results=tune_analysis_self_play,
+        tune_results=experiment_analysis_self_play,
         min_=0.9,
         metric="custom_metrics.CC_freq/player_col_mean",
     )
-    print_metrics_available(tune_analysis_against_opponent)
+    print_metrics_available(experiment_analysis_against_opponent)
     check_learning_achieved(
-        tune_results=tune_analysis_against_opponent, max_=-75
+        tune_results=experiment_analysis_against_opponent, max_=-75
     )
     check_learning_achieved(
-        tune_results=tune_analysis_against_opponent,
+        tune_results=experiment_analysis_against_opponent,
         min_=0.9,
         metric="custom_metrics.DD_freq/player_row_mean",
     )
     check_learning_achieved(
-        tune_results=tune_analysis_against_opponent,
+        tune_results=experiment_analysis_against_opponent,
         min_=0.9,
         metric="custom_metrics.DD_freq/player_col_mean",
     )
@@ -96,23 +98,26 @@ def test_amtft_ipd():
     from marltoolbox.experiments.rllib_api.amtft_various_env import main
 
     ray.shutdown()
-    tune_analysis_per_welfare, analysis_metrics_per_mode = main(
+    experiment_analysis_per_welfare, analysis_metrics_per_mode = main(
         debug=False,
         train_n_replicates=1,
         filter_utilitarian=False,
         env="IteratedPrisonersDilemma",
     )
-    for welfare_name, tune_analysis in tune_analysis_per_welfare.items():
+    for (
+        welfare_name,
+        experiment_analysis,
+    ) in experiment_analysis_per_welfare.items():
         print("welfare_name", welfare_name)
-        print_metrics_available(tune_analysis)
-        check_learning_achieved(tune_results=tune_analysis, min_=-204)
+        print_metrics_available(experiment_analysis)
+        check_learning_achieved(tune_results=experiment_analysis, min_=-204)
         check_learning_achieved(
-            tune_results=tune_analysis,
+            tune_results=experiment_analysis,
             min_=0.9,
             metric="custom_metrics.CC_freq/player_row_mean",
         )
         check_learning_achieved(
-            tune_results=tune_analysis,
+            tune_results=experiment_analysis,
             min_=0.9,
             metric="custom_metrics.CC_freq/player_col_mean",
         )

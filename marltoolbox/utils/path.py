@@ -2,8 +2,7 @@ import json
 import os
 from typing import List
 
-from marltoolbox.utils import miscellaneous
-from marltoolbox.utils.tune_analysis import ABOVE, BELOW, EQUAL
+from marltoolbox.utils import miscellaneous, exp_analysis
 
 
 def get_unique_child_dir(_dir: str):
@@ -168,7 +167,7 @@ def filter_list_of_replicates_by_results(
     replicate_paths: list,
     filter_key: str,
     filter_threshold: float,
-    filter_mode: str = ABOVE,
+    filter_mode: str = exp_analysis.ABOVE,
 ) -> list:
     print("Going to start filtering replicate_paths")
     print("len(replicate_paths)", len(replicate_paths))
@@ -184,14 +183,33 @@ def filter_list_of_replicates_by_results(
             f"filter_key {filter_key} not found in last_result "
             f"{last_result}"
         )
-        if filter_mode == ABOVE and current_value > filter_threshold:
+        if (
+            filter_mode == exp_analysis.ABOVE
+            and current_value > filter_threshold
+        ):
             filtered_replicate_paths.append(replica_path)
-        elif filter_mode == EQUAL and current_value == filter_threshold:
+        elif (
+            filter_mode == exp_analysis.EQUAL
+            and current_value == filter_threshold
+        ):
             filtered_replicate_paths.append(replica_path)
-        elif filter_mode == BELOW and current_value < filter_threshold:
+        elif (
+            filter_mode == exp_analysis.BELOW
+            and current_value < filter_threshold
+        ):
             filtered_replicate_paths.append(replica_path)
         else:
             print(f"filtering out replica_path {replica_path}")
     print("After filtering:")
     print("len(filtered_replicate_paths)", len(filtered_replicate_paths))
     return filtered_replicate_paths
+
+
+def get_exp_dir_from_exp_name(exp_name: str):
+    """
+    :param exp_name: exp_name provided to tune.run
+    :return: path to the experiment analysis repository (ray log dir)
+    """
+    exp_dir = os.path.join("~/ray_results", exp_name)
+    exp_dir = os.path.expanduser(exp_dir)
+    return exp_dir

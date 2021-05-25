@@ -9,10 +9,11 @@ from ray.rllib.utils import override
 
 from marltoolbox.envs import vectorized_coin_game
 from marltoolbox.envs.vectorized_coin_game import (
+    _flatten_index,
+    _unflatten_index,
     _same_pos,
     move_players,
 )
-from marltoolbox.envs.vectorized_mixed_motive_coin_game import _place_coin
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +230,32 @@ class VectSSDMixedMotiveCG(
                 player_blue_info["blue_coop_fraction"] = n_coop / blue_pick
 
         return player_red_info, player_blue_info
+
+    def _save_env(self):
+        raise NotImplementedError()
+
+    def _load_env(self, env_state):
+        raise NotImplementedError()
+
+
+@jit(nopython=True)
+def _place_coin(red_pos_i, blue_pos_i, grid_size, other_coin_pos_i):
+    red_pos_flat = _flatten_index(red_pos_i, grid_size)
+    blue_pos_flat = _flatten_index(blue_pos_i, grid_size)
+    other_coin_pos_flat = _flatten_index(other_coin_pos_i, grid_size)
+    possible_coin_pos = np.array(
+        [
+            x
+            for x in range(9)
+            if (
+                (x != blue_pos_flat)
+                and (x != red_pos_flat)
+                and (x != other_coin_pos_flat)
+            )
+        ]
+    )
+    flat_coin_pos = np.random.choice(possible_coin_pos)
+    return _unflatten_index(flat_coin_pos, grid_size)
 
 
 @jit(nopython=True)

@@ -1,6 +1,11 @@
+import logging
 from abc import ABC
 
+import numpy as np
+
 from marltoolbox.envs.utils.interfaces import InfoAccumulationInterface
+
+logger = logging.getLogger(__name__)
 
 
 class TwoPlayersTwoActionsInfoMixin(InfoAccumulationInterface, ABC):
@@ -65,3 +70,37 @@ class NPlayersNDiscreteActionsInfoMixin(InfoAccumulationInterface, ABC):
             self.info_counters[id] = 0
         self.info_counters[id] += 1
         self.info_counters["n_steps_accumulated"] += 1
+
+
+class NPlayersNContinuousActionsInfoMixin(InfoAccumulationInterface, ABC):
+    """
+    Mixin class to add logging capability in N player games with continuous
+    actions.
+    Logs the mean and std of action profiles used
+    (action profile: the set of actions used during one step by all players).
+    """
+
+    logger.warning(
+        "MIXING NPlayersNContinuousActionsInfoMixin NOT DEBBUGED, NOT TESTED"
+    )
+
+    def _init_info(self):
+        self.data_accumulated = {}
+
+    def _reset_info(self):
+        self.data_accumulated = {}
+
+    def _get_episode_info(self):
+        info = {}
+        for k, v in self.data_accumulated.items():
+            array = np.array(v)
+            info[f"{k}_mean"] = array.mean()
+            info[f"{k}_std"] = array.std()
+
+        return info
+
+    def _accumulate_info(self, **kwargs_actions):
+        for k, v in kwargs_actions.items():
+            if k not in self.data_accumulated.keys():
+                self.data_accumulated[k] = []
+            self.data_accumulated[k].append(v)

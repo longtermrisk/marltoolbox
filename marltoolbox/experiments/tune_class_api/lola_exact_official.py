@@ -34,11 +34,11 @@ def main(debug):
             num_gpus=0,
             local_mode=debug,
         )
-        tune_analysis_per_exp = train(hparams)
+        experiment_analysis_per_welfare = train(hparams)
     else:
-        tune_analysis_per_exp = None
+        experiment_analysis_per_welfare = None
 
-    evaluate(tune_analysis_per_exp, hparams)
+    evaluate(experiment_analysis_per_welfare, hparams)
     ray.shutdown()
 
 
@@ -106,7 +106,7 @@ def get_hyperparameters(debug, train_n_replicates=None, env=None):
 def train(hp):
     tune_config, stop_config, _ = get_tune_config(hp)
     # Train with the Tune Class API (not an RLLib Trainer)
-    tune_analysis = tune.run(
+    experiment_analysis = tune.run(
         LOLAExactTrainer,
         name=hp["exp_name"],
         config=tune_config,
@@ -126,11 +126,13 @@ def train(hp):
         # ],
     )
     if hp["classify_into_welfare_fn"]:
-        tune_analysis_per_exp = _split_tune_results_wt_welfare(tune_analysis)
+        experiment_analysis_per_welfare = (
+            _classify_trials_in_function_of_welfare(experiment_analysis)
+        )
     else:
-        tune_analysis_per_exp = {"": tune_analysis}
+        experiment_analysis_per_welfare = {"": experiment_analysis}
 
-    return tune_analysis_per_exp
+    return experiment_analysis_per_welfare
 
 
 def get_tune_config(hp: dict):
@@ -163,7 +165,7 @@ def get_tune_config(hp: dict):
     return tune_config, stop_config, env_config
 
 
-def evaluate(tune_analysis_per_exp, hp):
+def evaluate(experiment_analysis_per_welfare, hp):
     (
         rllib_hp,
         rllib_config_eval,
@@ -180,7 +182,7 @@ def evaluate(tune_analysis_per_exp, hp):
         trainable_class,
         stop_config,
         env_config,
-        tune_analysis_per_exp,
+        experiment_analysis_per_welfare,
         n_cross_play_per_checkpoint=min(15, hp["train_n_replicates"] - 1)
         if hp["classify_into_welfare_fn"]
         else None,
@@ -260,18 +262,20 @@ def generate_eval_config(hp):
     )
 
 
-def _split_tune_results_wt_welfare(
-    tune_analysis,
+def _classify_trials_in_function_of_welfare(
+    experiment_analysis,
 ):
-    tune_analysis_per_welfare = {}
-    for trial in tune_analysis.trials:
+    experiment_analysis_per_welfare = {}
+    for trial in experiment_analysis.trials:
         welfare_name = _get_trial_welfare(trial)
-        if welfare_name not in tune_analysis_per_welfare.keys():
-            _add_empty_tune_analysis(
-                tune_analysis_per_welfare, welfare_name, tune_analysis
+        if welfare_name not in experiment_analysis_per_welfare.keys():
+            _add_empty_experiment_analysis(
+                experiment_analysis_per_welfare,
+                welfare_name,
+                experiment_analysis,
             )
-        tune_analysis_per_welfare[welfare_name].trials.append(trial)
-    return tune_analysis_per_welfare
+        experiment_analysis_per_welfare[welfare_name].trials.append(trial)
+    return experiment_analysis_per_welfare
 
 
 def _get_trial_welfare(trial):
@@ -283,11 +287,13 @@ def _get_trial_welfare(trial):
     return welfare_name
 
 
-def _add_empty_tune_analysis(
-    tune_analysis_per_welfare, welfare_name, tune_analysis
+def _add_empty_experiment_analysis(
+    experiment_analysis_per_welfare, welfare_name, experiment_analysis
 ):
-    tune_analysis_per_welfare[welfare_name] = copy.deepcopy(tune_analysis)
-    tune_analysis_per_welfare[welfare_name].trials = []
+    experiment_analysis_per_welfare[welfare_name] = copy.deepcopy(
+        experiment_analysis
+    )
+    experiment_analysis_per_welfare[welfare_name].trials = []
 
 
 if __name__ == "__main__":

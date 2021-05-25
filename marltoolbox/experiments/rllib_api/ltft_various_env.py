@@ -14,7 +14,6 @@ from marltoolbox.algos.exploiters.influence_evader import (
 from marltoolbox.envs import (
     matrix_sequential_social_dilemma,
     vectorized_coin_game,
-    mixed_motive_coin_game,
 )
 from marltoolbox.envs.utils.wrappers import (
     add_RewardUncertaintyEnvClassWrapper,
@@ -138,11 +137,6 @@ def _modify_hyperparams_for_the_selected_env(hp):
             hp["x_limits"] = (-0.5, 3.0)
             hp["y_limits"] = (-1.1, 0.6)
             hp["env_class"] = vectorized_coin_game.AsymVectorizedCoinGame
-        elif "MixedMotiveCoinGame" in hp["env_name"]:
-            hp["x_limits"] = (-0.5, 1.0)
-            hp["y_limits"] = (-0.5, 1.0)
-            hp["env_class"] = mixed_motive_coin_game.MixedMotiveCoinGame
-            hp["both_players_can_pick_the_same_coin"] = True
         else:
             hp["x_limits"] = (-0.5, 0.6)
             hp["y_limits"] = (-0.5, 0.6)

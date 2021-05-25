@@ -99,6 +99,12 @@ def get_tune_policy_class(PolicyClass):
 
             self._to_log = value
 
+        def on_episode_start(self, *args, **kwargs):
+            if hasattr(self.tune_trainer, "reset_compute_actions_state"):
+                self.tune_trainer.reset_compute_actions_state()
+            if hasattr(self.tune_trainer, "on_episode_start"):
+                self.tune_trainer.on_episode_start()
+
     return FrozenPolicyFromTuneTrainer
 
 
