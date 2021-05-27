@@ -74,7 +74,19 @@ def _extract_metric_and_log_and_plot(tune_analysis, hparams, hp_eval):
         results.append(
             (player1_avg_r_one_replicate, player2_avg_r_one_replicate)
         )
-    amtft_meta_game.save_to_json(exp_name=hparams["exp_name"], object=results)
+    result_to_json = {"results": copy.deepcopy(results)}
+    coordination_success = _extract_coordination_metric(tune_analysis)
+    print("coordination_success", coordination_success)
+    result_to_json["coordination_success"] = np.array(
+        coordination_success
+    ).tolist()
+    result_to_json["mean_coordination_success"] = np.array(
+        coordination_success
+    ).mean()
+
+    amtft_meta_game.save_to_json(
+        exp_name=hparams["exp_name"], object=result_to_json
+    )
     amtft_meta_game.plot_results(
         exp_name=hparams["exp_name"],
         results=results,
@@ -169,8 +181,13 @@ def _get_hyperparameters(
     )
 
     players_ids = ["player_row", "player_col"]
-    hp["x_axis_metric"] = f"policy_reward_mean.{players_ids[0]}"
-    hp["y_axis_metric"] = f"policy_reward_mean.{players_ids[1]}"
+    if hp["base_game_policies"] == BASE_NEGOTIATION:
+        hp["x_axis_metric"] = f"policy_reward_mean.{players_ids[0]}"
+        hp["y_axis_metric"] = f"policy_reward_mean.{players_ids[1]}"
+    else:
+        hp["x_axis_metric"] = f"policy_reward_mean/{players_ids[0]}"
+        hp["y_axis_metric"] = f"policy_reward_mean/{players_ids[1]}"
+
     return hp
 
 
@@ -1350,6 +1367,14 @@ def _get_rllib_config_for_base_negociation_policy(hp):
 def _change_simple_rllib_config_for_final_base_game_eval(
     hp, rllib_config, stop_config
 ):
+    rllib_config["min_iter_time_s"] = 0.0
+    rllib_config["timesteps_per_iteration"] = 0
+    rllib_config["metrics_smoothing_episodes"] = 1
+    if "max_steps" in rllib_config["env_config"].keys():
+        rllib_config["rollout_fragment_length"] = rllib_config["env_config"][
+            "max_steps"
+        ]
+
     rllib_config["multiagent"]["policies_to_train"] = ["None"]
     rllib_config["callbacks"] = callbacks.merge_callbacks(
         callbacks.PolicyCallbacks,
@@ -1363,7 +1388,7 @@ def _change_simple_rllib_config_for_final_base_game_eval(
         lambda spec: miscellaneous.get_random_seeds(1)[0]
     )
     if not hp["debug"]:
-        stop_config["episodes_total"] = 10
+        stop_config["episodes_total"] = 100
     return rllib_config, stop_config
 
 
@@ -1531,6 +1556,18 @@ def _extract_metrics(tune_analysis, hp_eval):
     return player_1_payoffs, player_2_payoffs
 
 
+def _extract_coordination_metric(tune_analysis):
+    coordination_success = exp_analysis.extract_metrics_for_each_trials(
+        tune_analysis, metric="custom_metrics/coordination_success_mean"
+    )
+    coordination_success = [float(el) for el in coordination_success]
+
+    # coordination_success = path.
+    #     tune_analysis, metric="custom_metrics/coordination_success_mean"
+    # )
+    return coordination_success
+
+
 def _format_result_for_plotting(results):
     data_groups_per_mode = {}
     df_rows = []
@@ -1676,24 +1713,24 @@ def _train_meta_policy_using_robustness(hp):
 
 
 if __name__ == "__main__":
-    debug_mode = False
+    debug_mode = True
     loop_over_main = True
 
     if loop_over_main:
         base_game_algo_to_eval = (
-            # BASE_LOLA_EXACT,
-            BASE_NEGOTIATION,
+            BASE_LOLA_EXACT,
+            # BASE_NEGOTIATION,
         )
         meta_game_algo_to_eval = (
             META_APLHA_RANK,
             META_APLHA_PURE,
-            # META_REPLICATOR_DYNAMIC,
-            # META_REPLICATOR_DYNAMIC_ZERO_INIT,
-            # META_RANDOM,
-            # META_PG,
-            # META_LOLA_EXACT,
-            # META_SOS,
-            # META_UNIFORM,
+            META_REPLICATOR_DYNAMIC,
+            META_REPLICATOR_DYNAMIC_ZERO_INIT,
+            META_RANDOM,
+            META_PG,
+            META_LOLA_EXACT,
+            META_SOS,
+            META_UNIFORM,
         )
         for base_game_algo in base_game_algo_to_eval:
             for meta_game_algo in meta_game_algo_to_eval:

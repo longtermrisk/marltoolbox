@@ -72,7 +72,7 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
         "n_players": 2,
         # "game_name": "kuhn_poker",
         "game_name": "python_simple_bargaining",
-        "oracle_type": "BR",
+        "oracle_type": "PG",
         "training_strategy_selector": "probabilistic",
         "rectifier": "",
         "sims_per_entry": 1000,

@@ -370,11 +370,12 @@ class WelfareCoordinationTorchPolicy(
         policy,
         policy_id,
         policy_ids,
+        episode,
         **kwargs,
     ):
         if not self._welfare_set_annonced:
             # Called only by one agent, not by both
-            self._annonce_welfare_sets(worker)
+            self._annonce_welfare_sets(worker, episode)
         if not self._welfare_chosen_for_epi:
             # Called only by one agent, not by both
             self._coordinate_on_welfare_to_use_for_epi(worker)
@@ -390,9 +391,7 @@ class WelfareCoordinationTorchPolicy(
         assert self._welfare_chosen_for_epi
 
     @staticmethod
-    def _annonce_welfare_sets(
-        worker,
-    ):
+    def _annonce_welfare_sets(worker, episode):
         intersection_of_welfare_sets = (
             WelfareCoordinationTorchPolicy._find_intersection_of_welfare_sets(
                 worker
@@ -404,6 +403,18 @@ class WelfareCoordinationTorchPolicy(
                 WelfareCoordinationTorchPolicy._inform_policy_of_situation(
                     policy, intersection_of_welfare_sets
                 )
+
+        WelfareCoordinationTorchPolicy._add_coordination_info_into_custom_metrics(
+            intersection_of_welfare_sets, episode
+        )
+
+    @staticmethod
+    def _add_coordination_info_into_custom_metrics(
+        intersection_of_welfare_sets, episode
+    ):
+        episode.custom_metrics[f"coordination_success"] = float(
+            len(intersection_of_welfare_sets) > 0
+        )
 
     @staticmethod
     def _find_intersection_of_welfare_sets(worker):

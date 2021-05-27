@@ -36,7 +36,18 @@ def extract_metrics_for_each_trials(
 ):
     metric_values = []
     for trial in experiment_analysis.trials:
-        metric_values.append(trial.metric_analysis[metric][metric_mode])
+        dict_ = trial.metric_analysis
+        for sub_key in metric.split("."):
+            try:
+                dict_ = dict_[sub_key]
+            except KeyError:
+                raise KeyError(
+                    f"sub_key {sub_key} not in dict_.keys() {dict_.keys()}"
+                )
+
+        value = dict_[metric_mode]
+        metric_values.append(value)
+
     return metric_values
 
 

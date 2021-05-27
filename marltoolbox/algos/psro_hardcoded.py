@@ -4,6 +4,7 @@
 import copy
 import os
 import pickle
+import collections
 
 import numpy as np
 import torch
@@ -12,13 +13,64 @@ from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.pg import PGTorchPolicy, DEFAULT_CONFIG
 from ray.rllib.evaluation.sample_batch_builder import (
     MultiAgentSampleBatchBuilder,
+    SampleBatchBuilder,
 )
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import clip_action
+from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 
 from marltoolbox.experiments.tune_class_api.various_algo_meta_game import (
     _compute_policy_wt_alpha_rank,
 )
+
+
+class MySampleBatchBuilder(SampleBatchBuilder):
+    def __init__(self):
+        # deprecation_warning(
+        #     old="SampleBatchBuilder",
+        #     new="child class of `SampleCollector`",
+        #     error=False)
+        self.buffers = collections.defaultdict(list)
+        self.count = 0
+
+
+class MyMultiAgentSampleBatchBuilder(MultiAgentSampleBatchBuilder):
+    def __init__(self, policy_map, clip_rewards, callbacks):
+        # deprecation_warning(old="MultiAgentSampleBatchBuilder", error=False)
+        self.policy_map = policy_map
+        self.clip_rewards = clip_rewards
+        # Build the Policies' SampleBatchBuilders.
+        self.policy_builders = {
+            k: MySampleBatchBuilder() for k in policy_map.keys()
+        }
+        # Whenever we observe a new agent, add a new SampleBatchBuilder for
+        # this agent.
+        self.agent_builders = {}
+        # Internal agent-to-policy map.
+        self.agent_to_policy = {}
+        self.callbacks = callbacks
+        # Number of "inference" steps taken in the environment.
+        # Regardless of the number of agents involved in each of these steps.
+        self.count = 0
+
+    def add_values(self, agent_id, policy_id, **values) -> None:
+        """Add the given dictionary (row) of values to this batch.
+
+        Args:
+            agent_id (obj): Unique id for the agent we are adding values for.
+            policy_id (obj): Unique id for policy controlling the agent.
+            values (dict): Row of values to add for this agent.
+        """
+
+        if agent_id not in self.agent_builders:
+            self.agent_builders[agent_id] = MySampleBatchBuilder()
+            self.agent_to_policy[agent_id] = policy_id
+
+        # Include the current agent id for multi-agent algorithms.
+        if agent_id != _DUMMY_AGENT_ID:
+            values["agent_id"] = agent_id
+
+        self.agent_builders[agent_id].add_values(**values)
 
 
 class PSROTrainer(tune.Trainable):
@@ -26,17 +78,21 @@ class PSROTrainer(tune.Trainable):
         self.config = config
         self.env = self.config["env_class"](self.config["env_config"])
         self.eval_cell_over_n_epi = self.config["eval_cell_over_n_epi"]
-        self.batch_size = self.config["batch_size"]
+        self.batch_size = self.config["oracle_config"]["train_batch_size"]
         self.policy_ids = self.config["env_config"]["players_ids"]
         self.n_steps_by_epi = self.config["env_config"]["n_steps_by_epi"]
         self.train_oracle_n_epi = self.config["train_oracle_n_epi"]
         self.num_iterations = self.config["num_iterations"]
         self.training = self.config["training"]
         self.verbose = self.config["verbose"]
+        self.oracle_config = self.config["oracle_config"]
+        self.center_returns = self.config["center_returns"]
+        self.to_report_base_game = {}
         self.meta_policies = {
             policy_id: self._init_meta_player()
             for policy_id in self.policy_ids
         }
+        self.init_obs = self.env.reset()
         if self.training:
             self._init_meta_payoff_matrix()
 
@@ -65,8 +121,7 @@ class PSROTrainer(tune.Trainable):
         )
 
     def _compute_joint_payoffs(self, policy_pl_1, policy_pl_2):
-
-        self._init_to_report(in_cell_eval=True)
+        # self._init_to_report(in_cell_eval=True)
         self._reset_total_welfare()
         self.players = {
             self.policy_ids[0]: policy_pl_1,
@@ -81,7 +136,6 @@ class PSROTrainer(tune.Trainable):
         n_steps_playerd = int(self.eval_cell_over_n_epi * self.n_steps_by_epi)
         mean_r_pl1 = total_r_pl_1 / n_steps_playerd
         mean_r_pl2 = total_r_pl_2 / n_steps_playerd
-
         return [mean_r_pl1, mean_r_pl2]
 
     def step(self):
@@ -92,8 +146,11 @@ class PSROTrainer(tune.Trainable):
         self.compute_new_meta_policies()
 
         self.to_report["finished"] = (
-            False if self.training_iteration < self.num_iterations else True
+            False
+            if self.training_iteration < (self.num_iterations - 1)
+            else True
         )
+        self._fill_to_report()
         return self.to_report
 
     def _init_to_report(self, in_cell_eval, in_rllib_eval=False):
@@ -102,6 +159,27 @@ class PSROTrainer(tune.Trainable):
             "in_cell_eval": in_cell_eval,
             "in_rllib_eval": in_rllib_eval,
         }
+
+    def _fill_to_report(self):
+        # Add base policies actions
+        for player_id, meta_policy in self.meta_policies.items():
+            self.to_report[f"{player_id}_meta_policy"] = meta_policy[
+                "meta_policy"
+            ].probs
+            for pi_idx, base_policy in enumerate(meta_policy["policies"]):
+                actions = self._helper_compute_action(
+                    base_policy, obs=self.init_obs[player_id]
+                )
+                self.to_report[f"{player_id}_pi_idx_{pi_idx}_act"] = actions
+
+        # Add base policies actions
+        if hasattr(self, "meta_game_payoff_matrix"):
+            self.to_report[
+                f"meta_game_payoff_matrix_pl0"
+            ] = self.meta_game_payoff_matrix[..., 0]
+            self.to_report[
+                f"meta_game_payoff_matrix_pl1"
+            ] = self.meta_game_payoff_matrix[..., 1]
 
     def compute_new_meta_policies(self):
 
@@ -171,7 +249,7 @@ class PSROTrainer(tune.Trainable):
         policy = self._init_pg_policy()
         self._get_base_players(policy, policy_id)
         self.multi_agent_batch_builder = self._init_batch_builder()
-        self.to_report = {}
+        self.to_report_base_game = {}
         self._reset_total_welfare()
         self.n_steps_in_batch = 0
         for i in range(self.train_oracle_n_epi):
@@ -191,8 +269,12 @@ class PSROTrainer(tune.Trainable):
                     )
                 self._reset_total_welfare()
                 if self.verbose:
-                    print(policy_id, "self.to_report", self.to_report)
-                self.to_report = {}
+                    print(
+                        policy_id,
+                        "self.to_report_base_game",
+                        self.to_report_base_game,
+                    )
+                self.to_report_base_game = {}
                 self.n_steps_in_batch = 0
 
         return policy
@@ -201,7 +283,7 @@ class PSROTrainer(tune.Trainable):
         self.total_welfare = [0.0] * len(self.policy_ids)
 
     def _init_batch_builder(self):
-        return MultiAgentSampleBatchBuilder(
+        return MyMultiAgentSampleBatchBuilder(
             policy_map={
                 player_id: player for player_id, player in self.players.items()
             },
@@ -210,14 +292,15 @@ class PSROTrainer(tune.Trainable):
         )
 
     def _init_pg_policy(self):
-        my_pg_config = DEFAULT_CONFIG
-        my_pg_config["gamma"] = 0.96
-        my_pg_config["train_batch_size"] = self.batch_size
-        # my_pg_config["normalize_actions"] = True
-        # my_pg_config["clip_actions"] = True
-        return PGTorchPolicy(
-            self.env.OBSERVATION_SPACE, self.env.ACTION_SPACE, my_pg_config
+        pg_policy = PGTorchPolicy(
+            self.env.OBSERVATION_SPACE,
+            self.env.ACTION_SPACE,
+            self.oracle_config,
         )
+        # for v in dir(pg_policy):
+        #     if isinstance(v, torch.nn.Module):
+        #         print(v)
+        return pg_policy
 
     def _get_base_players(self, policy, policy_id):
         opp_policy = self._sample_opponent_policy(policy_id)
@@ -259,7 +342,7 @@ class PSROTrainer(tune.Trainable):
             for player_id, player_policy in self.players.items()
         }
         obs_after_act, rewards, done, info = self.env.step(actions)
-        self.to_report.update(info)
+        self.to_report_base_game.update(info)
 
         return obs_after_act, actions, rewards, done
 
@@ -288,7 +371,8 @@ class PSROTrainer(tune.Trainable):
 
     def _optimize_weights(self, policy, policy_id):
         multiagent_batch = self.multi_agent_batch_builder.build_and_reset()
-        multiagent_batch = self._center_reward(multiagent_batch, policy_id)
+        if self.center_returns:
+            multiagent_batch = self._center_reward(multiagent_batch, policy_id)
         stats = policy.learn_on_batch(
             multiagent_batch.policy_batches[policy_id]
         )

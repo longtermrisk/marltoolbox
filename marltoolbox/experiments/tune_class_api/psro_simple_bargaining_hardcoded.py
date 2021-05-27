@@ -5,6 +5,7 @@ import time
 
 import ray
 from ray import tune
+from ray.rllib.agents import pg
 from ray.rllib.agents.pg import PGTorchPolicy
 
 from marltoolbox.algos.psro_hardcoded import PSROTrainer
@@ -32,7 +33,7 @@ def main(debug: bool, env=None):
     :param debug: selection of debug mode using less compute
     :param env: option to overwrite the env selection
     """
-    train_n_replicates = 2 if debug else 10
+    train_n_replicates = 2 if debug else 4
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
 
@@ -53,6 +54,26 @@ def main(debug: bool, env=None):
 
 
 def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
+    from ray.rllib.models.catalog import MODEL_DEFAULTS
+
+    oracle_model_config = copy.deepcopy(MODEL_DEFAULTS)
+    oracle_model_config.update(
+        {
+            # "fcnet_hiddens": [16, 16],
+            # "fcnet_activation": "relu",
+            "fcnet_hiddens": [],
+        }
+    )
+
+    oracle_config = copy.deepcopy(pg.DEFAULT_CONFIG)
+    oracle_config.update(
+        {
+            "gamma": 0.96,
+            "train_batch_size": 1,
+            "model": oracle_model_config,
+            "lr": 0.001,
+        }
+    )
 
     tune_hparams = {
         "debug": debug,
@@ -69,14 +90,14 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
         "seed": tune.grid_search(seeds),
         "load_plot_data": None,
         # Example: "load_plot_data": ".../SelfAndCrossPlay_save.p",
-        "n_players": 2,
         # "game_name": "kuhn_poker",
         "training": True,
         "eval_cell_over_n_epi": 10 if debug else 100,
-        "batch_size": 20,
         "train_oracle_n_epi": 100 if debug else 4000,
-        "num_iterations": 3 if debug else 100,
+        "num_iterations": 3 if debug else 10,
+        "oracle_config": oracle_config,
         "verbose": debug,
+        "center_returns": False,
         "env_class": simple_bargaining.SimpleBargaining,
         "env_config": {
             "players_ids": ["player_0", "player_1"],
@@ -146,8 +167,8 @@ def _get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
     tune_config[
         "plot_assemblage_tags"
     ] += aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS
-    tune_hp["x_limits"] = (0.5, 3.0)
-    tune_hp["y_limits"] = (0.5, 3.0)
+    tune_hp["x_limits"] = (-0.1, 3.0)
+    tune_hp["y_limits"] = (-0.1, 3.0)
     tune_hp["jitter"] = 0.00
     tune_config["metric"] = "training_iteration"
     env_config = tune_hp["env_config"]

@@ -144,10 +144,11 @@ class SimpleBargaining(
         pl1_work_on_task1 = 1 - pl1_work_on_task0
         cutoff_p0 = action_player_0[1]
         cutoff_p1 = action_player_1[1]
-
-        accept_offer_task0 = (pl0_work_on_task0 - cutoff_p1) >= 0
-        # accept_offer_task1 = (pl1_work_on_task1 - cutoff_p0) >= 0
-        accept_offer_task1 = (cutoff_p0 - pl1_work_on_task0) >= 0
+        # print("pl0_work_on_task0 - cutoff_p1", pl0_work_on_task0, cutoff_p1)
+        # print("pl1_work_on_task1 - cutoff_p0", pl1_work_on_task1, cutoff_p0)
+        accept_offer_task0 = (pl0_work_on_task0 - cutoff_p1) > 0
+        accept_offer_task1 = (pl1_work_on_task1 - cutoff_p0) > 0
+        # accept_offer_task1 = (cutoff_p0 - pl1_work_on_task0) > 0
         accept_offer = accept_offer_task0 and accept_offer_task1
         if not accept_offer:
             return [0.0, 0.0]
@@ -234,7 +235,7 @@ class SimpleBargaining(
 
 if __name__ == "__main__":
     env = SimpleBargaining({})
-    v_range = np.arange(0, 1.05, 0.1)
+    v_range = np.arange(0.01, 0.99, 0.1)
     v_range = np.round(v_range, 2)
     print("v_range", v_range)
     for pl_0_w in v_range:

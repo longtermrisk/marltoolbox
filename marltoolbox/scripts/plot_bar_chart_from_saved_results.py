@@ -80,11 +80,11 @@ MAX_PICK_SPEED = (
 )  # 0.75
 CG_MAX = (1.0 * MAX_PICK_SPEED / 2.0, 1.0 * MAX_PICK_SPEED / 2.0)
 CG_MIN = (0, 0)
-MCPCG_MAX = (
+ABCG_MAX = (
     (2 / 2.0 + 1 / 2.0) * MAX_PICK_SPEED / 2.0,
     (3 / 2.0 + 1 / 2.0) * MAX_PICK_SPEED / 2.0,
 )
-MCPCG_MIN = (0, 0)
+ABCG_MIN = (0, 0)
 
 LOLA_EXACT_WT_IPD_IDX = 1
 N_NO_MCP = 4
@@ -173,7 +173,7 @@ def _get_inputs():
         ),
         File_data(
             "amTFT",
-            "MCPCG",
+            "ABCG",
             100.0,
             "instance-10-cpu-2"
             "/amTFT/2021_05_17/18_08_40/eval/2021_05_20/04_51_12"
@@ -181,12 +181,12 @@ def _get_inputs():
             "instance-10-cpu-2"
             "/amTFT/2021_05_17/18_08_40/eval/2021_05_20/04_51_12"
             "/plot_same_and_diff_prefself_and_cross_play_policy_reward_mean_player_blue_vs_policy_reward_mean_player_red_matrix.json",
-            MCPCG_MAX,
-            MCPCG_MIN,
+            ABCG_MAX,
+            ABCG_MIN,
         ),
         File_data(
             "LOLA-PG **",
-            "MCPCG",
+            "ABCG",
             40.0,
             "instance-60-cpu-2-preemtible"
             "/LOLA_PG/2021_05_19/08_17_37/eval/2021_05_19/18_02_21"
@@ -194,8 +194,8 @@ def _get_inputs():
             "instance-60-cpu-2-preemtible"
             "/LOLA_PG/2021_05_19/08_17_37/eval/2021_05_19/18_02_21"
             "/plot_same_and_diff_prefself_and_cross_play_policy_reward_mean_player_blue_vs_policy_reward_mean_player_red_matrix.json",
-            MCPCG_MAX,
-            MCPCG_MIN,
+            ABCG_MAX,
+            ABCG_MIN,
         ),
         Final_values(
             "NEGOTIATION ***",
@@ -369,16 +369,16 @@ def _plot_bars(perf_per_mode_per_files):
 
 def _plot_bars_separate(perf_per_mode_per_files):
     plt.figure(figsize=(10, 5))
-
+    rotation = 20
     plt.subplot(121)
     _, x, groups = _plot_merged_players(perf_per_mode_per_files, mcp=False)
-    plt.xticks(x, groups, rotation=15)
+    plt.xticks(x, groups, rotation=rotation, ha="right")
     plt.ylabel("Normalized scores")
 
     plt.subplot(122)
     legend, x, groups = _plot_merged_players(perf_per_mode_per_files, mcp=True)
-    plt.xticks(x, groups, rotation=15)
-    plt.ylabel("Normalized scores")
+    plt.xticks(x, groups, rotation=rotation, ha="right")
+    # plt.ylabel("Normalized scores")
 
     plt.legend(
         legend,
@@ -398,7 +398,6 @@ def _plot_merged_players(
     groups = [f"{el.env}+{el.base_algo}" for el in perf_per_mode_per_files]
     groups = [group.strip("+") for group in groups]
     width = 0.1
-    x_delta = 0.3
 
     (
         self_play,
@@ -412,15 +411,15 @@ def _plot_merged_players(
     ) = _preproces_values(all_perf)
 
     if plot_all:
-        plt.text(1.36, 0.04, NA, fontdict={"fontsize": 10.0, "rotation": 90})
-        plt.text(3.36, 0.04, NA, fontdict={"fontsize": 10.0, "rotation": 90})
+        plt.text(1.08, 0.04, NA, fontdict={"fontsize": 10.0, "rotation": 90})
+        plt.text(3.08, 0.04, NA, fontdict={"fontsize": 10.0, "rotation": 90})
     else:
         if not mcp:
             plt.text(
-                1.46, 0.04, NA, fontdict={"fontsize": 10.0, "rotation": 90}
+                1.08, 0.04, NA, fontdict={"fontsize": 10.0, "rotation": 90}
             )
             plt.text(
-                3.46, 0.04, NA, fontdict={"fontsize": 10.0, "rotation": 90}
+                3.08, 0.04, NA, fontdict={"fontsize": 10.0, "rotation": 90}
             )
             self_play = self_play[:N_NO_MCP]
             cross_play = cross_play[:N_NO_MCP]
@@ -432,12 +431,11 @@ def _plot_merged_players(
             diff_pref_perf_err = diff_pref_perf_err[:N_NO_MCP]
             groups = groups[:N_NO_MCP]
             plt.text(
-                1.8,
+                1.35,
                 -0.3,
                 "a)",
                 fontdict={"fontsize": 14.0, "weight": "bold"},
             )
-            x_delta += 0.1
         else:
             self_play = self_play[N_NO_MCP:]
             cross_play = cross_play[N_NO_MCP:]
@@ -448,9 +446,8 @@ def _plot_merged_players(
             same_pref_perf_err = same_pref_perf_err[N_NO_MCP:]
             diff_pref_perf_err = diff_pref_perf_err[N_NO_MCP:]
             groups = groups[N_NO_MCP:]
-            x_delta += 0.4
             plt.text(
-                2.3,
+                1.85,
                 -0.3,
                 "b)",
                 fontdict={"fontsize": 14.0, "weight": "bold"},
@@ -468,7 +465,7 @@ def _plot_merged_players(
     ]
 
     plt.bar(
-        x_delta + x - width * 1.0 - 0.02,
+        x - width * 1.0 - 0.02,
         self_play,
         width,
         yerr=self_play_err,
@@ -477,7 +474,7 @@ def _plot_merged_players(
         capsize=3,
     )
     plt.bar(
-        x_delta + x + width * 0.0,
+        x + width * 0.0,
         same_pref_perf,
         width,
         yerr=same_pref_perf_err,
@@ -485,8 +482,14 @@ def _plot_merged_players(
         ecolor="black",
         capsize=3,
     )
+    if mcp:
+        # x = x[:-1]
+        # diff_pref_perf = diff_pref_perf[:-1]
+        # diff_pref_perf_err = diff_pref_perf_err[:-1]
+        diff_pref_perf[-1] = 0
+        diff_pref_perf_err[-1] = 0
     plt.bar(
-        x_delta + x + width * 1.0 + 0.02,
+        x + width * 1.0 + 0.02,
         diff_pref_perf,
         width,
         yerr=diff_pref_perf_err,
@@ -500,6 +503,26 @@ def _plot_merged_players(
         "Cross-play between identical preferences",
         "Cross-play between different preferences",
     ]
+
+    if mcp:
+        # extra for negotiation env
+        n_values = 6
+        x_nego_shit = 4
+        with_nego = width / 2  # - 0.001
+        negotiation_x = np.array(
+            [i * with_nego + i * 0.02 for i in range(n_values)]
+        )
+        negotiation_y = np.array([0.65 - 0.05 * i for i in range(n_values)])
+        diff_pref_perf_err = [diff_pref_perf_err[-1] for i in range(n_values)]
+        plt.bar(
+            x_nego_shit + negotiation_x + width * 1.0,
+            negotiation_y,
+            with_nego - 0.001,
+            yerr=diff_pref_perf_err,
+            color=COLORS[2],
+            ecolor="black",
+            capsize=3,
+        )
 
     return legend, x, groups
 
