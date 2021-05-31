@@ -1,9 +1,10 @@
 import json
 import os
-import random
 from collections import Iterable
+
 import matplotlib.pyplot as plt
 import numpy as np
+
 from marltoolbox.scripts.plot_bar_chart_from_saved_results import (
     _get_inputs,
     Perf,
@@ -13,17 +14,15 @@ from marltoolbox.scripts.plot_bar_chart_from_saved_results import (
     PLAYER_0,
     PLAYER_1,
     COLORS,
+    LEGEND_NO_SPLIT,
+    LEGEND,
+    REMOVE_STARS,
+    VALUE_TERM,
 )
 
 plt.switch_backend("agg")
 plt.style.use("seaborn-whitegrid")
 plt.rcParams.update({"font.size": 12})
-
-LEGEND = [
-    "Self-play",
-    "Cross-play identical preferences",
-    "Cross-play different preferences",
-]
 
 
 def main(debug):
@@ -39,10 +38,14 @@ def main(debug):
 
     _plot_ipd_iasymbos(perf_per_mode_per_files)
     _plot_all(perf_per_mode_per_files)
+    _plot_ipd_iasymbos(perf_per_mode_per_files, welfare_split=False)
+    _plot_all(perf_per_mode_per_files, welfare_split=False)
 
 
 def _preprocess_inputs(prefix, files_data):
-    # Remove Negotiation data
+
+    # !!!! Remove Negotiation data (not plotted in scatter plot) !!!!
+    # (don't currently have the raw data to plot it)
     files_data = files_data[:-1]
 
     files_to_process = []
@@ -172,14 +175,13 @@ def _convert_str_of_list_to_list(str_of_list):
     ]
 
 
-def _plot_all(perf_per_mode_per_files):
+def _plot_all(perf_per_mode_per_files, welfare_split=True):
     n_figures = len(perf_per_mode_per_files)
     n_row = int(np.sqrt(n_figures) + 0.99)
 
     n = 100 * n_row + 10 * n_row + 1
     plt.figure(figsize=(10, 10))
 
-    lim = [(-3.5, 0.5), (-3.5, 0.5), (-1.5, 4.5)]
     for i in range(n_figures):
         plt.subplot(n + i)
         data_idx = i
@@ -187,6 +189,10 @@ def _plot_all(perf_per_mode_per_files):
             xlim = (-3.5, 0.5)
             ylim = (-3.5, 0.5)
             jitter = 0.05
+            background_area_coord = np.array(
+                [[[-1, -1], [-3, +0]], [[+0, -3], [-2, -2]]]
+            )
+            _add_background_area(background_area_coord)
         elif perf_per_mode_per_files[i].env == "CG":
             xlim = (-0.1, 0.6)
             ylim = (-0.1, 0.6)
@@ -195,6 +201,10 @@ def _plot_all(perf_per_mode_per_files):
             xlim = (-0.5, 4.5)
             ylim = (-0.5, 4.5)
             jitter = 0.05
+            background_area_coord = np.array(
+                [[[+4.0, +1.0], [+0.0, +0.0]], [[+0.0, +0.0], [+2.0, +2.0]]]
+            )
+            _add_background_area(background_area_coord)
         elif perf_per_mode_per_files[i].env == "ABCG":
             xlim = (-0.1, 0.8)
             ylim = (-0.1, 1.6)
@@ -205,55 +215,118 @@ def _plot_all(perf_per_mode_per_files):
             xlim,
             ylim,
             jitter,
-            plot_x_label=i // n_row == n_row - 1,
+            welfare_split=welfare_split,
+            plot_x_label=i // n_row == n_row - 1 or i == 5,
             plot_y_label=i % n_row == 0,
         )
 
-    plt.tight_layout()
-    # Save the figure and show
-    plt.legend(
-        LEGEND,
-        frameon=True,
-        bbox_to_anchor=(2.25, 0.65),
-        # loc="lower right",
-    )
-    plt.savefig("scatter_plots_all.png")
+    if welfare_split:
+        plt.tight_layout(rect=[0, 0.10, 1.0, 1.0])
+        # Save the figure and show
+        plt.legend(
+            LEGEND if welfare_split else LEGEND_NO_SPLIT,
+            frameon=True,
+            bbox_to_anchor=(1.15, -0.25),
+        )
+
+    else:
+        plt.tight_layout()
+        # Save the figure and show
+        plt.legend(
+            LEGEND if welfare_split else LEGEND_NO_SPLIT,
+            frameon=True,
+            bbox_to_anchor=(2.0, 0.55),
+        )
+    plt.savefig(f"scatter_plots_all_split_{welfare_split}.png")
 
 
-def _plot_ipd_iasymbos(perf_per_mode_per_files):
+def _plot_ipd_iasymbos(perf_per_mode_per_files, welfare_split=True):
+    if welfare_split:
+        plt.figure(figsize=(5.8, 5 * 2 / 3))
+    else:
+        plt.figure(figsize=(5, 2.5))
 
-    plt.figure(figsize=(10, 5))
+    margin = 0.1
 
-    plt.subplot(121)
+    from matplotlib import gridspec
+
+    if welfare_split:
+        gs = gridspec.GridSpec(1, 2, width_ratios=[1, 3])
+    else:
+        gs = gridspec.GridSpec(1, 2, width_ratios=[2, 3])
+    # ax0 = plt.subplot(gs[0])
+
+    # plt.subplot(121)
+    plt.subplot(gs[0])
+    # , gridspec_kw = {"width_ratios": [1, 2]}
     data_idx = 1
-    xlim = (-3.5, 0.5)
-    ylim = (-3.5, 0.5)
+    xlim = (-3.0 - margin, 0.0 + margin)
+    if welfare_split:
+        ylim = (-3 - 3.0 - margin, +3 + 0.0 + margin)
+    else:
+        ylim = (-3.0 - margin, 0.0 + margin)
     jitter = 0.05
-    _plot_one_scatter(perf_per_mode_per_files, data_idx, xlim, ylim, jitter)
+    _plot_one_scatter(
+        perf_per_mode_per_files,
+        data_idx,
+        xlim,
+        ylim,
+        jitter,
+        welfare_split=welfare_split,
+    )
+    background_area_coord = np.array(
+        [[[-1, -1], [-3, +0]], [[+0, -3], [-2, -2]]]
+    )
+    _add_background_area(background_area_coord)
 
-    plt.subplot(122)
+    # plt.subplot(122)
+    plt.subplot(gs[1])
     data_idx = 5
-    xlim = (-0.5, 4.5)
-    ylim = (-0.5, 4.5)
+    if welfare_split:
+        xlim = (-0.0 - margin * 2, 4.0 + margin * 2)
+        ylim = (-0.0 - margin, 3.5 + margin)
+    else:
+        xlim = (-0.0 - margin * 2, 4.0 + margin * 2)
+        ylim = (-0.0 - margin, 2.0 + margin)
     jitter = 0.05
-    _plot_one_scatter(perf_per_mode_per_files, data_idx, xlim, ylim, jitter)
-
-    plt.text(
-        -1.0,
-        -1.50,
-        "c)",
-        fontdict={"fontsize": 14.0, "weight": "bold"},
+    _plot_one_scatter(
+        perf_per_mode_per_files,
+        data_idx,
+        xlim,
+        ylim,
+        jitter,
+        welfare_split=welfare_split,
+        plot_y_label=False,
     )
-
-    plt.legend(
-        LEGEND,
-        frameon=True,
-        bbox_to_anchor=(1.0, -0.30),
+    background_area_coord = np.array(
+        [[[+4.0, +1.0], [+0.0, +0.0]], [[+0.0, +0.0], [+2.0, +2.0]]]
     )
+    _add_background_area(background_area_coord)
+
+    # plt.text(
+    #     -1.0,
+    #     -1.50,
+    #     "c)",
+    #     fontdict={"fontsize": 14.0, "weight": "bold"},
+    # )
+
+    plt.tight_layout(rect=[0, 0.0, 1.0, 1.0])
+    if welfare_split:
+        plt.legend(
+            LEGEND if welfare_split else LEGEND_NO_SPLIT,
+            frameon=True,
+            bbox_to_anchor=(0.01, 0.0, 1.0, 1.0),
+        )
+    else:
+        plt.legend(
+            LEGEND if welfare_split else LEGEND_NO_SPLIT,
+            frameon=True,
+            bbox_to_anchor=(-0.185, 0.46),
+        )
+    # plt.tight_layout(rect=[0, -0.07, 1.0, 1.0])
 
     # Save the figure and show
-    plt.tight_layout(rect=[0, -0.07, 1.0, 1.0])
-    plt.savefig("scatter_plot_ipd_iasymbos.png")
+    plt.savefig(f"scatter_plot_ipd_iasymbos_split_{welfare_split}.png")
 
 
 def _plot_one_scatter(
@@ -264,23 +337,26 @@ def _plot_one_scatter(
     jitter,
     plot_x_label=True,
     plot_y_label=True,
+    welfare_split=True,
 ):
-    _plot_one_scatter_plot(perf_per_mode_per_files, data_idx, jitter)
-    plt.title(
-        f"{perf_per_mode_per_files[data_idx].env}+"
-        f"{perf_per_mode_per_files[data_idx].base_algo}"
-    )
+    _plot(perf_per_mode_per_files, data_idx, jitter, welfare_split)
+    env = perf_per_mode_per_files[data_idx].env
+    base_algo = perf_per_mode_per_files[data_idx].base_algo
+    if REMOVE_STARS:
+        env = env.replace("*", "").strip()
+        base_algo = base_algo.replace("*", "").strip()
+    plt.title(f"{env} + " f"{base_algo}")
     if plot_x_label:
-        plt.xlabel("Player 1 payoffs")
+        plt.xlabel(f"Player 1 {VALUE_TERM}")
     if plot_y_label:
-        plt.ylabel("Player 2 payoffs")
+        plt.ylabel(f"Player 2 {VALUE_TERM}")
     if xlim is not None:
         plt.xlim(xlim)
     if ylim is not None:
         plt.ylim(ylim)
 
 
-def _plot_one_scatter_plot(perf_per_mode_per_files, data_idx, jitter):
+def _plot(perf_per_mode_per_files, data_idx, jitter, welfare_split):
     all_perf = [el.perf for el in perf_per_mode_per_files]
 
     (
@@ -341,25 +417,37 @@ def _plot_one_scatter_plot(perf_per_mode_per_files, data_idx, jitter):
         color=COLORS[0],
         # markersize=MARKERSIZE,
     )
-    plt.plot(
-        same_pref_p0,
-        same_pref_p1,
-        markerfacecolor="none",
-        markeredgecolor=COLORS[1],
-        linestyle="None",
-        marker="s",
-        color=COLORS[1],
-        # markersize=self.plot_cfg.markersize,
-    )
-    if plot_diff_pref:
+    if welfare_split:
         plt.plot(
-            diff_pref_p0,
-            diff_pref_p1,
+            same_pref_p0,
+            same_pref_p1,
             markerfacecolor="none",
-            markeredgecolor=COLORS[2],
+            markeredgecolor=COLORS[1],
             linestyle="None",
-            marker="v",
-            color=COLORS[2],
+            marker="s",
+            color=COLORS[1],
+            # markersize=self.plot_cfg.markersize,
+        )
+        if plot_diff_pref:
+            plt.plot(
+                diff_pref_p0,
+                diff_pref_p1,
+                markerfacecolor="none",
+                markeredgecolor=COLORS[2],
+                linestyle="None",
+                marker="v",
+                color=COLORS[2],
+                # markersize=self.plot_cfg.markersize,
+            )
+    else:
+        plt.plot(
+            cross_play_p0,
+            cross_play_p1,
+            markerfacecolor="none",
+            markeredgecolor=COLORS[1],
+            linestyle="None",
+            marker="s",
+            color=COLORS[1],
             # markersize=self.plot_cfg.markersize,
         )
 
@@ -435,7 +523,6 @@ def _log_n_replicates(
 
 
 def _extract_value(all_perf, idx, player_idx, attrib, jitter):
-
     values = []
     for el in all_perf:
         if isinstance(el, Final_values):
@@ -449,6 +536,27 @@ def _extract_value(all_perf, idx, player_idx, attrib, jitter):
     values = _add_jitter(values, jitter)
 
     return values
+
+
+def _add_background_area(background_area_coord):
+    from scipy.spatial import ConvexHull
+
+    assert background_area_coord.ndim == 3
+    points_defining_area = background_area_coord.flatten().reshape(-1, 2)
+    area_hull = ConvexHull(points_defining_area)
+    plt.fill(
+        points_defining_area[area_hull.vertices, 0],
+        points_defining_area[area_hull.vertices, 1],
+        facecolor="none",
+        edgecolor="purple",
+        linewidth=1,
+    )
+    plt.fill(
+        points_defining_area[area_hull.vertices, 0],
+        points_defining_area[area_hull.vertices, 1],
+        "purple",
+        alpha=0.05,
+    )
 
 
 if __name__ == "__main__":

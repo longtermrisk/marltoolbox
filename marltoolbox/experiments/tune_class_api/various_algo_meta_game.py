@@ -54,15 +54,23 @@ def main(debug, base_game_algo=None, meta_game_algo=None):
         hparams["payoff_matrices"],
         hparams["actions_possible"],
         hparams["base_ckpt_per_replicat"],
+        _,
     ) = _form_n_matrices_from_base_game_payoffs(hparams)
     hparams["meta_game_policy_distributions"] = _train_meta_policies(hparams)
     tune_analysis, hp_eval = _evaluate_in_base_game(hparams)
     ray.shutdown()
 
-    _extract_metric_and_log_and_plot(tune_analysis, hparams, hp_eval)
+    _extract_metric_and_log_and_plot(
+        tune_analysis,
+        hparams,
+        hp_eval,
+        title=f"BASE({base_game_algo}) META({meta_game_algo})",
+    )
 
 
-def _extract_metric_and_log_and_plot(tune_analysis, hparams, hp_eval):
+def _extract_metric_and_log_and_plot(
+    tune_analysis, hparams, hp_eval, title=None
+):
     (
         mean_player_1_payoffs,
         mean_player_2_payoffs,
@@ -93,6 +101,7 @@ def _extract_metric_and_log_and_plot(tune_analysis, hparams, hp_eval):
         hp_eval=hp_eval,
         format_fn=_format_result_for_plotting,
         jitter=0.05,
+        title=title,
     )
 
 
@@ -108,6 +117,7 @@ META_REPLICATOR_DYNAMIC = "replicator dynamic"
 META_REPLICATOR_DYNAMIC_ZERO_INIT = "replicator dynamic with zero init"
 META_RANDOM = "Random"
 META_UNIFORM = "Robustness tau=0.0"
+META_MINIMUM = "Minimum"
 
 
 def _get_hyperparameters(
@@ -267,7 +277,12 @@ def _form_n_matrices_from_base_game_payoffs(hp):
         )
 
     assert len(payoffs_matrices) == hp["n_replicates_over_full_exp"]
-    return payoffs_matrices, actions_possible, base_ckpt_per_replicat
+    return (
+        payoffs_matrices,
+        actions_possible,
+        base_ckpt_per_replicat,
+        payoffs_per_groups,
+    )
 
 
 def _get_payoffs_for_every_group_of_base_game_replicates(hp):
@@ -532,8 +547,10 @@ def _train_meta_policies(hp):
         meta_policies = _train_meta_policy_using_sos_exact(hp)
     elif hp["meta_game_policies"] == META_UNIFORM:
         meta_policies = _train_meta_policy_using_robustness(hp)
+    elif hp["meta_game_policies"] == META_MINIMUM:
+        meta_policies = _train_meta_policy_using_minimum(hp)
     else:
-        raise ValueError()
+        raise ValueError(hp["meta_game_policies"])
 
     if hp["base_game_policies"] == BASE_NEGOTIATION:
         if hp["meta_game_policies"] != META_RANDOM:
@@ -1708,7 +1725,29 @@ def _train_meta_policy_using_robustness(hp):
         policies.append(
             {"player_row": policy_player_1, "player_col": policy_player_2}
         )
-    print("replicator dynamic meta policies", policies)
+    print("Robustness meta policies", policies)
+    return policies
+
+
+def _train_meta_policy_using_minimum(hp):
+
+    payoff_matrices = copy.deepcopy(hp["payoff_matrices"])
+    policies = []
+    for payoff_matrix in payoff_matrices:
+        robustness_score_pl0 = payoff_matrix[:, :, 0].min(axis=1)
+        robustness_score_pl1 = payoff_matrix[:, :, 1].min(axis=0)
+
+        pl0_action = np.argmax(robustness_score_pl0, axis=0)
+        pl1_action = np.argmax(robustness_score_pl1, axis=0)
+
+        policy_player_1 = torch.zeros((payoff_matrix.shape[0],))
+        policy_player_2 = torch.zeros((payoff_matrix.shape[1],))
+        policy_player_1[pl0_action] = 1.0
+        policy_player_2[pl1_action] = 1.0
+        policies.append(
+            {"player_row": policy_player_1, "player_col": policy_player_2}
+        )
+    print("Minimum meta policies", policies)
     return policies
 
 
@@ -1722,18 +1761,19 @@ if __name__ == "__main__":
             # BASE_NEGOTIATION,
         )
         meta_game_algo_to_eval = (
-            META_APLHA_RANK,
-            META_APLHA_PURE,
-            META_REPLICATOR_DYNAMIC,
-            META_REPLICATOR_DYNAMIC_ZERO_INIT,
-            META_RANDOM,
-            META_PG,
-            META_LOLA_EXACT,
-            META_SOS,
-            META_UNIFORM,
+            # META_APLHA_RANK,
+            # META_APLHA_PURE,
+            # META_REPLICATOR_DYNAMIC,
+            # META_REPLICATOR_DYNAMIC_ZERO_INIT,
+            # META_RANDOM,
+            # META_PG,
+            # META_LOLA_EXACT,
+            # META_SOS,
+            # META_UNIFORM,
+            META_MINIMUM,
         )
-        for base_game_algo in base_game_algo_to_eval:
-            for meta_game_algo in meta_game_algo_to_eval:
-                main(debug_mode, base_game_algo, meta_game_algo)
+        for base_game_algo_ in base_game_algo_to_eval:
+            for meta_game_algo_ in meta_game_algo_to_eval:
+                main(debug_mode, base_game_algo_, meta_game_algo_)
     else:
         main(debug_mode)

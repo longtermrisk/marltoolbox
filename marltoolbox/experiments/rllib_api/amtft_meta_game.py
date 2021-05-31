@@ -337,7 +337,9 @@ def save_to_json(exp_name, object, filename="final_eval_in_base_game.json"):
         json.dump(object, outfile)
 
 
-def plot_results(exp_name, results, hp_eval, format_fn, jitter=0.0):
+def plot_results(
+    exp_name, results, hp_eval, format_fn, jitter=0.0, title=None
+):
     exp_dir = get_exp_dir_from_exp_name(exp_name)
     data_groups_per_mode = format_fn(results)
 
@@ -346,6 +348,7 @@ def plot_results(exp_name, results, hp_eval, format_fn, jitter=0.0):
         background_area_coord = hp_eval["env_class"].PAYOFF_MATRIX
 
     plot_config = plot.PlotConfig(
+        title=title,
         save_dir_path=exp_dir,
         xlim=hp_eval["x_limits"],
         ylim=hp_eval["y_limits"],
