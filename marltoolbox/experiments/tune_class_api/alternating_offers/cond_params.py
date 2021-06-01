@@ -2,8 +2,8 @@ import copy
 import numpy as np
 
 
-# default_cond_params = {'utilities_skew': 0, 'prosociality_level': 0.3, 'hidden_embedding_size': 30, 'fairness_coeff': 0}
-default_cond_params = {'utilities_skew': 0, 'prosociality_level': 1.0, 'hidden_embedding_size': 30, 'fairness_coeff': 0}
+default_cond_params = {'utilities_skew': 0, 'prosociality_level': 0.3, 'hidden_embedding_size': 30, 'fairness_coeff': 0}
+# default_cond_params = {'utilities_skew': 0, 'prosociality_level': 1.0, 'hidden_embedding_size': 30, 'fairness_coeff': 0}
 
 def cond_params_iter():
     yield default_cond_params  # default parameters
