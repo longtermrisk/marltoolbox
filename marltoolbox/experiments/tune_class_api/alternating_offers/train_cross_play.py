@@ -49,7 +49,13 @@ config = {
 #     'match_mode': tune.grid_search(['custom_vs_custom_1', 'custom_vs_custom_2', 'default_vs_custom', 'custom_vs_default']),
 #     'cond_params': tune.grid_search(list(cond_params_iter())),
     
-    'name': 'cross_play_20K_episodes_binding',
+#     'name': 'cross_play_20K_episodes_binding',
+#     'communication_mode': tune.grid_search(['binding']),
+#     'repetition_i': tune.grid_search(list(range(0, 5))),
+#     'match_mode': tune.grid_search(['custom_vs_custom_1', 'custom_vs_custom_2', 'default_vs_custom', 'custom_vs_default']),
+#     'cond_params': tune.grid_search(list(cond_params_iter())),
+    
+    'name': 'cross_play_20K_episodes_binding_prosocial',
     'communication_mode': tune.grid_search(['binding']),
     'repetition_i': tune.grid_search(list(range(0, 5))),
     'match_mode': tune.grid_search(['custom_vs_custom_1', 'custom_vs_custom_2', 'default_vs_custom', 'custom_vs_default']),

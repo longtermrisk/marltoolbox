@@ -21,7 +21,7 @@ import marltoolbox.algos.alternating_offers.nets as nets
 import marltoolbox.algos.alternating_offers.logging_utils as logging_utils
 from marltoolbox.algos.alternating_offers.envs.alt_offers_env import AltOffersEnv, AltOffersEnvMemory, calc_rewards
 from marltoolbox.algos.alternating_offers.envs.alt_offers_env_sieve import SievePlayback
-# from marltoolbox.experiments.tune_class_api.alternating_offers.cond_params import cond_params_iter, round_cond_params  # for training with frozen params
+# from marltoolbox.experiments.tune_class_api.alternating_offers.cond_params import cond_params_iter, round_cond_params  # for training with frozen params of one agent
 
 from ray import tune
 
@@ -133,7 +133,7 @@ class AltOffersTraining(tune.Trainable):
                 if self.fixed_agent_i is not None and agent_i == self.fixed_agent_i:
                     model.load_state_dict(self.fixed_agent_weight)
                 self.agent_models.append(model)
-                if self.fixed_agent_i is not None and agent_i != self.fixed_agent_i:
+                if self.fixed_agent_i is not None or agent_i != self.fixed_agent_i:
                     if args['agents_sgd']:
                         self.agent_opts.append(optim.SGD(self.agent_models[agent_i].parameters(), lr=1e-3, weight_decay=1e-4))
                     else:
