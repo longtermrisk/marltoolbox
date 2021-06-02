@@ -22,6 +22,8 @@ setup(
         "numba>=0.51.2",
         "matplotlib>=3.3.2",
         "wandb",
+        "seaborn==0.9.0",
+        "tqdm",
     ],
     extras_require={
         "lola": [
@@ -32,7 +34,6 @@ setup(
             "dm-sonnet==1.20",
             "tensorflow>=1.8.0,<2.0.0",
             "trueskill",
-            "seaborn==0.9.0",
         ],
         "ci": [
             "pytest",

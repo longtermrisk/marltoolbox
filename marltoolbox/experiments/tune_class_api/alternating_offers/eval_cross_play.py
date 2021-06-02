@@ -33,13 +33,7 @@ cond_params_list = list(cond_params_iter())
 # root_path = '/home/alexander/ray_results/cross_play_20K_episodes_binding/2021_03_23/12_37_37'
 # binding = True
 
-# root_path = '/home/alexander/ray_results/cross_play_20K_episodes_binding_prosocial/2021_05_15/09_10_05'
-# binding = True
-
-# root_path = '/home/alexander/ray_results/cross_play_20K_episodes_binding_prosocial/2021_05_20/01_53_31'
-# binding = True
-
-root_path = '/home/alexander/ray_results/cross_play_20K_episodes_binding_prosocial/2021_05_31/23_44_35'
+root_path = '/home/alexander/ray_results/cross_play_20K_episodes_binding_prosocial/2021_06_01/14_34_13'
 binding = True
 
 
