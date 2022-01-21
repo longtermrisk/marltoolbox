@@ -8,7 +8,10 @@ import datetime
 from ray import tune
 import os
 
-from marltoolbox.algos.alternating_offers.alt_offers_training import AltOffersTraining
+import utils.restore
+from marltoolbox.algos.alternating_offers.alt_offers_training import (
+    AltOffersTraining,
+)
 from marltoolbox.utils import miscellaneous, log
 
 

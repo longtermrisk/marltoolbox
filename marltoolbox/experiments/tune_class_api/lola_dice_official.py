@@ -10,6 +10,7 @@ import time
 import ray
 from ray import tune
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
+from ray.tune.integration.wandb import WandbLoggerCallback
 
 from marltoolbox.algos.lola_dice.train_tune_class_API import LOLADICE
 from marltoolbox.envs.coin_game import CoinGame, AsymCoinGame
@@ -36,6 +37,13 @@ def main(debug):
         # Example: "load_plot_data": ".../SameAndCrossPlay_save.p",
         "exp_name": exp_name,
         "train_n_replicates": train_n_replicates,
+        "wandb": {
+            "project": "LOLA_DICE",
+            "group": exp_name,
+            "api_key_file": os.path.join(
+                os.path.dirname(__file__), "../../../api_key_wandb"
+            ),
+        },
         "env_name": "IPD",
         # "env_name": "IMP",
         # "env_name": "AsymBoS",
@@ -77,7 +85,7 @@ def main(debug):
 def train(hp):
     tune_config, stop, _ = get_tune_config(hp)
     # Train with the Tune Class API (not RLLib Class)
-    tune_analysis = tune.run(
+    experiment_analysis = tune.run(
         LOLADICE,
         name=hp["exp_name"],
         config=tune_config,
@@ -85,9 +93,19 @@ def train(hp):
         stop=stop,
         metric=hp["metric"],
         mode="max",
+        callbacks=None
+        if hp["debug"]
+        else [
+            WandbLoggerCallback(
+                project=hp["wandb"]["project"],
+                group=hp["wandb"]["group"],
+                api_key_file=hp["wandb"]["api_key_file"],
+                log_config=True,
+            )
+        ],
     )
-    tune_analysis_per_exp = {"": tune_analysis}
-    return tune_analysis_per_exp
+    experiment_analysis_per_welfare = {"": experiment_analysis}
+    return experiment_analysis_per_welfare
 
 
 def get_tune_config(hp: dict) -> dict:
@@ -163,7 +181,7 @@ def get_tune_config(hp: dict) -> dict:
     return config, stop, env_config
 
 
-def evaluate(tune_analysis_per_exp, hp, debug):
+def evaluate(experiment_analysis_per_welfare, hp, debug):
     (
         rllib_hp,
         rllib_config_eval,
@@ -180,7 +198,7 @@ def evaluate(tune_analysis_per_exp, hp, debug):
         trainable_class,
         stop,
         env_config,
-        tune_analysis_per_exp,
+        experiment_analysis_per_welfare,
     )
 
 

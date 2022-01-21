@@ -44,9 +44,12 @@ pip-delete-this-directory.txt
 
 rllib_bugs/
 *.log
+*.png
+*.out
 .ipynb_checkpoints/
 .coverage
 marltoolbox/examples/Tutorial_*.py
 marltoolbox/experiments/Tutorial_*.py
 api_key_wandb
 wandb/
+requirements.txt

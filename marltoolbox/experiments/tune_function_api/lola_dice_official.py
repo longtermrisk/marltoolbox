@@ -224,12 +224,12 @@ def main(debug):
     tune_config = get_tune_config(tune_hparams)
 
     ray.init(num_cpus=os.cpu_count(), num_gpus=0)
-    tune_analysis = tune.run(
+    experiment_analysis = tune.run(
         lola_training, name=tune_hparams["exp_name"], config=tune_config
     )
     ray.shutdown()
 
-    return tune_analysis
+    return experiment_analysis
 
 
 if __name__ == "__main__":

@@ -44,6 +44,7 @@ class WeightsExchanger:
             local_policy_map
         )
         if in_training:
+            print("amTFT _share_weights_during_training")
             WeightsExchanger._check_only_amTFT_policies(local_policy_map)
             policies_weights = trainer.get_weights()
             policies_weights = (

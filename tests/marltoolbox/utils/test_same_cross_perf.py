@@ -5,8 +5,7 @@ from ray import tune
 from ray.rllib.agents.pg import PGTrainer
 
 from marltoolbox.examples.rllib_api.pg_ipd import get_rllib_config
-from marltoolbox.utils import log, miscellaneous, restore
-from marltoolbox.utils import self_and_cross_perf
+from marltoolbox.utils import log, miscellaneous, restore, cross_play
 from marltoolbox.utils.miscellaneous import get_random_seeds
 
 
@@ -15,7 +14,7 @@ def _init_evaluator():
 
     rllib_config, stop_config = get_rllib_config(seeds=get_random_seeds(1))
 
-    evaluator = self_and_cross_perf.SelfAndCrossPlayEvaluator(
+    evaluator = cross_play.evaluator.SelfAndCrossPlayEvaluator(
         exp_name=exp_name,
     )
     evaluator.define_the_experiment_to_run(
@@ -34,10 +33,11 @@ def _train_pg_in_ipd(train_n_replicates):
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("testing")
 
+    ray.shutdown()
     ray.init(num_cpus=os.cpu_count(), num_gpus=0, local_mode=debug)
 
-    rllib_config, stop_config = get_rllib_config(seeds, debug, stop_iters, tf)
-    tune_analysis = tune.run(
+    rllib_config, stop_config = get_rllib_config(seeds, debug)
+    experiment_analysis = tune.run(
         PGTrainer,
         config=rllib_config,
         stop=stop_config,
@@ -48,12 +48,12 @@ def _train_pg_in_ipd(train_n_replicates):
         mode="max",
     )
     ray.shutdown()
-    return tune_analysis, seeds
+    return experiment_analysis, seeds
 
 
-def _load_tune_analysis(evaluator, train_n_replicates, exp_name):
-    tune_analysis, seeds = _train_pg_in_ipd(train_n_replicates)
-    tune_results = {exp_name: tune_analysis}
+def _load_experiment_analysis(evaluator, train_n_replicates, exp_name):
+    experiment_analysis, seeds = _train_pg_in_ipd(train_n_replicates)
+    tune_results = {exp_name: experiment_analysis}
     evaluator.preload_checkpoints_from_tune_results(tune_results)
 
     return seeds
@@ -84,7 +84,9 @@ def test__extract_groups_of_checkpoints():
     evaluator = _init_evaluator()
 
     def assert_(exp_name, train_n_replicates):
-        seeds = _load_tune_analysis(evaluator, train_n_replicates, exp_name)
+        seeds = _load_experiment_analysis(
+            evaluator, train_n_replicates, exp_name
+        )
         assert len(evaluator.checkpoints) == train_n_replicates
         for idx, checkpoint in enumerate(evaluator.checkpoints):
             assert str(seeds[idx]) in checkpoint["path"]
@@ -97,7 +99,7 @@ def test__extract_groups_of_checkpoints():
 def test__get_opponents_per_checkpoints():
     evaluator = _init_evaluator()
     exp_name, train_n_replicates = "", 3
-    _load_tune_analysis(evaluator, train_n_replicates, exp_name)
+    _load_experiment_analysis(evaluator, train_n_replicates, exp_name)
     n_cross_play_per_checkpoint = train_n_replicates - 1
     opponents_per_checkpoint = evaluator._get_opponents_per_checkpoints(
         n_cross_play_per_checkpoint
@@ -112,7 +114,7 @@ def test__produce_config_variations():
 
     evaluator = _init_evaluator()
     exp_name, train_n_replicates = "", 4
-    _load_tune_analysis(evaluator, train_n_replicates, exp_name)
+    _load_experiment_analysis(evaluator, train_n_replicates, exp_name)
 
     def assert_(n_same_play_per_checkpoint, n_cross_play_per_checkpoint):
         opponents_per_checkpoint = evaluator._get_opponents_per_checkpoints(
@@ -146,7 +148,7 @@ def test__produce_config_variations():
 def test__prepare_one_master_config_dict():
     evaluator = _init_evaluator()
     exp_name, train_n_replicates = "", 4
-    _load_tune_analysis(evaluator, train_n_replicates, exp_name)
+    _load_experiment_analysis(evaluator, train_n_replicates, exp_name)
 
     def assert_(n_same_play_per_checkpoint, n_cross_play_per_checkpoint):
         (
@@ -170,7 +172,7 @@ def test__prepare_one_master_config_dict():
 def test__get_config_for_one_same_play():
     evaluator = _init_evaluator()
     exp_name, train_n_replicates = "", 4
-    _load_tune_analysis(evaluator, train_n_replicates, exp_name)
+    _load_experiment_analysis(evaluator, train_n_replicates, exp_name)
 
     def assert_(checkpoint_i):
         metadata, config_copy = evaluator._get_config_for_one_self_play(
@@ -210,7 +212,7 @@ def test__get_config_for_one_same_play():
 def test__get_config_for_one_cross_play():
     evaluator = _init_evaluator()
     exp_name, train_n_replicates = "", 4
-    _load_tune_analysis(evaluator, train_n_replicates, exp_name)
+    _load_experiment_analysis(evaluator, train_n_replicates, exp_name)
 
     def assert_(checkpoint_i):
         n_cross_play_per_checkpoint = train_n_replicates - 1

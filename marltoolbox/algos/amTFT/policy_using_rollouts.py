@@ -1,15 +1,13 @@
-from typing import List, Union, Optional, Dict, Tuple
-
 import numpy as np
-from ray.rllib.evaluation import MultiAgentEpisode
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils import override
+from ray.rllib.utils.threading import with_lock
 
 from marltoolbox.algos.amTFT.base import (
     OWN_COOP_POLICY_IDX,
     OWN_SELFISH_POLICY_IDX,
     OPP_SELFISH_POLICY_IDX,
     OPP_COOP_POLICY_IDX,
-    WORKING_STATES,
+    WORKING_STATES_IN_EVALUATION,
 )
 from marltoolbox.algos.amTFT.base_policy import AmTFTPolicyBase
 from marltoolbox.utils import rollout
@@ -18,9 +16,9 @@ from marltoolbox.utils import rollout
 class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
     def __init__(self, observation_space, action_space, config, **kwargs):
         super().__init__(observation_space, action_space, config, **kwargs)
-        self._init_for_rollout(self.config)
+        self._init(self.config)
 
-    def _init_for_rollout(self, config):
+    def _init(self, config):
         self.last_k = config["last_k"]
         self.use_opponent_policies = False
         self.rollout_length = config["rollout_length"]
@@ -31,49 +29,36 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
         self.opp_policy_id = config["opp_policy_id"]
         self.n_steps_to_punish_opponent = 0
         self.ag_id_rollout_reward_to_read = self.opp_policy_id
+        self.last_opp_algo_idx_in_rollout = OPP_COOP_POLICY_IDX
+        self.last_own_algo_idx_in_rollout = OWN_COOP_POLICY_IDX
+        self.use_short_debit_rollout = config.get(
+            "use_short_debit_rollout", False
+        )
 
-        # Don't support LSTM (at least because of action
-        # overwriting needed in the rollouts)
-        if "model" in config.keys():
-            if "use_lstm" in config["model"].keys():
-                assert not config["model"]["use_lstm"]
-
-    def compute_actions(
-        self,
-        obs_batch: Union[List[TensorType], TensorType],
-        state_batches: Optional[List[TensorType]] = None,
-        prev_action_batch: Union[List[TensorType], TensorType] = None,
-        prev_reward_batch: Union[List[TensorType], TensorType] = None,
-        info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["MultiAgentEpisode"]] = None,
-        explore: Optional[bool] = None,
-        timestep: Optional[int] = None,
-        **kwargs,
-    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
+    @with_lock
+    @override(AmTFTPolicyBase)
+    def _compute_action_helper(
+        self, input_dict, state_batches, seq_lens, explore, timestep
+    ):
         # Option to overwrite action during internal rollouts
         if self.use_opponent_policies:
             if len(self.overwrite_action) > 0:
                 actions, state_out, extra_fetches = self.overwrite_action.pop(
                     0
                 )
+                self.last_opp_algo_idx_in_rollout = OPP_SELFISH_POLICY_IDX
                 if self.verbose > 1:
-                    print("overwritten actions", actions, type(actions))
+                    print(
+                        "overwritten actions", actions, "state_out", state_out
+                    )
                 return actions, state_out, extra_fetches
 
-        return super().compute_actions(
-            obs_batch,
-            state_batches,
-            prev_action_batch,
-            prev_reward_batch,
-            info_batch,
-            episodes,
-            explore,
-            timestep,
-            **kwargs,
+        return super()._compute_action_helper(
+            input_dict, state_batches, seq_lens, explore, timestep
         )
 
-    def _select_algo_to_use_in_eval(self):
+    @override(AmTFTPolicyBase)
+    def _select_algo_to_use_in_eval(self, state_batches):
         if not self.use_opponent_policies:
             if self.n_steps_to_punish == 0:
                 self.active_algo_idx = OWN_COOP_POLICY_IDX
@@ -82,6 +67,16 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
                 self.n_steps_to_punish -= 1
             else:
                 raise ValueError("self.n_steps_to_punish can't be below zero")
+
+            if self.performing_rollouts:
+                state_batches = self._check_for_rnn_state_reset(
+                    state_batches, "last_own_algo_idx_in_rollout"
+                )
+            else:
+                state_batches = self._check_for_rnn_state_reset(
+                    state_batches, "last_own_algo_idx_in_eval"
+                )
+
         else:
             assert self.performing_rollouts
             if self.n_steps_to_punish_opponent == 0:
@@ -94,6 +89,17 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
                     "self.n_steps_to_punish_opp " "can't be below zero"
                 )
 
+            state_batches = self._check_for_rnn_state_reset(
+                state_batches, "last_opp_algo_idx_in_rollout"
+            )
+
+        return state_batches
+
+    @override(AmTFTPolicyBase)
+    def _track_last_coop_rnn_state(self, state_batches):
+        if not self.performing_rollouts and not self.use_opponent_policies:
+            super()._track_last_coop_rnn_state(state_batches)
+
     def _on_episode_step(
         self,
         opp_obs,
@@ -104,16 +110,16 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
         episode,
         env_index,
     ):
-        if not self.performing_rollouts:
-            super()._on_episode_step(
-                opp_obs,
-                last_obs,
-                opp_action,
-                worker,
-                base_env,
-                episode,
-                env_index,
-            )
+        assert not self.performing_rollouts
+        super()._on_episode_step(
+            opp_obs,
+            last_obs,
+            opp_action,
+            worker,
+            base_env,
+            episode,
+            env_index,
+        )
 
     def _compute_debit(
         self,
@@ -126,11 +132,13 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
         coop_opp_simulated_action,
     ):
         approximated_debit = self._compute_debit_using_rollouts(
-            last_obs, opp_action, worker
+            last_obs, opp_action, worker, base_env
         )
         return approximated_debit
 
-    def _compute_debit_using_rollouts(self, last_obs, opp_action, worker):
+    def _compute_debit_using_rollouts(
+        self, last_obs, opp_action, worker, base_env
+    ):
         (
             n_steps_to_punish,
             policy_map,
@@ -138,6 +146,9 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
         ) = self._prepare_to_perform_virtual_rollouts_in_env(worker)
 
         # Cooperative rollouts
+        if self.verbose > 1:
+            print("Compute debit")
+            print("Cooperative rollouts")
         (
             mean_total_reward_for_totally_coop_opp,
             _,
@@ -148,8 +159,12 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
             partially_coop=False,
             opp_action=None,
             last_obs=last_obs,
+            rollout_length=1 if self.use_short_debit_rollout else None,
+            base_env=base_env,
         )
         # Cooperative rollouts with first action as the real one
+        if self.verbose > 1:
+            print("Parital cooperative rollouts")
         (
             mean_total_reward_for_partially_coop_opp,
             _,
@@ -160,6 +175,8 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
             partially_coop=True,
             opp_action=opp_action,
             last_obs=last_obs,
+            rollout_length=1 if self.use_short_debit_rollout else None,
+            base_env=base_env,
         )
 
         if self.verbose > 0:
@@ -209,9 +226,13 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
     def _compute_punishment_duration(
         self, opp_action, coop_opp_simulated_action, worker, last_obs
     ):
-        return self._compute_punishment_duration_from_rollouts(
+        punishment_duration = self._compute_punishment_duration_from_rollouts(
             worker, last_obs
         )
+        punishment_duration = max(
+            punishment_duration, self.config["min_punish_steps"]
+        )
+        return punishment_duration
 
     def _compute_punishment_duration_from_rollouts(self, worker, last_obs):
         (
@@ -489,24 +510,30 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
         opp_action,
         last_obs,
         k_to_explore=0,
+        rollout_length=None,
+        base_env=None,
     ):
         opp_total_rewards = []
         for i in range(self.n_rollout_replicas // 2):
+            self.last_opp_algo_idx_in_rollout = OPP_COOP_POLICY_IDX
+            self.last_own_algo_idx_in_rollout = OWN_COOP_POLICY_IDX
             self.n_steps_to_punish = k_to_explore
             self.n_steps_to_punish_opponent = k_to_explore
             if partially_coop:
-                assert len(self.overwrite_action) == 0
-                self.overwrite_action = [
-                    (np.array([opp_action]), [], {}),
-                ]
+                self._set_overwrite_action(opp_action)
+            last_rnn_states = self._get_last_rnn_states_before_rollouts()
             coop_rollout = rollout.internal_rollout(
                 worker,
-                num_steps=self.rollout_length,
+                num_steps=self.rollout_length
+                if rollout_length is None
+                else rollout_length,
                 policy_map=policy_map,
                 last_obs=last_obs,
                 policy_agent_mapping=policy_agent_mapping,
                 reset_env_before=False,
                 num_episodes=1,
+                last_rnn_states=last_rnn_states,
+                base_env=base_env,
             )
             assert (
                 coop_rollout._num_episodes == 1
@@ -536,8 +563,33 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
         opp_mean_total_reward = sum(opp_total_rewards) / len(opp_total_rewards)
         return opp_mean_total_reward, n_steps_played
 
+    def _set_overwrite_action(self, opp_action):
+        assert len(self.overwrite_action) == 0
+        if self.config["model"]["use_lstm"]:
+            # When we play the real opponent action, don't break the sequence
+            # of rnn state for the cooperative opponent
+            # rnn_state = [[el] for el in self.coop_opp_rnn_state_after_last_act]
+            rnn_state = [
+                self._get_initial_rnn_state(None)
+                for el in self.coop_opp_rnn_state_after_last_act
+            ]
+
+        else:
+            rnn_state = []
+        self.overwrite_action = [
+            (np.array([opp_action]), rnn_state, {}),
+        ]
+
+    @override(AmTFTPolicyBase)
     def on_episode_end(self, *args, **kwargs):
-        if self.working_state == WORKING_STATES[2]:
-            self.total_debit = 0
-            self.n_steps_to_punish = 0
+        assert not self.performing_rollouts
+        if self.working_state in WORKING_STATES_IN_EVALUATION:
             self.n_steps_to_punish_opponent = 0
+        super().on_episode_end(*args, **kwargs)
+
+    @override(AmTFTPolicyBase)
+    def on_episode_start(self, *args, **kwargs):
+        assert not self.performing_rollouts
+        if self.working_state in WORKING_STATES_IN_EVALUATION:
+            self.last_own_algo_idx_in_eval = OWN_COOP_POLICY_IDX
+        super().on_episode_start(*args, **kwargs)

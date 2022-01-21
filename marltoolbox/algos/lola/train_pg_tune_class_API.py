@@ -548,16 +548,17 @@ class LOLAPGMatrice(tune.Trainable):
         return action
 
     def compute_actions(self, policy_id: str, obs_batch: list):
-        # because of the LSTM
         assert len(obs_batch) == 1
 
         for single_obs in obs_batch:
             agent_to_use = self._get_agent_to_use(policy_id)
             obs = self._preprocess_obs(single_obs)
 
+            obs = np.expand_dims(obs, axis=0)
             a = self.sess.run(
                 [self.mainQN[agent_to_use].predict],
-                feed_dict={self.mainQN[agent_to_use].scalarInput: [obs]},
+                # feed_dict={self.mainQN[agent_to_use].scalarInput: [obs]},
+                feed_dict={self.mainQN[agent_to_use].scalarInput: obs},
             )
         action = self._post_process_action(a)
 

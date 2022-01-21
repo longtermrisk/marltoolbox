@@ -16,10 +16,12 @@ from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.dqn.dqn_torch_policy import (
     DQNTorchPolicy,
     build_q_stats,
-    after_init,
+    before_loss_init,
 )
 from ray.rllib.utils.schedules import PiecewiseSchedule
+from ray.tune.integration.wandb import WandbLoggerCallback
 
+import marltoolbox.utils.restore
 from marltoolbox.algos.lola.train_cg_tune_class_API import LOLAPGCG
 from marltoolbox.algos.lola.train_pg_tune_class_API import LOLAPGMatrice
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
@@ -41,6 +43,7 @@ from marltoolbox.utils import (
     restore,
     callbacks,
 )
+from marltoolbox.experiments.tune_class_api import lola_exact_official
 
 
 # TODO make it work for all env (not only ACG and CG)? or only for them
@@ -55,56 +58,67 @@ def main(debug):
     ]
     lvl1_seeds = list(range(n_lvl1))
 
-    exp_name, _ = log.log_in_current_day_dir("L1BR_LOLA_PG")
+    # exp_name, _ = log.log_in_current_day_dir("L1BR_LOLA_PG")
 
-    tune_hparams = {
-        "exp_name": exp_name,
-        "load_data": None,
-        # Example: "load_data": ".../lvl1_results.p",
-        "load_population": None,
-        # Example: "load_population":
-        # [".../checkpoint.json", ".../checkpoint.json", ...]
-        "num_episodes": 5 if debug else 2000,
-        "trace_length": 5 if debug else 20,
-        "lr": None,
-        "gamma": 0.5,
-        "batch_size": 5 if debug else 512,
-        # "env_name": "IteratedPrisonersDilemma",
-        # "env_name": "IteratedBoS",
-        # "env_name": "IteratedAsymBoS",
-        "env_name": "VectorizedCoinGame",
-        # "env_name": "AsymVectorizedCoinGame",
-        "pseudo": False,
-        "grid_size": 3,
-        "lola_update": True,
-        "opp_model": False,
-        "mem_efficient": True,
-        "lr_correction": 1,
-        "bs_mul": 1 / 10,
-        "simple_net": True,
-        "hidden": 32,
-        "reg": 0,
-        "set_zero": 0,
-        "exact": False,
-        "warmup": 1,
-        "lvl0_seeds": lvl0_seeds,
-        "lvl1_seeds": lvl1_seeds,
-        "changed_config": False,
-        "ac_lr": 1.0,
-        "summary_len": 1,
-        "use_MAE": False,
-        "use_toolbox_env": True,
-        "clip_loss_norm": False,
-        "clip_lola_update_norm": False,
-        "clip_lola_correction_norm": 3.0,
-        "clip_lola_actor_norm": 10.0,
-        "entropy_coeff": 0.001,
-        "weigth_decay": 0.03,
-        "lola_correction_multiplier": 1,
-        "lr_decay": True,
-        "correction_reward_baseline_per_step": False,
-        "use_critic": False,
-    }
+    tune_hparams = lola_exact_official.get_hyperparameters(
+        debug, n_in_lvl0_population
+    )
+    # tune_hparams = {
+    #     "debug": debug,
+    #     "exp_name": exp_name,
+    #     "wandb": {
+    #         "project": "L1BR_LOLA_PG",
+    #         "group": exp_name,
+    #         "api_key_file": os.path.join(
+    #             os.path.dirname(__file__), "../../../api_key_wandb"
+    #         ),
+    #     },
+    #     "load_data": None,
+    #     # Example: "load_data": ".../lvl1_results.p",
+    #     "load_population": None,
+    #     # Example: "load_population":
+    #     # [".../checkpoint.json", ".../checkpoint.json", ...]
+    #     "num_episodes": 5 if debug else 2000,
+    #     "trace_length": 5 if debug else 20,
+    #     "lr": None,
+    #     "gamma": 0.5,
+    #     "batch_size": 5 if debug else 512,
+    #     # "env_name": "IteratedPrisonersDilemma",
+    #     # "env_name": "IteratedBoS",
+    #     "env_name": "IteratedAsymBoS",
+    #     # "env_name": "VectorizedCoinGame",
+    #     # "env_name": "AsymVectorizedCoinGame",
+    #     "pseudo": False,
+    #     "grid_size": 3,
+    #     "lola_update": True,
+    #     "opp_model": False,
+    #     "mem_efficient": True,
+    #     "lr_correction": 1,
+    #     "bs_mul": 1 / 10,
+    #     "simple_net": True,
+    #     "hidden": 32,
+    #     "reg": 0,
+    #     "set_zero": 0,
+    #     "exact": False,
+    #     "warmup": 1,
+    #     "lvl0_seeds": lvl0_seeds,
+    #     "lvl1_seeds": lvl1_seeds,
+    #     "changed_config": False,
+    #     "ac_lr": 1.0,
+    #     "summary_len": 1,
+    #     "use_MAE": False,
+    #     "use_toolbox_env": True,
+    #     "clip_loss_norm": False,
+    #     "clip_lola_update_norm": False,
+    #     "clip_lola_correction_norm": 3.0,
+    #     "clip_lola_actor_norm": 10.0,
+    #     "entropy_coeff": 0.001,
+    #     "weigth_decay": 0.03,
+    #     "lola_correction_multiplier": 1,
+    #     "lr_decay": True,
+    #     "correction_reward_baseline_per_step": False,
+    #     "use_critic": False,
+    # }
 
     rllib_hparams = {
         "debug": debug,
@@ -241,6 +255,16 @@ def train_lvl0_population(tune_hp):
         stop=stop,
         metric=tune_config["metric"],
         mode="max",
+        callbacks=None
+        if tune_hp["debug"]
+        else [
+            WandbLoggerCallback(
+                project=tune_hp["wandb"]["project"],
+                group=tune_hp["wandb"]["group"],
+                api_key_file=tune_hp["wandb"]["api_key_file"],
+                log_config=True,
+            )
+        ],
     )
 
 
@@ -267,11 +291,15 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
             endpoints=[
                 (0, 10.0),
                 (
-                    int(tune_hp["n_steps_per_epi"] * tune_hp["n_epi"] * 0.33),
+                    int(
+                        rllib_hp["n_steps_per_epi"] * rllib_hp["n_epi"] * 0.33
+                    ),
                     2.0,
                 ),
                 (
-                    int(tune_hp["n_steps_per_epi"] * tune_hp["n_epi"] * 0.66),
+                    int(
+                        rllib_hp["n_steps_per_epi"] * rllib_hp["n_epi"] * 0.66
+                    ),
                     0.1,
                 ),
             ],
@@ -306,7 +334,11 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
     )
 
     if tune_hp["load_population"] is None:
-        lvl0_checkpoints = miscellaneous.extract_checkpoints(results_list_lvl0)
+        lvl0_checkpoints = (
+            utils.restore.extract_checkpoints_from_experiment_analysis(
+                results_list_lvl0
+            )
+        )
     else:
         lvl0_checkpoints = tune_hp["load_population"]
     lvl0_policy_id = env_config["players_ids"][lvl0_policy_idx]
@@ -331,6 +363,16 @@ def train_lvl1_agents(tune_hp, rllib_hp, results_list_lvl0):
         checkpoint_at_end=True,
         metric="episode_reward_mean",
         mode="max",
+        # callbacks=None
+        # if tune_hp["debug"]
+        # else [
+        #     WandbLoggerCallback(
+        #         project=tune_hp["wandb"]["project"],
+        #         group=tune_hp["wandb"]["group"],
+        #         api_key_file=tune_hp["wandb"]["api_key_file"],
+        #         log_config=True,
+        #     )
+        # ],
     )
 
     return results
@@ -340,13 +382,16 @@ def get_rllib_config(hp: dict, lvl1_idx: list, lvl1_training: bool):
     assert lvl1_training
 
     tune_config, _, env_config = get_tune_config(hp=hp)
-    tune_config["seed"] = 2020
+    # tune_config["seed"] = 2020
 
     stop = {"episodes_total": hp["n_epi"]}
 
-    after_init_fn = functools.partial(
+    before_loss_init_fn = functools.partial(
         miscellaneous.sequence_of_fn_wt_same_args,
-        function_list=[restore.after_init_load_policy_checkpoint, after_init],
+        function_list=[
+            before_loss_init,
+            restore.before_loss_init_load_policy_checkpoint,
+        ],
     )
 
     def sgd_optimizer_dqn(policy, config) -> "torch.optim.Optimizer":
@@ -359,7 +404,7 @@ def get_rllib_config(hp: dict, lvl1_idx: list, lvl1_training: bool):
     MyDQNTorchPolicy = DQNTorchPolicy.with_updates(
         stats_fn=log.augment_stats_fn_wt_additionnal_logs(build_q_stats),
         optimizer_fn=sgd_optimizer_dqn,
-        after_init=after_init_fn,
+        before_loss_init=before_loss_init_fn,
     )
 
     if tune_config["env_class"] in (

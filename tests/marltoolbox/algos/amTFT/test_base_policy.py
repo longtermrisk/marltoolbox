@@ -30,31 +30,31 @@ def init_amTFT(
 def test__select_witch_algo_to_use():
     am_tft_policy, env = init_amTFT()
 
-    def assert_(working_state_idx, active_algo_idx):
+    def assert_active_algo_idx(working_state_idx, active_algo_idx):
         am_tft_policy.working_state = base_policy.WORKING_STATES[
             working_state_idx
         ]
-        am_tft_policy._select_witch_algo_to_use()
+        am_tft_policy._select_witch_algo_to_use(None)
         assert am_tft_policy.active_algo_idx == active_algo_idx
 
-    assert_(
+    assert_active_algo_idx(
         working_state_idx=0, active_algo_idx=base_policy.OWN_COOP_POLICY_IDX
     )
-    assert_(
+    assert_active_algo_idx(
         working_state_idx=1, active_algo_idx=base_policy.OWN_SELFISH_POLICY_IDX
     )
     am_tft_policy.n_steps_to_punish = 0
-    assert_(
+    assert_active_algo_idx(
         working_state_idx=2, active_algo_idx=base_policy.OWN_COOP_POLICY_IDX
     )
     am_tft_policy.n_steps_to_punish = 1
-    assert_(
+    assert_active_algo_idx(
         working_state_idx=2, active_algo_idx=base_policy.OWN_SELFISH_POLICY_IDX
     )
-    assert_(
+    assert_active_algo_idx(
         working_state_idx=3, active_algo_idx=base_policy.OWN_SELFISH_POLICY_IDX
     )
-    assert_(
+    assert_active_algo_idx(
         working_state_idx=4, active_algo_idx=base_policy.OWN_COOP_POLICY_IDX
     )
 
@@ -123,21 +123,20 @@ def test_lr_update():
     )
     one_policy_batch = multiagent_batch.policy_batches[env.players_ids[0]]
 
-    am_tft_policy.on_global_var_update({"timestep": 0})
-    am_tft_policy.learn_on_batch(one_policy_batch)
-    for algo in am_tft_policy.algorithms:
-        assert algo.cur_lr == base_lr
-        for opt in algo._optimizers:
-            for p in opt.param_groups:
-                assert p["lr"] == algo.cur_lr
+    def _assert_lr_equals(policy, lr):
+        for algo in policy.algorithms:
+            assert algo.cur_lr == lr
+            for opt in algo._optimizers:
+                for p in opt.param_groups:
+                    assert p["lr"] == lr
 
-    am_tft_policy.on_global_var_update({"timestep": interm_global_timestep})
-    am_tft_policy.learn_on_batch(one_policy_batch)
-    for algo in am_tft_policy.algorithms:
-        assert algo.cur_lr == final_lr
-        for opt in algo._optimizers:
-            for p in opt.param_groups:
-                assert p["lr"] == algo.cur_lr
+    def _fake_n_step_assert_lr(policy, n_step, lr):
+        policy.on_global_var_update({"timestep": n_step})
+        policy.learn_on_batch(one_policy_batch)
+        _assert_lr_equals(policy, lr)
+
+    _fake_n_step_assert_lr(am_tft_policy, 0, base_lr)
+    _fake_n_step_assert_lr(am_tft_policy, interm_global_timestep, final_lr)
 
 
 def test__is_punishment_planned():
@@ -148,12 +147,21 @@ def test__is_punishment_planned():
     assert am_tft_policy._is_punishment_planned()
 
 
+from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
+
+
 def test_on_episode_end():
     am_tft_policy, env = init_amTFT(
         {"working_state": base_policy.WORKING_STATES[2]}
     )
+    base_env = _MultiAgentEnvToBaseEnv(
+        make_env=lambda _: env, existing_envs=[], num_envs=1
+    )
     am_tft_policy.total_debit = 0
     am_tft_policy.n_steps_to_punish = 0
-    am_tft_policy.on_episode_end()
+    am_tft_policy.observed_n_step_in_current_epi = base_env.get_unwrapped()[
+        0
+    ].max_steps
+    am_tft_policy.on_episode_end(base_env=base_env)
     assert am_tft_policy.total_debit == 0
     assert am_tft_policy.n_steps_to_punish == 0

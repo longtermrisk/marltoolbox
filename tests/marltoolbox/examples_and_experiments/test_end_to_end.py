@@ -5,20 +5,34 @@ def test_pg_ipd():
     from marltoolbox.examples.rllib_api.pg_ipd import main
 
     ray.shutdown()  # Restart Ray defensively in case the ray connection is lost.
-    main(stop_iters=10, tf=False, debug=True)
+    main(debug=True)
+
+
+def test_r2d2_ipd():
+    from marltoolbox.examples.rllib_api.r2d2_ipd import main
+
+    ray.shutdown()  # Restart Ray defensively in case the ray connection is lost.
+    main(debug=True)
 
 
 def test_ppo_asym_coin_game():
     from marltoolbox.examples.rllib_api.ppo_coin_game import main
 
     ray.shutdown()
-    main(debug=True, stop_iters=3, tf=False)
+    main(debug=True)
 
 
-def test_ppo_asym_coin_game():
+def test_dqn_coin_game():
     from marltoolbox.examples.rllib_api.dqn_coin_game import main
 
     ray.shutdown()
+    main(debug=True)
+
+
+def test_r2d2_cion_game():
+    from marltoolbox.examples.rllib_api.r2d2_coin_game import main
+
+    ray.shutdown()  # Restart Ray defensively in case the ray connection is lost.
     main(debug=True)
 
 
@@ -41,6 +55,13 @@ def test_amtft_ipd():
 
     ray.shutdown()
     main(debug=True, env="IteratedPrisonersDilemma")
+
+
+def test_amtft_ipd_with_r2d2():
+    from marltoolbox.experiments.rllib_api.amtft_various_env import main
+
+    ray.shutdown()
+    main(debug=True, env="IteratedPrisonersDilemma", use_r2d2=True)
 
 
 def test_amtft_iasymbos():
@@ -183,3 +204,17 @@ def test_adaptive_mechanism_design_tune_class_api_wt_rllib_policy():
 
     ray.shutdown()
     main(debug=True, use_rllib_policy=True)
+
+
+def test_amtft_vs_exploiter():
+    from marltoolbox.experiments.rllib_api.amtft_vs_lvl1_exploiter import main
+
+    ray.shutdown()
+    main(debug=True)
+
+
+def test_amtft_meta_game():
+    from marltoolbox.experiments.rllib_api.amtft_meta_game import main
+
+    ray.shutdown()
+    main(debug=True)
