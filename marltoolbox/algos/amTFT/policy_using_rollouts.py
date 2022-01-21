@@ -226,9 +226,13 @@ class AmTFTRolloutsTorchPolicy(AmTFTPolicyBase):
     def _compute_punishment_duration(
         self, opp_action, coop_opp_simulated_action, worker, last_obs
     ):
-        return self._compute_punishment_duration_from_rollouts(
+        punishment_duration = self._compute_punishment_duration_from_rollouts(
             worker, last_obs
         )
+        punishment_duration = max(
+            punishment_duration, self.config["min_punish_steps"]
+        )
+        return punishment_duration
 
     def _compute_punishment_duration_from_rollouts(self, worker, last_obs):
         (

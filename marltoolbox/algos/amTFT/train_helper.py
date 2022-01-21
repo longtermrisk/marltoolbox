@@ -7,9 +7,7 @@ from ray.rllib.agents.dqn import DQNTrainer
 
 from marltoolbox import utils
 from marltoolbox.algos import amTFT
-from marltoolbox.scripts.aggregate_and_plot_tensorboard_data import (
-    add_summary_plots,
-)
+from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
 from marltoolbox.utils import miscellaneous, restore, exp_analysis
 
 
@@ -22,6 +20,7 @@ def train_amtft(
     plot_keys=(),
     plot_assemblage_tags=(),
     debug=False,
+    punish_instead_of_selfish=False,
     **kwargs,
 ):
     """
@@ -50,21 +49,95 @@ def train_amtft(
     :return: experiment_analysis containing the checkpoints of the pair of
         amTFT policies
     """
-    selfish_name = os.path.join(name, "selfish")
-    experiment_analysis_selfish_policies = (
-        _train_selfish_policies_inside_amtft(
-            stop_config, rllib_config, selfish_name, TrainerClass, **kwargs
+    if "loggers" in kwargs.keys() and "logger_config" in rllib_config.keys():
+        using_wandb = True
+    else:
+        using_wandb = False
+
+    if punish_instead_of_selfish:
+        policies = list(rllib_config["multiagent"]["policies"].keys())
+        assert len(policies) == 2
+
+        selfish_name = os.path.join(name, "punisher_" + policies[0])
+        if using_wandb:
+            rllib_config["logger_config"]["wandb"][
+                "group"
+            ] += f"+_punisher_{policies[0]}"
+        experiment_analysis_selfish_policies = (
+            _train_selfish_policies_inside_amtft(
+                stop_config,
+                rllib_config,
+                selfish_name,
+                TrainerClass,
+                punisher=policies[0],
+                true_selfish=policies[1],
+                **kwargs,
+            )
         )
-    )
-    plot_keys, plot_assemblage_tags = _get_plot_keys(
-        plot_keys, plot_assemblage_tags
-    )
-    if not debug:
-        add_summary_plots(
-            main_path=os.path.join("~/ray_results/", selfish_name),
-            plot_keys=plot_keys,
-            plot_assemble_tags_in_one_plot=plot_assemblage_tags,
+        plot_keys, plot_assemblage_tags = _get_plot_keys(
+            plot_keys, plot_assemblage_tags
         )
+        if not debug:
+            aggregate_and_plot_tensorboard_data.add_summary_plots(
+                main_path=os.path.join("~/ray_results/", selfish_name),
+                plot_keys=plot_keys,
+                plot_assemble_tags_in_one_plot=plot_assemblage_tags,
+            )
+
+        seed_to_selfish_checkpoints = _extract_selfish_policies_checkpoints(
+            experiment_analysis_selfish_policies
+        )
+        rllib_config = _modify_config_to_load_selfish_policies_in_amtft(
+            rllib_config, do_not_load, seed_to_selfish_checkpoints
+        )
+
+        selfish_name = os.path.join(name, "punisher_" + policies[1])
+        if using_wandb:
+            rllib_config["logger_config"]["wandb"]["group"] = (
+                rllib_config["logger_config"]["wandb"]["group"].split("+")[0]
+                + f"+_punisher_{policies[1]}"
+            )
+        experiment_analysis_selfish_policies = (
+            _train_selfish_policies_inside_amtft(
+                stop_config,
+                rllib_config,
+                selfish_name,
+                TrainerClass,
+                punisher=policies[1],
+                true_selfish=policies[0],
+                **kwargs,
+            )
+        )
+        plot_keys, plot_assemblage_tags = _get_plot_keys(
+            plot_keys, plot_assemblage_tags
+        )
+        if not debug:
+            aggregate_and_plot_tensorboard_data.add_summary_plots(
+                main_path=os.path.join("~/ray_results/", selfish_name),
+                plot_keys=plot_keys,
+                plot_assemble_tags_in_one_plot=plot_assemblage_tags,
+            )
+    else:
+        selfish_name = os.path.join(name, "selfish")
+        if using_wandb:
+            rllib_config["logger_config"]["wandb"]["group"] = (
+                rllib_config["logger_config"]["wandb"]["group"].split("+")[0]
+                + f"+_selfish"
+            )
+        experiment_analysis_selfish_policies = (
+            _train_selfish_policies_inside_amtft(
+                stop_config, rllib_config, selfish_name, TrainerClass, **kwargs
+            )
+        )
+        plot_keys, plot_assemblage_tags = _get_plot_keys(
+            plot_keys, plot_assemblage_tags
+        )
+        if not debug:
+            aggregate_and_plot_tensorboard_data.add_summary_plots(
+                main_path=os.path.join("~/ray_results/", selfish_name),
+                plot_keys=plot_keys,
+                plot_assemble_tags_in_one_plot=plot_assemblage_tags,
+            )
 
     seed_to_selfish_checkpoints = _extract_selfish_policies_checkpoints(
         experiment_analysis_selfish_policies
@@ -73,14 +146,19 @@ def train_amtft(
         rllib_config, do_not_load, seed_to_selfish_checkpoints
     )
 
+    if using_wandb:
+        rllib_config["logger_config"]["wandb"]["group"] = (
+            rllib_config["logger_config"]["wandb"]["group"].split("+")[0]
+            + "+_coop"
+        )
     coop_name = os.path.join(name, "coop")
     experiment_analysis_amTFT_policies = (
         _train_cooperative_policies_inside_amtft(
             stop_config, rllib_config, coop_name, TrainerClass, **kwargs
         )
     )
-    if not debug:
-        add_summary_plots(
+    if not debug or True:
+        aggregate_and_plot_tensorboard_data.add_summary_plots(
             main_path=os.path.join("~/ray_results/", coop_name),
             plot_keys=plot_keys,
             plot_assemble_tags_in_one_plot=plot_assemblage_tags,
@@ -89,15 +167,29 @@ def train_amtft(
 
 
 def _train_selfish_policies_inside_amtft(
-    stop_config, rllib_config, name, trainer_class, **kwargs
+    stop_config,
+    rllib_config,
+    name,
+    trainer_class,
+    punisher=None,
+    true_selfish=None,
+    **kwargs,
 ):
     rllib_config = copy.deepcopy(rllib_config)
     stop_config = copy.deepcopy(stop_config)
 
-    for policy_id in rllib_config["multiagent"]["policies"].keys():
-        rllib_config["multiagent"]["policies"][policy_id][3][
+    if punisher is not None:
+        rllib_config["multiagent"]["policies"][punisher][3][
             "working_state"
         ] = "train_selfish"
+        rllib_config["multiagent"]["policies"][true_selfish][3][
+            "working_state"
+        ] = "use_true_selfish"
+    else:
+        for policy_id in rllib_config["multiagent"]["policies"].keys():
+            rllib_config["multiagent"]["policies"][policy_id][3][
+                "working_state"
+            ] = "train_selfish"
     print("==============================================")
     print("amTFT starting to train the selfish policy")
     experiment_analysis_selfish_policies = ray.tune.run(

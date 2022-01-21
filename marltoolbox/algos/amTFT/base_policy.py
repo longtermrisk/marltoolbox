@@ -14,6 +14,7 @@ from ray.rllib.utils.torch_ops import (
     convert_to_torch_tensor,
 )
 from ray.rllib.utils.typing import PolicyID
+from ray.rllib.evaluation import postprocessing as postprocessing_rllib
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
@@ -28,6 +29,7 @@ from marltoolbox.algos.amTFT.base import (
     OPP_COOP_POLICY_IDX,
     OWN_COOP_POLICY_IDX,
     OWN_SELFISH_POLICY_IDX,
+    TRUE_SELFISH_POLICY_IDX,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,6 +78,7 @@ class AmTFTPolicyBase(
             self.auto_load_checkpoint
             and restore.LOAD_FROM_CONFIG_KEY in config.keys()
         ):
+            print("amTFT going to load checkpoint")
             restore.before_loss_init_load_policy_checkpoint(self)
 
     def _set_models_for_evaluation(self):
@@ -115,6 +118,8 @@ class AmTFTPolicyBase(
 
         elif self.working_state == WORKING_STATES[2]:
             state_batches = self._select_algo_to_use_in_eval(state_batches)
+        elif self.working_state == WORKING_STATES[5]:
+            self.active_algo_idx = TRUE_SELFISH_POLICY_IDX
         else:
             raise ValueError(
                 f'config["working_state"] ' f"must be one of {WORKING_STATES}"
@@ -179,17 +184,28 @@ class AmTFTPolicyBase(
             algo_idx_to_train = OWN_COOP_POLICY_IDX
         elif self.working_state == WORKING_STATES[1]:
             algo_idx_to_train = OWN_SELFISH_POLICY_IDX
+        elif self.working_state == WORKING_STATES[5]:
+            algo_idx_to_train = TRUE_SELFISH_POLICY_IDX
         else:
             raise ValueError(
-                f"self.working_state must be one of " f"{WORKING_STATES[0:2]}"
+                f"self.working_state must be one of "
+                f"{WORKING_STATES[0:2]+[WORKING_STATES[5]]}"
             )
+        # print("base amTFT samples['advantages'] before recomputing", samples[
+        #     "advantages"])
         samples = self._modify_batch_for_policy(algo_idx_to_train, samples)
-
         algo_to_train = self.algorithms[algo_idx_to_train]
+        # print("base amTFT samples['rewards']", samples["rewards"])
+        # print("base amTFT samples['advantages']", samples["advantages"])
+        learner_stats_original = algo_to_train.learn_on_batch(samples)
         learner_stats = {"learner_stats": {}}
         learner_stats["learner_stats"][
             f"algo{algo_idx_to_train}"
-        ] = algo_to_train.learn_on_batch(samples)
+        ] = learner_stats_original
+        if "kl" in learner_stats_original["learner_stats"]:
+            learner_stats["learner_stats"]["kl"] = learner_stats_original[
+                "learner_stats"
+            ]["kl"]
 
         if self.verbose > 1:
             print(f"learn_on_batch WORKING_STATES " f"{self.working_state}")
@@ -197,6 +213,7 @@ class AmTFTPolicyBase(
         return learner_stats
 
     def _modify_batch_for_policy(self, algo_idx_to_train, samples):
+
         if algo_idx_to_train == OWN_COOP_POLICY_IDX:
             samples = samples.copy()
             samples = self._overwrite_reward_for_policy_in_use(
@@ -210,6 +227,11 @@ class AmTFTPolicyBase(
             samples = self._overwrite_reward_for_policy_in_use(
                 samples, self.punish_instead_of_selfish_key
             )
+
+        if postprocessing_rllib.Postprocessing.ADVANTAGES in samples.keys():
+            samples = self.algorithms[
+                algo_idx_to_train
+            ].postprocess_trajectory(samples)
 
         return samples
 
@@ -432,6 +454,13 @@ class AmTFTPolicyBase(
                 print(
                     f"self.total_debit {self.total_debit}, previous was {tmp}"
                 )
+        if self.verbose > 0:
+            print("_update_total_debit")
+            print("    debit", debit)
+            print("    self.total_debit", self.total_debit)
+            print("    self.summed_debit", self._to_log["summed_debit"])
+            print("    self.performing_rollouts", self.performing_rollouts)
+            print("    self.use_opponent_policies", self.use_opponent_policies)
 
     def _is_starting_new_punishment_required(self, manual_threshold=None):
         if manual_threshold is not None:

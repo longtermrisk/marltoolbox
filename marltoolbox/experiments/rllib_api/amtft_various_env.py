@@ -1,6 +1,7 @@
 import copy
 import logging
 import os
+import argparse
 
 import ray
 from ray import tune
@@ -9,8 +10,15 @@ from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.tune.integration.wandb import WandbLoggerCallback
+from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch
+from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.exploration import StochasticSampling
+from ray.tune.integration.wandb import WandbLogger
+from ray.tune.logger import DEFAULT_LOGGERS
 
 from marltoolbox.algos import amTFT, augmented_r2d2
+from marltoolbox.algos.augmented_ppo import MyPPOTorchPolicy
 from marltoolbox.envs import (
     matrix_sequential_social_dilemma,
     coin_game,
@@ -41,9 +49,17 @@ def main(
     filter_utilitarian=None,
     env=None,
     use_r2d2=False,
+    use_policy_gratient=False,
+    hyperparameter_search=False,
 ):
     hparams = get_hyperparameters(
-        debug, train_n_replicates, filter_utilitarian, env, use_r2d2=use_r2d2
+        debug,
+        train_n_replicates,
+        filter_utilitarian,
+        env,
+        use_r2d2=use_r2d2,
+        use_policy_gratient=use_policy_gratient,
+        hyperparameter_search=hyperparameter_search,
     )
 
     if hparams["load_plot_data"] is None:
@@ -85,14 +101,42 @@ def get_hyperparameters(
     env=None,
     reward_uncertainty=0.0,
     use_r2d2=False,
+    use_policy_gratient=False,
+    hyperparameter_search=False,
 ):
-    if debug:
+    if not debug:
+        parser = argparse.ArgumentParser()
+        parser.add_argument(
+            "--env",
+            type=str,
+            choices=[
+                "IteratedPrisonersDilemma",
+                "IteratedAsymBoS",
+                "IteratedAsymBoSandPD",
+                "CoinGame",
+                "ABCoinGame",
+            ],
+            help="Env to use.",
+        )
+        parser.add_argument("--train_n_replicates", type=int)
+        args = parser.parse_args()
+        args = args.__dict__
+        if "env" in args.keys():
+            env = args["env"]
+        if "train_n_replicates" in args.keys():
+            train_n_replicates = args["train_n_replicates"]
+    print("env", env)
+    if hyperparameter_search:
+        if train_n_replicates is None:
+            train_n_replicates = 1
+        n_times_more_utilitarians_seeds = 1
+    elif debug:
         train_n_replicates = 2
         n_times_more_utilitarians_seeds = 1
-    elif train_n_replicates is None:
-        n_times_more_utilitarians_seeds = 4
-        train_n_replicates = 10
     else:
+        if train_n_replicates is None:
+            train_n_replicates = 40
+            # train_n_replicates = 2
         n_times_more_utilitarians_seeds = 4
 
     n_seeds_to_prepare = train_n_replicates * (
@@ -100,28 +144,6 @@ def get_hyperparameters(
     )
     pool_of_seeds = miscellaneous.get_random_seeds(n_seeds_to_prepare)
     exp_name, _ = log.log_in_current_day_dir("amTFT")
-    # prefix = "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-1/amTFT/2021_04_29/12_16_29/"
-    prefix = (
-        "/home/maxime/dev-maxime/CLR/vm-data/instance-10-cpu-1/amTFT"
-        "/2021_04_30/22_41_32/"
-    )
-    # prefix = "~/ray_results/amTFT/2021_04_29/12_16_29/"
-    util_prefix = os.path.join(prefix, "utilitarian_welfare/coop")
-    inequity_aversion_prefix = os.path.join(
-        prefix, "inequity_aversion_welfare/coop"
-    )
-    util_load_data_list = [
-        "R2D2_AsymVectorizedCoinGame_05122_00000_0_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_07-15-34/checkpoint_000500/checkpoint-500",
-        # "R2D2_AsymVectorizedCoinGame_05122_00001_1_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_07-15-34/checkpoint_000500/checkpoint-500",
-        # "R2D2_AsymVectorizedCoinGame_05122_00002_2_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_07-15-34/checkpoint_000500/checkpoint-500",
-        # "R2D2_AsymVectorizedCoinGame_05122_00003_3_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_07-15-34/checkpoint_000500/checkpoint-500",
-    ]
-    ia_load_data_list = [
-        "R2D2_AsymVectorizedCoinGame_43fb3_00000_0_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_01-26-34/checkpoint_000500/checkpoint-500",
-        # "R2D2_AsymVectorizedCoinGame_43fb3_00001_1_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_01-26-34/checkpoint_000500/checkpoint-500",
-        # "R2D2_AsymVectorizedCoinGame_43fb3_00002_2_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_01-26-34/checkpoint_000500/checkpoint-500",
-        # "R2D2_AsymVectorizedCoinGame_43fb3_00003_3_buffer_size=400000,temperature_schedule=<ray.rllib.utils.schedules.piecewise_schedule.Pi_2021-05-01_01-26-34/checkpoint_000500/checkpoint-500",
-    ]
     hparams = {
         "debug": debug,
         "use_r2d2": use_r2d2,
@@ -132,27 +154,10 @@ def get_hyperparameters(
         "train_n_replicates": train_n_replicates,
         "n_times_more_utilitarians_seeds": n_times_more_utilitarians_seeds,
         "exp_name": exp_name,
-        "wandb": {
-            "project": "amTFT",
-            "group": exp_name,
-            "api_key_file": os.path.join(
-                os.path.dirname(__file__), "../../../api_key_wandb"
-            ),
-        },
         "log_n_points": 250,
         "num_envs_per_worker": 16,
         "load_plot_data": None,
-        # Example: "load_plot_data": ".../SelfAndCrossPlay_save.p",
         "load_policy_data": None,
-        # "load_policy_data": {
-        #     "Util": [
-        #         os.path.join(util_prefix, path) for path in util_load_data_list
-        #     ],
-        #     "IA": [
-        #         os.path.join(inequity_aversion_prefix, path)
-        #         for path in ia_load_data_list
-        #     ],
-        # },
         "amTFTPolicy": amTFT.AmTFTRolloutsTorchPolicy,
         "welfare_functions": [
             (postprocessing.WELFARE_INEQUITY_AVERSION, "inequity_aversion"),
@@ -170,16 +175,21 @@ def get_hyperparameters(
         # If not in self play then amTFT
         # will be evaluated against a naive selfish policy or an exploiter
         "self_play": True,
-        # "self_play": False, # Not tested
         # "env_name": "IteratedPrisonersDilemma" if env is None else env,
-        # "env_name": "IteratedAsymBoS" if env is None else env,
         # "env_name": "IteratedBoS" if env is None else env,
-        # "env_name": "CoinGame" if env is None else env,
-        # "env_name": "AsymCoinGame" if env is None else env,
-        "env_name": "SSDMixedMotiveCoinGame" if env is None else env,
+        # "env_name": "IteratedAsymBoS" if env is None else env,
+        # "env_name": "IteratedAsymBoSandPD" if env is None else env,
+        "env_name": "CoinGame" if env is None else env,
+        # "env_name": "ABCoinGame" if env is None else env,
         "overwrite_reward": True,
         "explore_during_evaluation": True,
         "reward_uncertainty": reward_uncertainty,
+        "use_other_play": False,
+        # "use_other_play": True,
+        "use_policy_gratient": use_policy_gratient,
+        "use_MSE_in_r2d2": True,
+        "hyperparameter_search": hyperparameter_search,
+        "using_wandb": use_policy_gratient,
     }
 
     if hparams["load_policy_data"] is not None:
@@ -229,13 +239,12 @@ def modify_hyperparams_for_the_selected_env(hp):
     ]
 
     if "CoinGame" in hp["env_name"]:
-        hp["plot_keys"] += coin_game.PLOT_KEYS
-        hp["plot_assemblage_tags"] += coin_game.PLOT_ASSEMBLAGE_TAGS
 
         hp["n_steps_per_epi"] = 20 if hp["debug"] else 100
         hp["n_epi"] = 10 if hp["debug"] else 4000
         hp["eval_over_n_epi"] = 1
-        hp["base_lr"] = 0.1
+        # hp["base_lr"] = 0.1
+
         hp["bs_epi_mul"] = 4
         hp["both_players_can_pick_the_same_coin"] = False
         hp["sgd_momentum"] = 0.9
@@ -251,31 +260,51 @@ def modify_hyperparams_for_the_selected_env(hp):
         hp["jitter"] = 0.0
         hp["filter_utilitarian"] = False
 
-        hp["buf_frac"] = 0.5
+        # hp["buf_frac"] = 0.5
         hp["target_network_update_freq"] = 30 * hp["n_steps_per_epi"]
         hp["last_exploration_temp_value"] = 0.003 / 4
 
+        # hp["lr_steps_config"] = [
+        #     (0, 1.0),
+        #     (0.25, 0.5),
+        #     (1.0, 1e-9),
+        # ]
+        # hp["temperature_steps_config"] = [
+        #     (0, 0.75),
+        #     (0.2, 0.45),
+        #     (0.9, hp["last_exploration_temp_value"]),
+        # ]
+
         hp["lr_steps_config"] = [
-            (0, 1.0),
-            (0.25, 0.5),
+            (0, 1e-9),
+            (0.2, 1.0),
+            # (0.5, 1.0/3),
+            # (0.5, 1.0/10),
+            # (0.75, 1.0/10/3),
             (1.0, 1e-9),
+            # (1.0, 1.0),
+            # (1.0, 0.33),
         ]
+
+        hp["buf_frac"] = 0.1
+        # hp["last_exploration_temp_value"] = 0.1
         hp["temperature_steps_config"] = [
             (0, 0.75),
-            (0.2, 0.45),
+            # (0, 0.25),
+            (0.2, 0.25),
+            # (0.5, 0.1),
+            # (0.7, 0.1),
             (0.9, hp["last_exploration_temp_value"]),
         ]
 
-        if "AsymCoinGame" in hp["env_name"]:
-            hp["x_limits"] = (-0.5, 3.0)
-            hp["y_limits"] = (-0.8, 0.8)
-            hp["env_class"] = coin_game.AsymCoinGame
-        elif "SSDMixedMotiveCoinGame" in hp["env_name"]:
-            hp["x_limits"] = (-0.02, 0.8)
-            hp["y_limits"] = (-0.02, 1.5)
-            hp["env_class"] = ssd_mixed_motive_coin_game.SSDMixedMotiveCoinGame
-            hp["both_players_can_pick_the_same_coin"] = True
+        # hp["buf_frac"] = 0.25
+        hp["base_lr"] = 0.1 / 4
+
+        if "ABCoinGame" in hp["env_name"]:
+            raise NotImplementedError()
         else:
+            hp["plot_keys"] += coin_game.PLOT_KEYS
+            hp["plot_assemblage_tags"] += coin_game.PLOT_ASSEMBLAGE_TAGS
             hp["x_limits"] = (-0.1, 0.6)
             hp["y_limits"] = (-0.1, 0.6)
             hp["env_class"] = coin_game.CoinGame
@@ -313,7 +342,7 @@ def modify_hyperparams_for_the_selected_env(hp):
             (1.0, 1e-9),
         ]
 
-        if "IteratedPrisonersDilemma" in hp["env_name"]:
+        if "IteratedPrisonersDilemma" == hp["env_name"]:
             hp["filter_utilitarian"] = False
             hp["x_limits"] = (-3.5, 0.5)
             hp["y_limits"] = (-3.5, 0.5)
@@ -321,15 +350,24 @@ def modify_hyperparams_for_the_selected_env(hp):
             hp[
                 "env_class"
             ] = matrix_sequential_social_dilemma.IteratedPrisonersDilemma
-        elif "IteratedAsymBoS" in hp["env_name"]:
+        elif "IteratedAsymBoS" == hp["env_name"]:
             hp["x_limits"] = (-0.1, 4.1)
             hp["y_limits"] = (-0.1, 4.1)
             hp["utilitarian_filtering_threshold"] = 3.2
             hp["env_class"] = matrix_sequential_social_dilemma.IteratedAsymBoS
-        elif "IteratedBoS" in hp["env_name"]:
-            hp["x_limits"] = (-0.1, 4.1)
-            hp["y_limits"] = (-0.1, 4.1)
-            hp["utilitarian_filtering_threshold"] = 2.5
+        elif "IteratedAsymBoSandPD" == hp["env_name"]:
+            # hp["x_limits"] = (-3.1, 4.1)
+            # hp["y_limits"] = (-3.1, 4.1)
+            hp["x_limits"] = (-6.1, 5.1)
+            hp["y_limits"] = (-6.1, 5.1)
+            hp["utilitarian_filtering_threshold"] = 3.2
+            hp[
+                "env_class"
+            ] = matrix_sequential_social_dilemma.IteratedAsymBoSandPD
+        elif "IteratedBoS" == hp["env_name"]:
+            hp["x_limits"] = (-0.1, 3.1)
+            hp["y_limits"] = (-0.1, 3.1)
+            hp["utilitarian_filtering_threshold"] = 2.6
             hp["env_class"] = matrix_sequential_social_dilemma.IteratedBoS
         else:
             raise NotImplementedError(f'hp["env_name"]: {hp["env_name"]}')
@@ -353,6 +391,14 @@ def modify_hyperparams_for_the_selected_env(hp):
 
 def train_for_each_welfare_function(hp):
     experiment_analysis_per_welfare = {}
+
+    if hp["use_r2d2"]:
+        trainer = dqn.r2d2.R2D2Trainer
+    elif hp["use_policy_gratient"]:
+        trainer = PPOTrainer
+    else:
+        trainer = dqn.DQNTrainer
+
     for welfare_fn, welfare_group_name in hp["welfare_functions"]:
         print("==============================================")
         print(
@@ -363,28 +409,26 @@ def train_for_each_welfare_function(hp):
             hp = preprocess_utilitarian_config(hp)
         stop, env_config, rllib_config = get_rllib_config(hp, welfare_fn)
 
+        rllib_config_copy = copy.deepcopy(rllib_config)
+        if hp["using_wandb"]:
+            rllib_config_copy["logger_config"]["wandb"][
+                "group"
+            ] += f"_{welfare_group_name}"
+
         exp_name = os.path.join(hp["exp_name"], welfare_fn)
         results = amTFT.train_amtft(
             stop_config=stop,
-            rllib_config=rllib_config,
+            rllib_config=rllib_config_copy,
             name=exp_name,
-            TrainerClass=dqn.r2d2.R2D2Trainer
-            if hp["use_r2d2"]
-            else dqn.DQNTrainer,
+            TrainerClass=trainer,
             plot_keys=hp["plot_keys"],
             plot_assemblage_tags=hp["plot_assemblage_tags"],
             debug=hp["debug"],
             log_to_file=not hp["debug"],
-            callbacks=None
-            if hp["debug"]
-            else [
-                WandbLoggerCallback(
-                    project=hp["wandb"]["project"],
-                    group=hp["wandb"]["group"],
-                    api_key_file=hp["wandb"]["api_key_file"],
-                    log_config=True,
-                )
-            ],
+            punish_instead_of_selfish=hp["amTFT_punish_instead_of_selfish"],
+            loggers=DEFAULT_LOGGERS + (WandbLogger,)
+            if hp["using_wandb"]
+            else DEFAULT_LOGGERS,
         )
         if welfare_fn == postprocessing.WELFARE_UTILITARIAN:
             results, hp = postprocess_utilitarian_results(
@@ -473,16 +517,6 @@ def get_rllib_config(hp, welfare_fn, eval=False):
                 log_model_sumamry=True,
             ),
         ),
-        "logger_config": {
-            "wandb": {
-                "project": "amTFT",
-                "group": hp["exp_name"],
-                "api_key_file": os.path.join(
-                    os.path.dirname(__file__), "../../../api_key_wandb"
-                ),
-                "log_config": True,
-            },
-        },
         # === DQN Models ===
         # Update the target network every `target_network_update_freq` steps.
         "target_network_update_freq": hp["target_network_update_freq"],
@@ -551,7 +585,9 @@ def get_rllib_config(hp, welfare_fn, eval=False):
     rllib_config, stop_config = _modify_config_for_r2d2(
         rllib_config, hp, stop_config, eval
     )
-
+    rllib_config, stop_config = _modify_config_for_policy_gradient(
+        rllib_config, hp, stop_config, eval
+    )
     return stop_config, env_config, rllib_config
 
 
@@ -578,12 +614,17 @@ def get_env_config(hp):
     )
     env_config["lr_steps_config"] = hp.get("lr_steps_config", None)
     env_config["beta_steps_config"] = hp.get("beta_steps_config", None)
+    env_config["use_other_play"] = hp["use_other_play"]
     return env_config
 
 
 def get_policies(hp, env_config, welfare_fn, eval=False):
     policy_class = hp["amTFTPolicy"]
-    nested_policy_class, coop_nested_policy_class = get_nested_policy_class(hp)
+    (
+        nested_policy_class,
+        coop_nested_policy_class,
+        nested_selfish_policy_class,
+    ) = get_nested_policy_class(hp)
 
     if eval:
         nested_policy_class = coop_nested_policy_class
@@ -635,6 +676,12 @@ def get_policies(hp, env_config, welfare_fn, eval=False):
             ],
         },
     )
+
+    if hp["amTFT_punish_instead_of_selfish"]:
+        amTFT_config_update["nested_policies"].append(
+            {"Policy_class": nested_selfish_policy_class, "config_update": {}},
+        )
+
     policy_1_config = copy.deepcopy(amTFT_config_update)
     policy_1_config["own_policy_id"] = env_config["players_ids"][0]
     policy_1_config["opp_policy_id"] = env_config["players_ids"][1]
@@ -664,34 +711,73 @@ def get_policies(hp, env_config, welfare_fn, eval=False):
 
 
 def get_nested_policy_class(hp):
-    nested_policy_class = _select_base_policy(hp)
+    nested_selfish_policy_class = _select_base_policy(hp)
 
-    coop_nested_policy_class = nested_policy_class.with_updates(
+    if hp["use_policy_gratient"]:
+        original_postprocess_fn = compute_gae_for_sample_batch
+    else:
+        original_postprocess_fn = postprocess_nstep_and_prio
+
+    coop_nested_policy_class = nested_selfish_policy_class.with_updates(
         postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
             postprocessing.welfares_postprocessing_fn(),
-            postprocess_nstep_and_prio,
+            original_postprocess_fn,
         )
     )
 
     if hp["amTFT_punish_instead_of_selfish"]:
-        nested_policy_class = nested_policy_class.with_updates(
+        nested_policy_class = nested_selfish_policy_class.with_updates(
             # TODO problem: this prevent to use HP searches on gamma etc.
             postprocess_fn=miscellaneous.merge_policy_postprocessing_fn(
                 postprocessing.welfares_postprocessing_fn(
                     add_opponent_neg_reward=True,
                 ),
-                postprocess_nstep_and_prio,
+                original_postprocess_fn,
             )
         )
-    return nested_policy_class, coop_nested_policy_class
+    else:
+        nested_policy_class = nested_selfish_policy_class
+    return (
+        nested_policy_class,
+        coop_nested_policy_class,
+        nested_selfish_policy_class,
+    )
 
 
 def _select_base_policy(hp):
-    if hp["use_r2d2"]:
+    if hp["use_policy_gratient"]:
+        print("using PPOTorchPolicy")
+        assert not hp["use_r2d2"]
+        # nested_policy_class = PPOTorchPolicy
+        nested_policy_class = MyPPOTorchPolicy
+    elif hp["use_r2d2"]:
         print("using augmented_r2d2.MyR2D2TorchPolicy")
-        nested_policy_class = augmented_r2d2.MyR2D2TorchPolicy
+        if hp["use_MSE_in_r2d2"]:
+            nested_policy_class = augmented_r2d2.MyR2D2TorchPolicyWtMSELoss
+        else:
+            nested_policy_class = augmented_r2d2.MyR2D2TorchPolicy
+
     else:
         nested_policy_class = amTFT.DEFAULT_NESTED_POLICY_SELFISH
+
+    # if hp["use_other_play"]:
+    #     print("use_other_play with_updates")
+    #
+    #     if "CoinGame" in hp["env_name"]:
+    #         symetries_available = coin_game.CoinGame.SYMMETRIES
+    #     elif hp["env_name"] == "IteratedBoS":
+    #         symetries_available = (
+    #             matrix_sequential_social_dilemma.IteratedBoS.SYMMETRIES
+    #         )
+    #     else:
+    #         raise NotImplementedError()
+    #
+    #     nested_policy_class = nested_policy_class.with_updates(
+    #         _after_loss_init=partial(
+    #             other_play.after_init_wrap_model_other_play,
+    #             symetries_available=symetries_available,
+    #         )
+    #     )
     return nested_policy_class
 
 
@@ -726,7 +812,109 @@ def _modify_config_for_r2d2(rllib_config, hp, stop_config, eval=False):
                     * hp["training_intensity"]
                 )
                 if not eval:
-                    stop_config["episodes_total"] = 8000
+                    stop_config["episodes_total"] = 8000 * hp["n_epi"] / 4000
+
+    return rllib_config, stop_config
+
+
+def _modify_config_for_policy_gradient(
+    rllib_config, hp, stop_config, eval=False
+):
+    if hp["use_policy_gratient"]:
+        # rllib_config.pop("lr_schedule")
+        rllib_config.pop("target_network_update_freq")
+        rllib_config.pop("buffer_size")
+        rllib_config.pop("dueling")
+        rllib_config.pop("double_q")
+        rllib_config.pop("prioritized_replay")
+        rllib_config.pop("training_intensity")
+        rllib_config.pop("hiddens")
+        rllib_config.pop("learning_starts")
+
+        if hp["debug"]:
+            rllib_config["train_batch_size"] = int(128 * 2)
+            rllib_config["num_sgd_iter"] = 2
+        elif not hp["debug"] and not eval:
+            # if hp["hyperparameter_search"]:
+            #     rllib_config["train_batch_size"] = tune.grid_search(
+            #         [1024, 4096]
+            #     )
+            # else:
+            rllib_config["train_batch_size"] = 4096
+
+            stop_config["episodes_total"] = 5000 * hp["n_epi"] / 4000
+
+        rllib_config["exploration_config"] = {
+            # The Exploration class to use. In the simplest case,
+            # this is the name (str) of any class present in the
+            # `rllib.utils.exploration` package.
+            # You can also provide the python class directly or
+            # the full location of your class (e.g.
+            # "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": StochasticSampling,
+            # Add constructor kwargs here (if any).
+            # "temperature_schedule": hp["temperature_schedule"],
+        }
+
+        if hp["hyperparameter_search"]:
+            # rllib_config["lr"] = 1e-4
+            rllib_config["lr"] = tune.grid_search([1e-3, 3e-4])
+            rllib_config["vf_loss_coeff"] = tune.grid_search([3.0, 1.0, 0.3])
+            # rllib_config["model"]["vf_share_layers"] = tune.grid_search(
+            #     [False, True]
+            # )
+            # rllib_config["use_gae"] = tune.grid_search([True, False])
+            # rllib_config["batch_mode"] = tune.grid_search(
+            #     ["truncate_episodes", "complete_episodes"]
+            # )
+            # rllib_config["batch_mode"] = "complete_episodes"
+
+            rllib_config["env_config"]["beta_steps_config"] = [
+                (0, 0.125 * 3),
+                (1.0, 0.25 * 3),
+            ]
+            # rllib_config["env_config"]["beta_steps_config"] = [
+            #     (0, 0.125*4),
+            #     (1.0, 0.25*4),
+            # ]
+
+        else:
+            rllib_config["lr"] = 0.1 / 300
+        # hp["sgd_momentum"] = 0.5
+
+        # Coefficient of the value function loss. IMPORTANT: you must tune this if
+        # you set vf_share_layers=True inside your model's config.
+        # "vf_loss_coeff": 1.0,
+        # # Coefficient of the entropy regularizer.
+        # "entropy_coeff": 0.0,
+        # # Decay schedule for the entropy regularizer.
+        # "entropy_coeff_schedule": None,
+        # # PPO clip parameter.
+        # "clip_param": 0.3,
+        # # Clip param for the value function. Note that this is sensitive to the
+        # # scale of the rewards. If your expected V is large, increase this.
+        # "vf_clip_param": 10.0,
+        # # If specified, clip the global norm of gradients by this amount.
+        # "grad_clip": None,
+        # # Target value for KL divergence.
+        # "kl_target": 0.01,
+
+        # if hp["hyperparameter_search"]:
+        #     rllib_config["kl_target"] = tune.grid_search([0.003, 0.01, 0.03])
+        # rllib_config["vf_clip_param"] = 1.0
+        # rllib_config["vf_loss_coeff"] = 0.1
+
+        rllib_config["logger_config"] = {
+            "wandb": {
+                "project": "amTFT",
+                "group": hp["exp_name"],
+                "api_key_file": os.path.join(
+                    os.path.dirname(__file__), "../../api_key_wandb"
+                ),
+                "log_config": True,
+            },
+        }
 
     return rllib_config, stop_config
 
@@ -766,6 +954,13 @@ def config_and_evaluate_cross_play(experiment_analysis_per_welfare, hp):
 def evaluate_self_play_cross_play(
     experiment_analysis_per_welfare, config_eval, env_config, stop, hp_eval
 ):
+    if hp_eval["use_r2d2"]:
+        trainer = dqn.r2d2.R2D2Trainer
+    elif hp_eval["use_policy_gratient"]:
+        trainer = PPOTrainer
+    else:
+        trainer = dqn.DQNTrainer
+
     exp_name = os.path.join(hp_eval["exp_name"], "eval")
     evaluator = cross_play.evaluator.SelfAndCrossPlayEvaluator(
         exp_name=exp_name,
@@ -778,14 +973,18 @@ def evaluate_self_play_cross_play(
             env_config["players_ids"]
         ),
         experiment_analysis_per_welfare=experiment_analysis_per_welfare,
-        rllib_trainer_class=dqn.r2d2.R2D2Trainer
-        if hp_eval["use_r2d2"]
-        else dqn.DQNTrainer,
+        rllib_trainer_class=trainer,
         n_self_play_per_checkpoint=hp_eval["n_self_play_per_checkpoint"],
         n_cross_play_per_checkpoint=hp_eval["n_cross_play_per_checkpoint"],
         to_load_path=hp_eval["load_plot_data"],
     )
 
+    return plot_evaluation(
+        hp_eval, evaluator, analysis_metrics_per_mode, env_config
+    )
+
+
+def plot_evaluation(hp_eval, evaluator, analysis_metrics_per_mode, env_config):
     if "CoinGame" in hp_eval["env_name"]:
         background_area_coord = None
     else:
@@ -874,7 +1073,7 @@ def modify_config_for_evaluation(config_eval, hp, env_config, stop_config):
         naive_player_policy_config = policies[naive_player_id][3]
         naive_player_policy_config["working_state"] = "eval_naive_selfish"
 
-    if hp["explore_during_evaluation"]:
+    if hp["explore_during_evaluation"] and not hp["use_policy_gratient"]:
         tmp_mul = 1.0
         config_eval["explore"] = (miscellaneous.OVERWRITE_KEY, True)
         config_eval["exploration_config"] = {
@@ -915,5 +1114,20 @@ def print_inequity_aversion_welfare(env_config, analysis_metrics_per_mode):
 
 if __name__ == "__main__":
     use_r2d2 = True
-    debug_mode = True
-    main(debug_mode, use_r2d2=use_r2d2)
+    use_policy_gratient = False
+    #
+    # use_r2d2 = False
+    # use_policy_gratient = True
+    #
+    debug_mode = False
+    # debug_mode = True
+
+    # hyperparameter_search = True
+    hyperparameter_search = False
+
+    main(
+        debug_mode,
+        use_r2d2=use_r2d2,
+        use_policy_gratient=use_policy_gratient,
+        hyperparameter_search=hyperparameter_search,
+    )

@@ -45,7 +45,7 @@ def main(debug: bool, env=None):
     :param debug: selection of debug mode using less compute
     :param env: option to overwrite the env selection
     """
-    train_n_replicates = 2 if debug else 40
+    train_n_replicates = 2 if debug else 20
     timestamp = int(time.time())
     seeds = [seed + timestamp for seed in list(range(train_n_replicates))]
 
@@ -189,44 +189,16 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
         tune_hparams.update(
             {
                 "gamma": 0.9,
-                "lr": 0.005 * 2,
+                "lr": 0.01,
                 "num_episodes": 3 if debug else 2000,
                 "trace_length": 10 if debug else 40,
-                "weigth_decay": 0.03 / 16,
+                "weigth_decay": 0.001875,
                 "lola_correction_multiplier": 8,
                 "entropy_coeff": 0.02,
                 "batch_size": 12 if debug else 1024,
                 "use_normalized_rewards": False,
                 "reward_processing_bais": 0.1,
                 "center_and_normalize_with_rolling_avg": False,
-                # "num_episodes": tune.grid_search(
-                #     [
-                #         1000,
-                #         2000,
-                #         4000,
-                #     ]
-                # ),
-                # "weigth_decay": tune.grid_search(
-                #     [
-                #         # 0.03 / 16,
-                #         0.03 / 16 * 10,
-                #         # 0.03 / 16 * 100,
-                #     ]
-                # ),
-                # "entropy_coeff": tune.grid_search(
-                #     [
-                #         0.02 / 2,
-                #         0.02,
-                #         0.02 * 2,
-                #     ]
-                # ),
-                # "use_normalized_rewards": tune.grid_search([False, True]),
-                # "center_and_normalize_with_rolling_avg": tune.grid_search(
-                #     [False, True]
-                # ),
-                # "lola_correction_multiplier": tune.grid_search(
-                #     [8.0 / 2.0, 8.0, 8.0 * 2.0]
-                # ),
             }
         )
 
@@ -672,5 +644,5 @@ def lola_pg_classify_fn(
 
 
 if __name__ == "__main__":
-    debug_mode = False
+    debug_mode = True
     main(debug_mode)

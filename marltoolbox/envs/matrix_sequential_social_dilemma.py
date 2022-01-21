@@ -96,7 +96,7 @@ class MatrixSequentialSocialDilemma(
             self._init_info()
 
     def seed(self, seed=None):
-        """Seed the PRNG of this space. """
+        """Seed the PRNG of this space."""
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
@@ -384,9 +384,6 @@ class IteratedBoSAndPD(
 class TwoPlayersCustomizableMatrixGame(
     NPlayersNDiscreteActionsInfoMixin, MatrixSequentialSocialDilemma
 ):
-    """
-    A two-agent environment for the BOTS + PD game.
-    """
 
     NAME = "TwoPlayersCustomizableMatrixGame"
 

@@ -6,6 +6,7 @@ from ray.rllib.utils import merge_dicts
 from marltoolbox.algos import hierarchical, augmented_dqn
 from marltoolbox.utils import postprocessing, miscellaneous
 
+
 logger = logging.getLogger(__name__)
 
 APPROXIMATION_METHOD_Q_VALUE = "amTFT_use_Q_net"
@@ -20,13 +21,15 @@ WORKING_STATES = (
     "eval_amtft",
     "eval_naive_selfish",
     "eval_naive_coop",
+    "use_true_selfish",
 )
-WORKING_STATES_IN_EVALUATION = WORKING_STATES[2:]
+WORKING_STATES_IN_EVALUATION = WORKING_STATES[2:5]
 
 OWN_COOP_POLICY_IDX = 0
 OWN_SELFISH_POLICY_IDX = 1
 OPP_COOP_POLICY_IDX = 2
 OPP_SELFISH_POLICY_IDX = 3
+TRUE_SELFISH_POLICY_IDX = 4
 
 DEFAULT_NESTED_POLICY_SELFISH = augmented_dqn.MyDQNTorchPolicy
 DEFAULT_NESTED_POLICY_COOP = DEFAULT_NESTED_POLICY_SELFISH.with_updates(
@@ -49,6 +52,7 @@ DEFAULT_CONFIG = merge_dicts(
         "n_rollout_replicas": 20,
         "last_k": 1,
         "punish_instead_of_selfish": False,
+        "min_punish_steps": 0,
         # TODO use log level of RLLib instead of mine
         "verbose": 1,
         "auto_load_checkpoint": True,
