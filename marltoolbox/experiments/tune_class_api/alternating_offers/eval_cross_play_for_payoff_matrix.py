@@ -33,11 +33,15 @@ cond_params_list = list(cond_params_iter())
 # root_path = '/home/alexander/ray_results/cross_play_20K_episodes_binding/2021_03_23/12_37_37'
 # binding = True
 
-root_path = '/home/alexander/ray_results/cross_play_20K_episodes_binding_prosocial/2021_06_01/14_34_13'
+root_path = '/home/alexander/ray_results/cross_play_20K_episodes_binding_prosocial/2021_05_20/01_53_31'
 binding = True
 
+# results_filename = os.path.join('cross_play_evals', 'results_' + '_'.join(root_path.split('/')[-3:]) + '.pickle')
+results_filename = os.path.join('cross_play_evals', 'results_more_games_' + '_'.join(root_path.split('/')[-3:]) + '.pickle')
 
-eval_episodes = 64
+
+# eval_episodes = 64
+eval_episodes = 2048
 # checkpoint_dir_name = 'checkpoint_1'
 checkpoint_dir_name = 'checkpoint_312'  # for 20K episodes
 # binding = True
@@ -182,28 +186,45 @@ for match_regime, match_trials in matches.items():
             indices = [eq_trial[0] for eq_trial in eq_list]
             match_indices[match_regime].append(indices)
             
-
-results_filename = os.path.join('cross_play_evals', 'results_' + '_'.join(root_path.split('/')[-3:]) + '.pickle')
-
+print(match_indices['custom_vs_custom_1'])
 args_list = []
 for agent_0_match_regime, agent_1_match_regime in (
     # normal cross-play
-                                                   ('custom_vs_custom_1', 'custom_vs_custom_1'),  # normal eval
-                                                   ('custom_vs_custom_1', 'custom_vs_custom_2'),  # simplest (1)
-                                                   ('default_vs_default', 'default_vs_default'),
+#                                                    ('custom_vs_custom_1', 'custom_vs_custom_1'),  # normal eval
+#                                                    ('custom_vs_custom_1', 'custom_vs_custom_2'),  # simplest (1)
+#                                                    ('default_vs_default', 'default_vs_default'),
                                                    
-                                                   ('custom_vs_custom_1', 'default_vs_default'),  # 2.1
-                                                   ('default_vs_default', 'custom_vs_custom_1'),  # 2.2
+#                                                    ('custom_vs_custom_1', 'default_vs_default'),  # 2.1
+#                                                    ('default_vs_default', 'custom_vs_custom_1'),  # 2.2
                                                    
-                                                   ('default_vs_custom', 'custom_vs_custom_1'),  # 3.1
-                                                   ('custom_vs_custom_1', 'default_vs_custom'),  # 4.1
-                                                   ('default_vs_default', 'custom_vs_default'),
-                                                   ('custom_vs_default', 'default_vs_default'),
+#                                                    ('default_vs_custom', 'custom_vs_custom_1'),  # 3.1
+#                                                    ('custom_vs_custom_1', 'default_vs_custom'),  # 4.1
+#                                                    ('default_vs_default', 'custom_vs_default'),
+#                                                    ('custom_vs_default', 'default_vs_default'),
     
-                                                   ('default_vs_default', 'default_vs_custom'),  # 3.2
-                                                   ('default_vs_custom', 'default_vs_default'),  # 4.2
-                                                   ('custom_vs_default', 'custom_vs_custom_1'),
-                                                   ('custom_vs_custom_1', 'custom_vs_default'),
+#                                                    ('default_vs_default', 'default_vs_custom'),  # 3.2
+#                                                    ('default_vs_custom', 'default_vs_default'),  # 4.2
+#                                                    ('custom_vs_default', 'custom_vs_custom_1'),
+#                                                    ('custom_vs_custom_1', 'custom_vs_default'),
+    
+#                                                    ('custom_vs_custom_1', 'custom_vs_custom_1'),  # normal eval
+    
+                                                   ('custom_vs_custom_1', 'custom_vs_custom_2'),  # simplest (1)
+#                                                    ('default_vs_default', 'default_vs_default'),
+                                                   
+#                                                    ('custom_vs_custom_1', 'default_vs_default'),  # 2.1
+#                                                    ('default_vs_default', 'custom_vs_custom_1'),  # 2.2
+                                                   
+#                                                    ('default_vs_custom', 'custom_vs_custom_1'),  # 3.1
+#     # the part next was not included:
+#                                                    ('custom_vs_custom_1', 'default_vs_custom'),  # 4.1
+#                                                    ('default_vs_default', 'custom_vs_default'),
+#                                                    ('custom_vs_default', 'default_vs_default'),
+    
+#                                                    ('default_vs_default', 'default_vs_custom'),  # 3.2
+#                                                    ('default_vs_custom', 'default_vs_default'),  # 4.2
+#                                                    ('custom_vs_default', 'custom_vs_custom_1'),
+#                                                    ('custom_vs_custom_1', 'custom_vs_default'),
     
 #     #   for ('default_vs_custom_pop_1', 'custom_pop_vs_custom_1') eval - population training
 #     ('pop_2_default_constant_vs_pop_2_custom_binary', 'pop_2_custom_binary_vs_pop_2_custom_constant_1'),
@@ -219,58 +240,66 @@ for agent_0_match_regime, agent_1_match_regime in (
 #     ('pop_2_custom_constant_vs_pop_2_custom_constant_3', 'pop_2_custom_constant_vs_pop_2_custom_constant_2'),
 #     ('pop_6_custom_constant_vs_pop_6_custom_constant_3', 'pop_6_custom_constant_vs_pop_6_custom_constant_2'),
 ):
-    for cond_params_i in range(len(cond_params_list)):  # over all types of agents
-        trial_0_indices = match_indices[agent_0_match_regime][cond_params_i]
-        trial_1_indices = match_indices[agent_1_match_regime][cond_params_i]
-        
-#         print(len(trial_0_indices), len(trial_1_indices))
-
-#         for seed_i in range(min(5, len(trial_0_indices), len(trial_0_indices))):
-#             trial_0_i = np.random.choice(trial_0_indices)
-#             if agent_0_match_regime == agent_1_match_regime:
-#                 trial_1_i = trial_0_i  # to match agents trained together
-#             else:
-#                 trial_1_i = np.random.choice(trial_1_indices)
-        if agent_0_match_regime == agent_1_match_regime:
-            eval_trials_list = [(trial_0_i, trial_0_i) for trial_0_i in trial_0_indices]  # to match agents trained together
-        else:
-#             eval_trials_list = [(trial_0_i, trial_1_i) for trial_0_i in trial_0_indices for trial_1_i in trial_1_indices]
-            eval_trials_list = [(trial_0_i, trial_1_i) for trial_0_i in trial_0_indices[:5] for trial_1_i in trial_1_indices[:5]]  # let's limit this to avoid doing too much computation
-        
-        for trial_0_i, trial_1_i in eval_trials_list:
-            trial_0 = matches[agent_0_match_regime][trial_0_i]
-            trial_1 = matches[agent_1_match_regime][trial_1_i]
-
-            if 'default' in agent_0_match_regime.split('_vs_')[0]:
-                agent_0_params = default_cond_params
+    for cond_params_i_0 in [0,] + list(range(7, 14)):  # over all types of agents
+        for cond_params_i_1 in [0,] + list(range(7, 14)):  # over all types of agents
+            trial_0_indices = match_indices[agent_0_match_regime][cond_params_i_0]
+            trial_1_indices = match_indices[agent_1_match_regime][cond_params_i_1]
+    #         for seed_i in range(min(5, len(trial_0_indices), len(trial_0_indices))):
+    #             trial_0_i = np.random.choice(trial_0_indices)
+    #             if agent_0_match_regime == agent_1_match_regime:
+    #                 trial_1_i = trial_0_i  # to match agents trained together
+    #             else:
+    #                 trial_1_i = np.random.choice(trial_1_indices)
+            if agent_0_match_regime == agent_1_match_regime:
+                eval_trials_list = [(trial_0_i, trial_0_i) for trial_0_i in trial_0_indices]  # to match agents trained together
             else:
-                agent_0_params = trial_0['params']['cond_params']
-            if 'default' in agent_1_match_regime.split('_vs_')[1]:
-                agent_1_params = default_cond_params
-            else:
-                agent_1_params = trial_1['params']['cond_params']
+                eval_trials_list = [(trial_0_i, trial_1_i) for trial_0_i in trial_0_indices for trial_1_i in trial_1_indices]
 
-            if isinstance(trial_0['agents'][0], list):
-#                 for iter_i in range(len(trial_0['agents'][0])):  # let's pick N random matches for 2 populations of size N
-#                     pop_0_i = np.random.randint(0, len(trial_0['agents'][0]))
-#                     pop_1_i = np.random.randint(0, len(trial_0['agents'][0]))
-                for pop_0_i in range(len(trial_0['agents'][0])):
-                    for pop_1_i in range(len(trial_1['agents'][1])):
-                        args_list.append(((agent_0_match_regime, agent_1_match_regime), cond_params_i,
-                                          ([trial_0_i, pop_0_i], [trial_1_i, pop_1_i]), (agent_0_params, agent_1_params),))
-            else:
-                args_list.append(((agent_0_match_regime, agent_1_match_regime), cond_params_i,
-                                  (trial_0_i, trial_1_i), (agent_0_params, agent_1_params),))
+            for trial_0_i, trial_1_i in eval_trials_list:
+                trial_0 = matches[agent_0_match_regime][trial_0_i]
+                trial_1 = matches[agent_1_match_regime][trial_1_i]
+
+                if 'default' in agent_0_match_regime.split('_vs_')[0]:
+                    agent_0_params = default_cond_params
+                else:
+                    agent_0_params = trial_0['params']['cond_params']
+                if 'default' in agent_1_match_regime.split('_vs_')[1]:
+                    agent_1_params = default_cond_params
+                else:
+                    agent_1_params = trial_1['params']['cond_params']
+
+                if isinstance(trial_0['agents'][0], list):
+    #                 for iter_i in range(len(trial_0['agents'][0])):  # let's pick N random matches for 2 populations of size N
+    #                     pop_0_i = np.random.randint(0, len(trial_0['agents'][0]))
+    #                     pop_1_i = np.random.randint(0, len(trial_0['agents'][0]))
+                    for pop_0_i in range(len(trial_0['agents'][0])):
+                        for pop_1_i in range(len(trial_1['agents'][1])):
+                            args_list.append(((agent_0_match_regime, agent_1_match_regime), cond_params_i,
+                                              ([trial_0_i, pop_0_i], [trial_1_i, pop_1_i]), (agent_0_params, agent_1_params),))
+                else:
+                    args_list.append(((agent_0_match_regime, agent_1_match_regime), 0,
+                                      (trial_0_i, trial_1_i), (agent_0_params, agent_1_params),))
 
 # pool = multiprocessing.Pool()
 # results = pool.map(get_rewards, args_list)
 results = []
-chunk_size = 1024
+# chunk_size = 1024
+chunk_size = 64
 chunks = [args_list[x:x+chunk_size] for x in range(0, len(args_list), chunk_size)]
-for chunk in chunks:
+print('args_list', len(args_list))
+print('chunks', len(chunks))
+for chunk in tqdm(chunks):
     cur_results = process_map(get_rewards, chunk)
-    cur_results = [chunk[i][:3] + (result,) for i, result in enumerate(cur_results)]
-    results.extend(cur_results)
+#     print(cur_results[0]['player0_share_of_max'].mean())
+#     print(cur_results[10]['player0_share_of_max'].mean())
+#     print(cur_results[20]['player0_share_of_max'].mean())
+#     print(cur_results[30]['player0_share_of_max'].mean())
+    statistics = [(result['player0_share_of_max'].mean(), result['player0_share_of_max'].std(),
+                   result['player1_share_of_max'].mean(), result['player1_share_of_max'].std(),
+                   result['sum_share_of_max'].mean(), result['sum_share_of_max'].std()) for result in cur_results]
+    del cur_results
+    statistics = [chunk[i][:3] + (statistic,) for i, statistic in enumerate(statistics)]
+    results.extend(statistics)
     os.makedirs('results', exist_ok=True)
     pickle.dump(results, open(results_filename, 'wb'))
 
