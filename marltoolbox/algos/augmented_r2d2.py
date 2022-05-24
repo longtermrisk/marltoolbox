@@ -15,8 +15,14 @@ from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.torch_ops import FLOAT_MIN
-from ray.rllib.utils.torch_ops import huber_loss, sequence_mask, l2_loss
+
+# from ray.rllib.utils.torch_ops import FLOAT_MIN
+from ray.rllib.utils.torch_utils import (
+    FLOAT_MIN,
+    huber_loss,
+    sequence_mask,
+    l2_loss,
+)
 from ray.rllib.utils.typing import TensorType
 from typing import Dict
 
@@ -122,8 +128,7 @@ def my_r2d2_loss(
         else:
             target = (
                 rewards
-                + config["gamma"] ** config["n_step"]
-                * q_target_best_masked_tp1
+                + config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
             )
 
         # Seq-mask all loss-related terms.
@@ -219,6 +224,10 @@ MyR2D2TorchPolicyWtMSELoss = MyR2D2TorchPolicy.with_updates(
     loss_fn=my_r2d2_loss_wtout_huber_loss,
 )
 
-MyAdamDQNTorchPolicy = MyR2D2TorchPolicy.with_updates(
+MyAdamR2D2TorchPolicy = MyR2D2TorchPolicy.with_updates(
+    optimizer_fn=optimizers.adam_optimizer_dqn,
+)
+
+MyAdamVanillaR2D2TorchPolicy = R2D2TorchPolicy.with_updates(
     optimizer_fn=optimizers.adam_optimizer_dqn,
 )

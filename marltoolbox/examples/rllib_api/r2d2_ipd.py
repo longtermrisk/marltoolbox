@@ -11,8 +11,8 @@ from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
 from marltoolbox.utils import log, miscellaneous
 
 
-def main(debug):
-    train_n_replicates = 1 if debug else 1
+def main(debug, train_n_replicates=1):
+    train_n_replicates = 1 if debug else train_n_replicates
     seeds = miscellaneous.get_random_seeds(train_n_replicates)
     exp_name, _ = log.log_in_current_day_dir("R2D2_IPD")
 
@@ -50,7 +50,7 @@ def _plot_log_aggregates(exp_name):
     plot_keys = (
         aggregate_and_plot_tensorboard_data.PLOT_KEYS
         + matrix_sequential_social_dilemma.PLOT_KEYS
-        + augmented_dqn.PL
+        # + augmented_dqn.PLOT_KEYS
     )
     plot_assemble_tags_in_one_plot = (
         aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS

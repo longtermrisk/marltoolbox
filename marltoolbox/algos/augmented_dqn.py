@@ -8,7 +8,9 @@ from ray.rllib.agents.dqn.dqn_torch_policy import compute_q_values, QLoss
 from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.torch_ops import FLOAT_MIN
+
+# from ray.rllib.utils.torch_ops import FLOAT_MIN
+from ray.rllib.utils.torch_utils import FLOAT_MIN
 from ray.rllib.utils.typing import TensorType
 from typing import Dict
 
