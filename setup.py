@@ -14,7 +14,7 @@ setup(
     description="CLR MARL research framework toolbox",
     long_description=read("README.md"),
     license="MIT",
-    install_requires=["ray[rllib]", "torch"],
+    install_requires=["ray[rllib]", "torch", "wandb"],
     extras_require={
         "ci": [
             "pytest",

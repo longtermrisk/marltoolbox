@@ -10,7 +10,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import override
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.torch_ops import (
+from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
 )
 from ray.rllib.utils.typing import PolicyID
@@ -229,9 +229,9 @@ class AmTFTPolicyBase(
             )
 
         if postprocessing_rllib.Postprocessing.ADVANTAGES in samples.keys():
-            samples = self.algorithms[
-                algo_idx_to_train
-            ].postprocess_trajectory(samples)
+            samples = self.algorithms[algo_idx_to_train].postprocess_trajectory(
+                samples
+            )
 
         return samples
 
@@ -280,9 +280,7 @@ class AmTFTPolicyBase(
         self.observed_n_step_in_current_epi += 1
 
     def _get_information_from_opponent(self, agent_id, agent_ids, episode):
-        opp_agent_id = [one_id for one_id in agent_ids if one_id != agent_id][
-            0
-        ]
+        opp_agent_id = [one_id for one_id in agent_ids if one_id != agent_id][0]
         opp_a = episode.last_action_for(opp_agent_id)
 
         return self.opp_previous_obs, self.both_previous_raw_obs, opp_a
@@ -416,10 +414,7 @@ class AmTFTPolicyBase(
                     coop_opp_simulated_action,
                     opp_action,
                 )
-            if (
-                worker.env.step_count_in_current_episode
-                >= worker.env.max_steps
-            ):
+            if worker.env.step_count_in_current_episode >= worker.env.max_steps:
                 debit = 0
             else:
                 debit = self._compute_debit(

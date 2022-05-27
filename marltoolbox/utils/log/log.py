@@ -220,7 +220,9 @@ def get_explore_temperature_from_policy(
     if hasattr(policy, "exploration"):
         exploration_obj = policy.exploration
         if hasattr(exploration_obj, "temperature"):
-            to_log[f"{policy_id}/temperature"] = exploration_obj.temperature
+            to_log[
+                f"worker_{exploration_obj.worker_index}/{policy_id}/temperature"
+            ] = exploration_obj.temperature
 
     return to_log
 
@@ -360,9 +362,7 @@ def _add_q_values(policy, train_batch, to_log):
         q_values_single = train_batch["q_values"][-1, :]
         for action_i in range(policy.action_space.n):
             to_log[f"q_values_avg_act{action_i}"] = q_values_avg[action_i]
-            to_log[f"q_values_single_act{action_i}"] = q_values_single[
-                action_i
-            ]
+            to_log[f"q_values_single_act{action_i}"] = q_values_single[action_i]
             to_log[f"q_values_single_max"] = max(q_values_single)
     return to_log
 
@@ -438,9 +438,7 @@ def filter_nested(dict_or_list, keywords_to_keep):
 
     dict_ = copy.deepcopy(dict_or_list)
     for k, v in dict_.items():
-        if all(
-            [re.search(keyword, k) is None for keyword in keywords_to_keep]
-        ):
+        if all([re.search(keyword, k) is None for keyword in keywords_to_keep]):
             dict_or_list.pop(k)
         else:
             if isinstance(v, dict) or isinstance(v, list):

@@ -12,12 +12,12 @@ from gym import wrappers as gym_wrappers
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.rollout import (
+from ray.rllib.evaluate import (
     DefaultMapping,
     default_policy_agent_mapping,
     RolloutSaver,
 )
-from ray.rllib.utils.framework import TensorStructType
+from ray.rllib.utils.typing import TensorStructType
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.typing import EnvInfoDict, PolicyID
 
@@ -229,9 +229,7 @@ def internal_rollout(
 
             if multiagent:
                 done = done["__all__"]
-                reward_total += sum(
-                    r for r in reward.values() if r is not None
-                )
+                reward_total += sum(r for r in reward.values() if r is not None)
             else:
                 reward_total += reward
             if not no_render:

@@ -7,9 +7,7 @@ import ray
 from ray import tune
 from ray.rllib.agents import dqn
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
-from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.schedules import PiecewiseSchedule
-from ray.tune.integration.wandb import WandbLoggerCallback
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch
 from ray.rllib.utils import merge_dicts
@@ -122,9 +120,15 @@ def get_hyperparameters(
         args = parser.parse_args()
         args = args.__dict__
         if "env" in args.keys():
-            env = args["env"]
+            if env is not None:
+                assert args["env"] is None
+            else:
+                env = args["env"]
         if "train_n_replicates" in args.keys():
-            train_n_replicates = args["train_n_replicates"]
+            if train_n_replicates is not None:
+                assert args["train_n_replicates"] is None
+            else:
+                train_n_replicates = args["train_n_replicates"]
     print("env", env)
     if hyperparameter_search:
         if train_n_replicates is None:
@@ -193,9 +197,7 @@ def get_hyperparameters(
     }
 
     if hparams["load_policy_data"] is not None:
-        hparams["train_n_replicates"] = len(
-            hparams["load_policy_data"]["Util"]
-        )
+        hparams["train_n_replicates"] = len(hparams["load_policy_data"]["Util"])
 
     hparams = modify_hyperparams_for_the_selected_env(hparams)
 
@@ -342,7 +344,10 @@ def modify_hyperparams_for_the_selected_env(hp):
             (1.0, 1e-9),
         ]
 
-        if "IteratedPrisonersDilemma" == hp["env_name"]:
+        if (
+            "IteratedPrisonersDilemma" == hp["env_name"]
+            or "IPD" == hp["env_name"]
+        ):
             hp["filter_utilitarian"] = False
             hp["x_limits"] = (-3.5, 0.5)
             hp["y_limits"] = (-3.5, 0.5)

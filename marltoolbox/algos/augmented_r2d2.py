@@ -227,7 +227,10 @@ MyR2D2TorchPolicyWtMSELoss = MyR2D2TorchPolicy.with_updates(
 MyAdamR2D2TorchPolicy = MyR2D2TorchPolicy.with_updates(
     optimizer_fn=optimizers.adam_optimizer_dqn,
 )
-
 MyAdamVanillaR2D2TorchPolicy = R2D2TorchPolicy.with_updates(
     optimizer_fn=optimizers.adam_optimizer_dqn,
+)
+
+MySGDVanillaR2D2TorchPolicy = R2D2TorchPolicy.with_updates(
+    optimizer_fn=optimizers.sgd_optimizer_dqn,
 )

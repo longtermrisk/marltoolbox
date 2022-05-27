@@ -6,10 +6,16 @@ from ray.rllib.utils.typing import TrainerConfigDict
 def sgd_optimizer_dqn(
     policy: Policy, config: TrainerConfigDict
 ) -> "torch.optim.Optimizer":
+    if not hasattr(policy, "q_func_vars"):
+        policy.q_func_vars = policy.model.variables()
+
+    sgd_momentum = config["optimizer"].pop("sgd_momentum")
+    assert len(list(config["optimizer"].keys())) == 0
+
     return torch.optim.SGD(
         policy.q_func_vars,
         lr=policy.cur_lr,
-        momentum=config["optimizer"]["sgd_momentum"],
+        momentum=sgd_momentum,
     )
 
 
