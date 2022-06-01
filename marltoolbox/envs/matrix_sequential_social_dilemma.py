@@ -5,11 +5,12 @@
 import logging
 from abc import ABC
 from collections import Iterable
-from typing import Dict
+
+# from typing import Dict
 
 import gym.spaces
 import numpy as np
-from gym.spaces import Discrete
+from gym.spaces import Discrete, Dict
 from gym.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
@@ -41,6 +42,7 @@ PLOT_ASSEMBLAGE_TAGS = [
 class SupportRay1_12_0Mixin:
     def _support_ray_1_12_0(self):
         self._agent_ids = self.players_ids
+
         self.observation_space = gym.spaces.Dict(
             {k: self.OBSERVATION_SPACE for k in self._agent_ids}
         )
@@ -71,25 +73,15 @@ class MatrixSequentialSocialDilemma(
     NUM_AGENTS = 2
     NUM_ACTIONS = None
     NUM_STATES = None
-    ACTION_SPACE = None
+    # ACTION_SPACE = None
     OBSERVATION_SPACE = None
     PAYOFF_MATRIX = None
     NAME = None
 
-    def __init__(self, config: Dict = {}):
+    def __init__(self, config: dict = {}):
         super().__init__()
 
-        assert self.PAYOFF_MATRIX is not None
-        assert self.PAYOFF_MATRIX.shape[0] == self.NUM_ACTIONS
-        assert self.PAYOFF_MATRIX.shape[1] == self.NUM_ACTIONS
-        assert self.PAYOFF_MATRIX.shape[2] == self.NUM_AGENTS
-        assert len(self.PAYOFF_MATRIX.shape) == 3
-
-        if "players_ids" in config:
-            assert (
-                isinstance(config["players_ids"], Iterable)
-                and len(config["players_ids"]) == self.NUM_AGENTS
-            )
+        self._sanity_checks(config)
 
         self.players_ids = config.get(
             "players_ids", ["player_row", "player_col"]
@@ -108,6 +100,25 @@ class MatrixSequentialSocialDilemma(
             self._init_info()
 
         self._support_ray_1_12_0()
+
+    @property
+    def ACTION_SPACE(self):
+        if not hasattr(self, "action_space"):
+            self._support_ray_1_12_0()
+        return self.action_space
+
+    def _sanity_checks(self, config):
+        assert self.PAYOFF_MATRIX is not None
+        assert self.PAYOFF_MATRIX.shape[0] == self.NUM_ACTIONS
+        assert self.PAYOFF_MATRIX.shape[1] == self.NUM_ACTIONS
+        assert self.PAYOFF_MATRIX.shape[2] == self.NUM_AGENTS
+        assert len(self.PAYOFF_MATRIX.shape) == 3
+
+        if "players_ids" in config:
+            assert (
+                isinstance(config["players_ids"], Iterable)
+                and len(config["players_ids"]) == self.NUM_AGENTS
+            )
 
     def seed(self, seed=None):
         """Seed the PRNG of this space."""
@@ -401,7 +412,7 @@ class TwoPlayersCustomizableMatrixGame(
     OBSERVATION_SPACE = None
     PAYOFF_MATRIX = None
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: dict):
         self.PAYOFF_MATRIX = config["PAYOFF_MATRIX"]
         self.NUM_ACTIONS = config["NUM_ACTIONS"]
         self.ACTION_SPACE = Discrete(self.NUM_ACTIONS)
@@ -409,3 +420,124 @@ class TwoPlayersCustomizableMatrixGame(
         self.OBSERVATION_SPACE = Discrete(self.NUM_STATES)
 
         super().__init__(config)
+
+
+PLOT_KEYS_2P_3A = [
+    "0_0",
+    "0_1",
+    "0_2",
+    "1_0",
+    "1_1",
+    "1_2",
+    "2_0",
+    "2_1",
+    "2_2",
+]
+
+PLOT_ASSEMBLAGE_TAGS_2P_3A = [
+    ("0_0",),
+    ("0_1",),
+    ("0_2",),
+    ("1_0",),
+    ("1_1",),
+    ("1_2",),
+    ("2_0",),
+    ("2_1",),
+    ("2_2",),
+]
+
+
+class IteratedThreatGame(
+    NPlayersNDiscreteActionsInfoMixin, MatrixSequentialSocialDilemma
+):
+    """
+    A two-agent environment for the BOTS + PD game.
+    """
+
+    NUM_ACTIONS = None
+    NUM_ACTIONS_PL0 = 2
+    NUM_ACTIONS_PL1 = 3
+    ACTION_SPACE_PL0 = Discrete(NUM_ACTIONS_PL0)
+    ACTION_SPACE_PL1 = Discrete(NUM_ACTIONS_PL1)
+    NUM_STATES = NUM_ACTIONS_PL0 * NUM_ACTIONS_PL1 + 1
+    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    PAYOFF_MATRIX = np.array(
+        [
+            [[-5, +5], [-5.0, 5.0], [0.0, 0.0]],
+            [[-10, -2], [0, -1.9], [0.0, 0.0]],
+        ]
+    )
+    NAME = "IteratedThreatGame"
+
+    def _support_ray_1_12_0(self):
+        self._agent_ids = self.players_ids
+        self.observation_space = gym.spaces.Dict(
+            {k: self.OBSERVATION_SPACE for k in self._agent_ids}
+        )
+        assert len(self._agent_ids) == 2
+        self.action_space = gym.spaces.Dict(
+            {
+                k: self.ACTION_SPACE_PL0 if pl_i == 0 else self.ACTION_SPACE_PL1
+                for pl_i, k in enumerate(self._agent_ids)
+            }
+        )
+
+    def _produce_same_observations_for_each_player(
+        self, action_player_0: int, action_player_1: int
+    ):
+        return [
+            action_player_0 * self.NUM_ACTIONS_PL1 + action_player_1,
+            action_player_0 * self.NUM_ACTIONS_PL1 + action_player_1,
+        ]
+
+    def _produce_observations_invariant_to_the_player_trained(
+        self, action_player_0: int, action_player_1: int
+    ):
+        """
+        We want to be able to use a policy trained as player 1
+        for evaluation as player 2 and vice versa.
+        """
+        return [
+            action_player_0 * self.NUM_ACTIONS_PL1 + action_player_1,
+            action_player_1 * self.NUM_ACTIONS_PL0 + action_player_0,
+        ]
+
+    def _sanity_checks(self, config):
+        assert self.PAYOFF_MATRIX is not None
+        assert self.PAYOFF_MATRIX.shape[0] == self.NUM_ACTIONS_PL0
+        assert self.PAYOFF_MATRIX.shape[1] == self.NUM_ACTIONS_PL1
+        assert self.PAYOFF_MATRIX.shape[2] == self.NUM_AGENTS
+        assert len(self.PAYOFF_MATRIX.shape) == 3
+
+        if "players_ids" in config:
+            assert (
+                isinstance(config["players_ids"], Iterable)
+                and len(config["players_ids"]) == self.NUM_AGENTS
+            )
+
+    def _to_RLLib_API(
+        self, observations: list, rewards: list, epi_is_done: bool, info: dict
+    ):
+
+        observations = {
+            self.player_row_id: observations[0],
+            self.player_col_id: observations[1],
+        }
+
+        rewards = {
+            self.player_row_id: rewards[0],
+            self.player_col_id: rewards[1],
+        }
+
+        if info is None:
+            info = {}
+        else:
+            info = {self.player_row_id: info}
+
+        done = {
+            self.player_row_id: epi_is_done,
+            self.player_col_id: epi_is_done,
+            "__all__": epi_is_done,
+        }
+
+        return observations, rewards, done, info

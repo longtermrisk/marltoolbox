@@ -139,9 +139,7 @@ class TensorBoardDataExtractor:
             # To implement it, you can look at the original implementation at
             # https://github.com/Spenhouet/tensorboard-aggregator
         elif output == "csv":
-            self._aggregate_to_csv(
-                main_path, AGGREGATION_OPS, extracts_per_group
-            )
+            self._aggregate_to_csv(main_path, AGGREGATION_OPS, extracts_per_group)
 
         print(f"End of aggregation {main_path}")
 
@@ -163,12 +161,8 @@ class TensorBoardDataExtractor:
         (
             steps_per_key,
             all_scalar_events_per_key,
-        ) = self._get_and_validate_all_steps_per_key(
-            all_scalar_events_per_key, keys
-        )
-        values_per_key = self._get_values_per_step_per_key(
-            all_scalar_events_per_key
-        )
+        ) = self._get_and_validate_all_steps_per_key(all_scalar_events_per_key, keys)
+        values_per_key = self._get_values_per_step_per_key(all_scalar_events_per_key)
 
         keys = [key.replace("/", "_") for key in keys]
         all_per_key = dict(zip(keys, zip(steps_per_key, values_per_key)))
@@ -177,8 +171,7 @@ class TensorBoardDataExtractor:
 
     def _create_event_reader_for_each_log_files(self, file_list):
         event_readers = [
-            EventAccumulator(file_path).Reload().scalars
-            for file_path in file_list
+            EventAccumulator(file_path).Reload().scalars for file_path in file_list
         ]
 
         # Filter non event files
@@ -193,8 +186,7 @@ class TensorBoardDataExtractor:
     def _get_and_validate_all_scalar_keys(self, event_readers):
 
         all_keys = [
-            tuple(one_event_reader.Keys())
-            for one_event_reader in event_readers
+            tuple(one_event_reader.Keys()) for one_event_reader in event_readers
         ]
 
         self._print_discrepencies_in_keys(all_keys)
@@ -215,8 +207,7 @@ class TensorBoardDataExtractor:
                         if k not in keys_2:
                             if k not in missing_k_detected:
                                 print(
-                                    f"key {k} is not present in all "
-                                    f"event_readers"
+                                    f"key {k} is not present in all " f"event_readers"
                                 )
                                 missing_k_detected.append(k)
 
@@ -233,9 +224,7 @@ class TensorBoardDataExtractor:
                 common_keys.append(one_key)
         return common_keys
 
-    def _get_and_validate_all_steps_per_key(
-        self, all_scalar_events_per_key, keys
-    ):
+    def _get_and_validate_all_steps_per_key(self, all_scalar_events_per_key, keys):
         all_steps_per_key = [
             [
                 tuple(scalar_event.step for scalar_event in scalar_events)
@@ -250,10 +239,8 @@ class TensorBoardDataExtractor:
         ):
             self._print_discrepencies_in_steps(all_steps_for_one_key, key)
             common_steps = self._keep_common_steps(all_steps_for_one_key)
-            all_scalar_events_per_key = (
-                self._remove_events_if_step_missing_somewhere(
-                    common_steps, all_scalar_events_per_key, key_idx
-                )
+            all_scalar_events_per_key = self._remove_events_if_step_missing_somewhere(
+                common_steps, all_scalar_events_per_key, key_idx
             )
             steps_per_key.append(common_steps)
 
@@ -262,9 +249,7 @@ class TensorBoardDataExtractor:
     def _print_discrepencies_in_steps(self, all_steps_for_one_key, key):
         for steps_1 in all_steps_for_one_key:
             for steps_2 in all_steps_for_one_key:
-                missing_steps = [
-                    step for step in steps_1 if step not in steps_2
-                ]
+                missing_steps = [step for step in steps_1 if step not in steps_2]
                 if len(missing_steps) > 0:
                     print(
                         f"discrepency in steps logged for key {key}:"
@@ -309,9 +294,7 @@ class TensorBoardDataExtractor:
         ]
         return values_per_key
 
-    def _aggregate_to_csv(
-        self, main_path, aggregation_ops, extracts_per_group
-    ):
+    def _aggregate_to_csv(self, main_path, aggregation_ops, extracts_per_group):
         for group_key, all_per_key in extracts_per_group.items():
             if all_per_key is None:
                 continue
@@ -332,9 +315,7 @@ class TensorBoardDataExtractor:
         )
         if not os.path.exists(save_group_dir):
             os.mkdir(save_group_dir)
-        file_name = (
-            self._get_valid_filename(key) + "-" + main_path_split[-1] + ".csv"
-        )
+        file_name = self._get_valid_filename(key) + "-" + main_path_split[-1] + ".csv"
         df = pd.DataFrame(aggregations, index=steps)
         save_dir_file_path = os.path.join(save_group_dir, file_name)
         df.to_csv(save_dir_file_path, sep=";")
@@ -365,9 +346,7 @@ class SummaryPlotter:
         save_dir_path = save_dir
         file_list = list_all_files_in_one_dir_tree(save_dir_path)
         file_list = keep_strs_containing_keys(file_list, plot_keys)
-        csv_file_list = [
-            file_path for file_path in file_list if "csv" in file_path
-        ]
+        csv_file_list = [file_path for file_path in file_list if "csv" in file_path]
         csv_file_groups = separate_str_in_group_containing_keys(
             csv_file_list, group_keys
         )
@@ -446,22 +425,16 @@ class SummaryPlotter:
 
             if len(assemblage_list) > 0:
                 # plot one assemblage
-                y_label = f"{assemblage_idx}_" + " or ".join(
-                    list_of_tags_in_assemblage
-                )
-                self.plot_one_graph(
-                    save_dir_path, assemblage_list, y_label=y_label
-                )
+                y_label = f"{assemblage_idx}_" + " or ".join(list_of_tags_in_assemblage)
+                self.plot_one_graph(save_dir_path, assemblage_list, y_label=y_label)
 
-    def _group_csv_file_in_aggregates(
-        self, csv_file_list, list_of_tags_in_assemblage
-    ):
+    def _group_csv_file_in_aggregates(self, csv_file_list, list_of_tags_in_assemblage):
         print(f"Start the {list_of_tags_in_assemblage} assemblage")
         assemblage_list = []
         for csv_file in csv_file_list:
             if any(
                 [
-                    select_key in csv_file
+                    select_key in os.path.split(csv_file)[-1]
                     for select_key in list_of_tags_in_assemblage
                 ]
             ):
@@ -564,8 +537,7 @@ def add_summary_plots(
 
     if output not in ["summary", "csv"]:
         raise ValueError(
-            "output must be one of ['summary', 'csv']"
-            f"current output: {output}"
+            "output must be one of ['summary', 'csv']" f"current output: {output}"
         )
 
     main_path = os.path.expanduser(main_path)
