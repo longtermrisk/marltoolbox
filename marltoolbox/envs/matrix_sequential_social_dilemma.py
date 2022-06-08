@@ -83,15 +83,11 @@ class MatrixSequentialSocialDilemma(
 
         self._sanity_checks(config)
 
-        self.players_ids = config.get(
-            "players_ids", ["player_row", "player_col"]
-        )
+        self.players_ids = config.get("players_ids", ["player_row", "player_col"])
         self.player_row_id, self.player_col_id = self.players_ids
         self.max_steps = config.get("max_steps", 20)
         self.output_additional_info = config.get("output_additional_info", True)
-        self.same_obs_for_each_player = config.get(
-            "same_obs_for_each_player", True
-        )
+        self.same_obs_for_each_player = config.get("same_obs_for_each_player", True)
 
         self.step_count_in_current_episode = None
 
@@ -146,17 +142,11 @@ class MatrixSequentialSocialDilemma(
         if self.output_additional_info:
             self._accumulate_info(action_player_row, action_player_col)
 
-        observations = self._produce_observations(
-            action_player_row, action_player_col
-        )
-        rewards = self._get_players_rewards(
-            action_player_row, action_player_col
-        )
+        observations = self._produce_observations(action_player_row, action_player_col)
+        rewards = self._get_players_rewards(action_player_row, action_player_col)
         epi_is_done = self.step_count_in_current_episode >= self.max_steps
         if self.step_count_in_current_episode > self.max_steps:
-            logger.warning(
-                "self.step_count_in_current_episode >= self.max_steps"
-            )
+            logger.warning("self.step_count_in_current_episode >= self.max_steps")
         info = self._get_info_for_current_epi(epi_is_done)
         return self._to_RLLib_API(observations, rewards, epi_is_done, info)
 
@@ -279,9 +269,7 @@ class IteratedAsymPrisonersDilemma(
     NAME = "IPD"
 
 
-class IteratedStagHunt(
-    TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
-):
+class IteratedStagHunt(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Stag Hunt game.
     """
@@ -294,9 +282,7 @@ class IteratedStagHunt(
     NAME = "IteratedStagHunt"
 
 
-class IteratedChicken(
-    TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
-):
+class IteratedChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Chicken game.
     """
@@ -309,9 +295,7 @@ class IteratedChicken(
     NAME = "IteratedChicken"
 
 
-class IteratedAsymChicken(
-    TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
-):
+class IteratedAsymChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the Asymmetric Chicken game.
     """
@@ -320,9 +304,7 @@ class IteratedAsymChicken(
     NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE = Discrete(NUM_STATES)
-    PAYOFF_MATRIX = np.array(
-        [[[+2.0, +0], [-1.0, +1.0]], [[+2.5, -1], [-10, -10]]]
-    )
+    PAYOFF_MATRIX = np.array([[[+2.0, +0], [-1.0, +1.0]], [[+2.5, -1], [-10, -10]]])
     NAME = "AsymmetricIteratedChicken"
 
 
@@ -341,9 +323,7 @@ class IteratedBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     NAME = "IteratedBoS"
 
 
-class IteratedAsymBoS(
-    TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
-):
+class IteratedAsymBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
     A two-agent environment for the BoS game.
     """
@@ -359,9 +339,7 @@ class IteratedAsymBoS(
 
 
 def define_greed_fear_matrix_game(greed, fear):
-    class GreedFearGame(
-        TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
-    ):
+    class GreedFearGame(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
         NUM_ACTIONS = 2
         NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
         ACTION_SPACE = Discrete(NUM_ACTIONS)

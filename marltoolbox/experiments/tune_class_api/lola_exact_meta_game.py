@@ -56,10 +56,8 @@ def main(debug):
             stop_config,
         ) = _produce_rllib_config_for_each_replicates(hp)
 
-        mixed_rllib_configs = (
-            cross_play.utils.mix_policies_in_given_rllib_configs(
-                all_rllib_config, hp_eval["n_cross_play_in_final_meta_game"]
-            )
+        mixed_rllib_configs = cross_play.utils.mix_policies_in_given_rllib_configs(
+            all_rllib_config, hp_eval["n_cross_play_in_final_meta_game"]
         )
 
         experiment_analysis = ray.tune.run(
@@ -105,9 +103,7 @@ def get_hyperparameters(debug):
     # env = "IPD"
     env = "IteratedAsymBoS"
 
-    hp = lola_exact_official.get_hyperparameters(
-        debug, train_n_replicates=1, env=env
-    )
+    hp = lola_exact_official.get_hyperparameters(debug, train_n_replicates=1, env=env)
 
     hp.update(
         {
@@ -233,9 +229,7 @@ def _get_checkpoints_for_each_welfare_in_dir(data_dir, hp):
 def _classify_base_replicates_into_welfares(all_replicates_save_dir):
     welfares = []
     for replicate_dir in all_replicates_save_dir:
-        reward_player_1, reward_player_2 = _get_last_episode_rewards(
-            replicate_dir
-        )
+        reward_player_1, reward_player_2 = _get_last_episode_rewards(replicate_dir)
         welfare_name = classify_into_welfare_based_on_rewards(
             reward_player_1, reward_player_2
         )
@@ -243,20 +237,7 @@ def _classify_base_replicates_into_welfares(all_replicates_save_dir):
     return welfares
 
 
-def classify_into_welfare_based_on_rewards(reward_player_1, reward_player_2):
-
-    ratio = reward_player_1 / reward_player_2
-    if ratio < 1.5:
-        return EGALITARIAN
-    elif ratio < 2.5:
-        return MIXED
-    else:
-        return UTILITARIAN
-
-
-def _filter_replicate_dir_by_welfare(
-    all_replicates_save_dir, welfares, welfare_name
-):
+def _filter_replicate_dir_by_welfare(all_replicates_save_dir, welfares, welfare_name):
     replicates_save_dir_for_welfare = [
         replicate_dir
         for welfare, replicate_dir in zip(welfares, all_replicates_save_dir)
@@ -283,12 +264,8 @@ def _get_vanilla_lola_exact_eval_config(hp, final_eval_over_n_epi):
 
     hp_eval["n_self_play_per_checkpoint"] = None
     hp_eval["n_cross_play_per_checkpoint"] = None
-    hp_eval[
-        "x_axis_metric"
-    ] = f"policy_reward_mean/{env_config['players_ids'][0]}"
-    hp_eval[
-        "y_axis_metric"
-    ] = f"policy_reward_mean/{env_config['players_ids'][1]}"
+    hp_eval["x_axis_metric"] = f"policy_reward_mean/{env_config['players_ids'][0]}"
+    hp_eval["y_axis_metric"] = f"policy_reward_mean/{env_config['players_ids'][1]}"
     hp_eval["plot_axis_scale_multipliers"] = (
         1 / hp_eval["trace_length"],
         1 / hp_eval["trace_length"],
@@ -308,13 +285,9 @@ def _get_vanilla_lola_exact_eval_config(hp, final_eval_over_n_epi):
     return rllib_config, hp_eval, env_config, stop_config
 
 
-def _modify_config_to_use_welfare_coordinators(
-    rllib_config, env_config, hp_eval
-):
-    all_welfare_pairs_wt_payoffs = (
-        _get_all_welfare_pairs_wt_cross_play_payoffs(
-            hp_eval, env_config["players_ids"]
-        )
+def _modify_config_to_use_welfare_coordinators(rllib_config, env_config, hp_eval):
+    all_welfare_pairs_wt_payoffs = _get_all_welfare_pairs_wt_cross_play_payoffs(
+        hp_eval, env_config["players_ids"]
     )
 
     rllib_config["multiagent"]["policies_to_train"] = ["None"]
@@ -347,9 +320,7 @@ def _modify_config_to_use_welfare_coordinators(
                 "policy_checkpoints": hp_eval["ckpt_per_welfare"],
             }
         )
-        policy_config_items[
-            0
-        ] = welfare_coordination.WelfareCoordinationTorchPolicy
+        policy_config_items[0] = welfare_coordination.WelfareCoordinationTorchPolicy
         policy_config_items[3] = meta_policy_config
         policies[policy_id] = tuple(policy_config_items)
 
@@ -365,12 +336,8 @@ def _get_all_welfare_pairs_wt_cross_play_payoffs(hp, player_ids):
             player_ids, eval_replicate_path
         )
         if _is_cross_play(players_ckpts):
-            players_welfares = _convert_checkpoint_names_to_welfares(
-                hp, players_ckpts
-            )
-            raw_players_perf = _extract_performance(
-                eval_replicate_path, player_ids
-            )
+            players_welfares = _convert_checkpoint_names_to_welfares(hp, players_ckpts)
+            raw_players_perf = _extract_performance(eval_replicate_path, player_ids)
             play_mode = _get_play_mode(players_welfares)
             if play_mode not in raw_data_points_wt_welfares.keys():
                 raw_data_points_wt_welfares[play_mode] = []
@@ -390,22 +357,16 @@ def _get_list_of_replicates_path_in_eval(hp):
     assert len(child_dirs) == 1, f"{child_dirs}"
     eval_dir = utils.path.get_unique_child_dir(child_dirs[0])
     eval_replicates_dir = utils.path.get_unique_child_dir(eval_dir)
-    possible_nested_dir = utils.path.try_get_unique_child_dir(
-        eval_replicates_dir
-    )
+    possible_nested_dir = utils.path.try_get_unique_child_dir(eval_replicates_dir)
     if possible_nested_dir is not None:
         eval_replicates_dir = possible_nested_dir
-    all_eval_replicates_dirs = (
-        utils.path.get_children_paths_wt_selecting_filter(
-            eval_replicates_dir, _filter="PG_"
-        )
+    all_eval_replicates_dirs = utils.path.get_children_paths_wt_selecting_filter(
+        eval_replicates_dir, _filter="PG_"
     )
     return all_eval_replicates_dirs
 
 
-def _extract_checkpoints_used_for_each_players(
-    player_ids, eval_replicate_path
-):
+def _extract_checkpoints_used_for_each_players(player_ids, eval_replicate_path):
     params = utils.path.get_params_for_replicate(eval_replicate_path)
     policies_config = params["multiagent"]["policies"]
     ckps = [
@@ -424,9 +385,7 @@ def _convert_checkpoint_names_to_welfares(hp, players_ckpts):
     for player_ckpt in players_ckpts:
         player_ckpt_wtout_root = "/".join(player_ckpt.split("/")[-4:])
         for welfare, ckpts_for_welfare in hp["ckpt_per_welfare"].items():
-            if any(
-                player_ckpt_wtout_root in ckpt for ckpt in ckpts_for_welfare
-            ):
+            if any(player_ckpt_wtout_root in ckpt for ckpt in ckpts_for_welfare):
                 players_welfares.append(welfare)
                 break
 
@@ -447,9 +406,9 @@ def _extract_and_average_perf(results_per_epi, player_ids):
     for player_id in player_ids:
         player_rewards = []
         for result_in_one_epi in results_per_epi:
-            total_player_reward_in_one_epi = result_in_one_epi[
-                "policy_reward_mean"
-            ][player_id]
+            total_player_reward_in_one_epi = result_in_one_epi["policy_reward_mean"][
+                player_id
+            ]
             player_rewards.append(total_player_reward_in_one_epi)
         players_avg_reward.append(sum(player_rewards) / len(player_rewards))
     return players_avg_reward

@@ -53,7 +53,8 @@ class NPlayersNDiscreteActionsInfoMixin(InfoAccumulationInterface, ABC):
         self.info_counters = {"n_steps_accumulated": 0}
 
     def _reset_info(self):
-        self.info_counters = {"n_steps_accumulated": 0}
+        for k in self.info_counters.keys():
+            self.info_counters[k] = 0
 
     def _get_episode_info(self):
         info = {}
@@ -80,9 +81,11 @@ class NPlayersNContinuousActionsInfoMixin(InfoAccumulationInterface, ABC):
     (action profile: the set of actions used during one step by all players).
     """
 
-    logger.warning(
-        "MIXING NPlayersNContinuousActionsInfoMixin NOT DEBBUGED, NOT TESTED"
-    )
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        logger.warning(
+            "MIXING NPlayersNContinuousActionsInfoMixin NOT DEBBUGED, NOT TESTED"
+        )
 
     def _init_info(self):
         self.data_accumulated = {}

@@ -23,10 +23,11 @@ from marltoolbox.envs.matrix_sequential_social_dilemma import (
 from marltoolbox.experiments.tune_class_api import lola_pg_official
 from marltoolbox.utils import policy, log, miscellaneous
 from marltoolbox.scripts import aggregate_and_plot_tensorboard_data
+from marltoolbox.algos.lola import utils
 
 
 def main(debug):
-    hparams = get_hyperparameters(debug)
+    hparams = utils.get_hyperparameters(debug)
 
     if hparams["load_plot_data"] is None:
         ray.init(
@@ -40,67 +41,6 @@ def main(debug):
 
     evaluate(experiment_analysis_per_welfare, hparams)
     ray.shutdown()
-
-
-def get_hyperparameters(debug, train_n_replicates=None, env=None):
-    """Get hyperparameters for LOLA-Exact for matrix games"""
-
-    if train_n_replicates is None:
-        train_n_replicates = 2 if debug else int(3 * 1)
-    seeds = miscellaneous.get_random_seeds(train_n_replicates)
-
-    exp_name, _ = log.log_in_current_day_dir("LOLA_Exact")
-
-    hparams = {
-        "debug": debug,
-        "load_plot_data": None,
-        # Example "load_plot_data": ".../SelfAndCrossPlay_save.p",
-        "exp_name": exp_name,
-        "classify_into_welfare_fn": True,
-        "train_n_replicates": train_n_replicates,
-        "wandb": {
-            "project": "LOLA_Exact",
-            "group": exp_name,
-            "api_key_file": os.path.join(
-                os.path.dirname(__file__), "../../../api_key_wandb"
-            ),
-        },
-        # "env_name": "IPD" if env is None else env,
-        # "env_name": "IMP" if env is None else env,
-        "env_name": "IteratedAsymBoS" if env is None else env,
-        "num_episodes": 5 if debug else 50,
-        "trace_length": 5 if debug else 200,
-        "re_init_every_n_epi": 1,
-        # "num_episodes": 5 if debug else 50 * 200,
-        # "trace_length": 1,
-        # "re_init_every_n_epi": 50,
-        "simple_net": True,
-        "corrections": True,
-        "pseudo": False,
-        "num_hidden": 32,
-        "reg": 0.0,
-        "lr": 1.0,
-        "lr_correction": 1.0,
-        "gamma": 0.96,
-        "seed": tune.grid_search(seeds),
-        "metric": "ret1",
-        "with_linear_LR_decay_to_zero": False,
-        "clip_update": None,
-        # "with_linear_LR_decay_to_zero": True,
-        # "clip_update": 0.1,
-        # "lr": 0.001,
-        "plot_keys": aggregate_and_plot_tensorboard_data.PLOT_KEYS + ["ret"],
-        "plot_assemblage_tags": aggregate_and_plot_tensorboard_data.PLOT_ASSEMBLAGE_TAGS
-        + [("ret",)],
-        "x_limits": (-0.1, 4.1),
-        "y_limits": (-0.1, 4.1),
-    }
-
-    hparams["plot_axis_scale_multipliers"] = (
-        1 / hparams["trace_length"],
-        1 / hparams["trace_length"],
-    )
-    return hparams
 
 
 def train(hp):
@@ -126,8 +66,8 @@ def train(hp):
         # ],
     )
     if hp["classify_into_welfare_fn"]:
-        experiment_analysis_per_welfare = (
-            _classify_trials_in_function_of_welfare(experiment_analysis)
+        experiment_analysis_per_welfare = _classify_trials_in_function_of_welfare(
+            experiment_analysis
         )
     else:
         experiment_analysis_per_welfare = {"": experiment_analysis}
@@ -290,9 +230,7 @@ def _get_trial_welfare(trial):
 def _add_empty_experiment_analysis(
     experiment_analysis_per_welfare, welfare_name, experiment_analysis
 ):
-    experiment_analysis_per_welfare[welfare_name] = copy.deepcopy(
-        experiment_analysis
-    )
+    experiment_analysis_per_welfare[welfare_name] = copy.deepcopy(experiment_analysis)
     experiment_analysis_per_welfare[welfare_name].trials = []
 
 

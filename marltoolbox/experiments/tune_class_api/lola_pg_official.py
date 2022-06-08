@@ -51,9 +51,7 @@ def main(debug: bool, env=None):
 
     exp_name, _ = log.log_in_current_day_dir("LOLA_PG")
 
-    tune_hparams = _get_hyperparameters(
-        debug, train_n_replicates, seeds, exp_name, env
-    )
+    tune_hparams = _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env)
 
     if tune_hparams["load_plot_data"] is None:
         ray.init(num_cpus=10, num_gpus=0, local_mode=debug)
@@ -146,11 +144,7 @@ def _get_hyperparameters(debug, train_n_replicates, seeds, exp_name, env):
         tune_hparams.update(
             {
                 "gamma": 0.5,
-                "num_episodes": 3
-                if debug
-                else 4000
-                if high_coop_speed_hp
-                else 2000,
+                "num_episodes": 3 if debug else 4000 if high_coop_speed_hp else 2000,
                 "trace_length": 10 if debug else 20,
                 "lr": None,
                 "weigth_decay": 0.03,
@@ -249,15 +243,11 @@ def _train(tune_hp):
     )
 
     if tune_hp["remove_trials_below_speed"]:
-        experiment_analysis = _remove_failed_trials(
-            experiment_analysis, tune_hp
-        )
+        experiment_analysis = _remove_failed_trials(experiment_analysis, tune_hp)
 
     if tune_hp["classify_into_welfare_fn"]:
-        experiment_analysis_per_welfare = (
-            _classify_trials_in_function_of_welfare(
-                experiment_analysis, tune_hp
-            )
+        experiment_analysis_per_welfare = _classify_trials_in_function_of_welfare(
+            experiment_analysis, tune_hp
         )
     else:
         experiment_analysis_per_welfare = {"": experiment_analysis}
@@ -313,32 +303,22 @@ def _get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
         if tune_config["env_name"] == "VectorizedCoinGame":
             tune_config["env_class"] = vectorized_coin_game.VectorizedCoinGame
         elif tune_config["env_name"] == "AsymVectorizedCoinGame":
-            tune_config[
-                "env_class"
-            ] = vectorized_coin_game.AsymVectorizedCoinGame
+            tune_config["env_class"] = vectorized_coin_game.AsymVectorizedCoinGame
         elif tune_config["env_name"] == "VectorizedSSDMixedMotiveCoinGame":
-            tune_config[
-                "env_class"
-            ] = vectorized_ssd_mm_coin_game.VectSSDMixedMotiveCG
+            tune_config["env_class"] = vectorized_ssd_mm_coin_game.VectSSDMixedMotiveCG
         else:
             raise ValueError()
 
-        tune_config["lr"] = (
-            0.005 if tune_config["lr"] is None else tune_config["lr"]
-        )
+        tune_config["lr"] = 0.005 if tune_config["lr"] is None else tune_config["lr"]
         tune_config["gamma"] = (
             0.96 if tune_config["gamma"] is None else tune_config["gamma"]
         )
         tune_hp["x_limits"] = (-0.1, 0.6)
         tune_hp["y_limits"] = (-0.1, 0.6)
-        if (
-            tune_config["env_class"]
-            == vectorized_coin_game.AsymVectorizedCoinGame
-        ):
+        if tune_config["env_class"] == vectorized_coin_game.AsymVectorizedCoinGame:
             tune_hp["x_limits"] = (-1.0, 3.0)
         elif (
-            tune_config["env_class"]
-            == vectorized_ssd_mm_coin_game.VectSSDMixedMotiveCG
+            tune_config["env_class"] == vectorized_ssd_mm_coin_game.VectSSDMixedMotiveCG
         ):
             tune_hp["x_limits"] = (-0.02, 0.8)
             tune_hp["y_limits"] = (-0.02, 1.5)
@@ -346,12 +326,8 @@ def _get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
         tune_hp["jitter"] = 0.00
         env_config = {
             "players_ids": ["player_red", "player_blue"],
-            "batch_size": tune.sample_from(
-                lambda spec: spec.config["batch_size"]
-            ),
-            "max_steps": tune.sample_from(
-                lambda spec: spec.config["trace_length"]
-            ),
+            "batch_size": tune.sample_from(lambda spec: spec.config["batch_size"]),
+            "max_steps": tune.sample_from(lambda spec: spec.config["trace_length"]),
             "grid_size": tune_config["grid_size"],
             "get_additional_info": True,
             "both_players_can_pick_the_same_coin": True,
@@ -379,9 +355,7 @@ def _get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
                 "env_class"
             ] = matrix_sequential_social_dilemma.IteratedPrisonersDilemma
         elif tune_config["env_name"] == "IteratedAsymBoS":
-            tune_config[
-                "env_class"
-            ] = matrix_sequential_social_dilemma.IteratedAsymBoS
+            tune_config["env_class"] = matrix_sequential_social_dilemma.IteratedAsymBoS
         else:
             raise ValueError()
 
@@ -391,18 +365,12 @@ def _get_tune_config(tune_hp: dict, stop_on_epi_number: bool = False):
             else tune_config["num_episodes"]
         )
         tune_config["trace_length"] = (
-            150
-            if tune_config["trace_length"] is None
-            else tune_config["trace_length"]
+            150 if tune_config["trace_length"] is None else tune_config["trace_length"]
         )
         tune_config["batch_size"] = (
-            4000
-            if tune_config["batch_size"] is None
-            else tune_config["batch_size"]
+            4000 if tune_config["batch_size"] is None else tune_config["batch_size"]
         )
-        tune_config["lr"] = (
-            1.0 if tune_config["lr"] is None else tune_config["lr"]
-        )
+        tune_config["lr"] = 1.0 if tune_config["lr"] is None else tune_config["lr"]
         tune_config["gamma"] = (
             0.96 if tune_config["gamma"] is None else tune_config["gamma"]
         )
@@ -459,9 +427,7 @@ def _generate_eval_config(tune_hp, debug):
     rllib_hp = copy.deepcopy(tune_hp)
     rllib_hp["seed"] = 2020
     rllib_hp["num_episodes"] = 1 if debug else 100
-    tune_config, stop, env_config = _get_tune_config(
-        rllib_hp, stop_on_epi_number=True
-    )
+    tune_config, stop, env_config = _get_tune_config(rllib_hp, stop_on_epi_number=True)
     rllib_hp["env_class"] = tune_config["env_class"]
 
     if "CoinGame" in tune_config["env_name"]:
@@ -538,66 +504,6 @@ def _generate_eval_config(tune_hp, debug):
     )
 
 
-def _evaluate_self_and_cross_perf(
-    rllib_hp,
-    rllib_config_eval,
-    policies_to_load,
-    trainable_class,
-    stop,
-    env_config,
-    experiment_analysis_per_welfare,
-    n_cross_play_per_checkpoint=None,
-):
-    exp_name = os.path.join(rllib_hp["exp_name"], "eval")
-    evaluator = cross_play.evaluator.SelfAndCrossPlayEvaluator(
-        exp_name=exp_name,
-        local_mode=rllib_hp["debug"],
-    )
-    analysis_metrics_per_mode = evaluator.perform_evaluation_or_load_data(
-        evaluation_config=rllib_config_eval,
-        stop_config=stop,
-        policies_to_load_from_checkpoint=policies_to_load,
-        experiment_analysis_per_welfare=experiment_analysis_per_welfare,
-        tune_trainer_class=trainable_class,
-        n_cross_play_per_checkpoint=min(5, rllib_hp["train_n_replicates"] - 1)
-        if n_cross_play_per_checkpoint is None
-        else n_cross_play_per_checkpoint,
-        to_load_path=rllib_hp["load_plot_data"],
-    )
-
-    if issubclass(
-        rllib_hp["env_class"],
-        matrix_sequential_social_dilemma.MatrixSequentialSocialDilemma,
-    ):
-        background_area_coord = rllib_hp["env_class"].PAYOFF_MATRIX
-    else:
-        background_area_coord = None
-
-    plot_config = PlotConfig(
-        xlim=rllib_hp["x_limits"],
-        ylim=rllib_hp["y_limits"],
-        markersize=5,
-        jitter=rllib_hp["jitter"],
-        xlabel="player 1 payoffs",
-        ylabel="player 2 payoffs",
-        plot_max_n_points=rllib_hp["train_n_replicates"],
-        x_scale_multiplier=rllib_hp["scale_multipliers"][0],
-        y_scale_multiplier=rllib_hp["scale_multipliers"][1],
-        background_area_coord=background_area_coord,
-    )
-    evaluator.plot_results(
-        analysis_metrics_per_mode,
-        plot_config=plot_config,
-        x_axis_metric=f"policy_reward_mean/{env_config['players_ids'][0]}",
-        y_axis_metric=f"policy_reward_mean/{env_config['players_ids'][1]}",
-    )
-
-
-FAILURE = "failures"
-EGALITARIAN = "egalitarian"
-UTILITARIAN = "utilitarian"
-
-
 def _classify_trials_in_function_of_welfare(experiment_analysis, hp):
     experiment_analysis_per_welfare = {}
     for trial in experiment_analysis.trials:
@@ -625,22 +531,6 @@ def _get_trial_welfare(trial, hp):
         reward_player_2,
     )
     return welfare_name
-
-
-def lola_pg_classify_fn(
-    pick_own_player_1, pick_own_player_2, hp, reward_player_1, reward_player_2
-):
-    if reward_player_2 != 0.0 and reward_player_1 != 0.0:
-        if hp["env_name"] == "VectorizedSSDMixedMotiveCoinGame":
-            ratio = reward_player_2 / reward_player_1
-        else:
-            ratio = max(
-                reward_player_1 / reward_player_2,
-                reward_player_2 / reward_player_1,
-            )
-        if ratio > 1.2:
-            return UTILITARIAN
-    return EGALITARIAN
 
 
 if __name__ == "__main__":
