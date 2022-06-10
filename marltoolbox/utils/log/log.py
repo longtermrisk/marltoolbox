@@ -155,14 +155,10 @@ def get_logging_callbacks_class(
             def exec_in_each_policy(worker):
                 return worker.foreach_policy(function_to_exec)
 
-            to_log_list_list = trainer.workers.foreach_worker(
-                exec_in_each_policy
-            )
+            to_log_list_list = trainer.workers.foreach_worker(exec_in_each_policy)
             self._unroll_into_logs(result, to_log_list_list)
 
-        def _update_epi_info_wt_to_log(
-            self, worker, episode: MultiAgentEpisode
-        ):
+        def _update_epi_info_wt_to_log(self, worker, episode: MultiAgentEpisode):
             """
             Add logs from every policies (from policy.to_log:dict)
             to the info (to be plotted in Tensorboard).
@@ -174,9 +170,7 @@ def get_logging_callbacks_class(
                 episode._agent_to_last_info[policy_id].update(to_log)
 
         @staticmethod
-        def _unroll_into_logs(
-            dict_: Dict, to_log_list_list: List[List[Dict]]
-        ) -> Dict:
+        def _unroll_into_logs(dict_: Dict, to_log_list_list: List[List[Dict]]) -> Dict:
             for worker_idx, to_log_list in enumerate(to_log_list_list):
                 for to_log in to_log_list:
                     for k, v in to_log.items():
@@ -189,9 +183,7 @@ def get_logging_callbacks_class(
                         if key not in dict_.keys():
                             dict_[key] = v
                         else:
-                            logger.warning(
-                                f"key:{key} already exists in result.keys()"
-                            )
+                            logger.warning(f"key:{key} already exists in result.keys()")
             return dict_
 
     return LoggingCallbacks
@@ -210,9 +202,7 @@ def get_log_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
     return to_log
 
 
-def get_explore_temperature_from_policy(
-    policy: Policy, policy_id: PolicyID
-) -> dict:
+def get_explore_temperature_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
     """
     It is exist get the temperature from the exploration policy of a Policy
     """
@@ -260,9 +250,7 @@ def augment_stats_fn_wt_additionnal_logs(
         if policy.config["framework"] == "torch":
             stats_to_log.update(_log_action_prob_pytorch(policy, train_batch))
         else:
-            logger.warning(
-                "wt_additional_info (stats_fn) working only for PyTorch"
-            )
+            logger.warning("wt_additional_info (stats_fn) working only for PyTorch")
 
         return stats_to_log
 
@@ -305,12 +293,10 @@ def _add_action_distrib_to_log(policy, train_batch, to_log):
     action_dist_inputs_avg = train_batch["action_dist_inputs"].mean(axis=0)
     action_dist_inputs_single = train_batch["action_dist_inputs"][-1, :]
     for action_i in range(policy.action_space.n):
-        to_log[f"act_dist_inputs_avg_act{action_i}"] = action_dist_inputs_avg[
+        to_log[f"act_dist_inputs_avg_act{action_i}"] = action_dist_inputs_avg[action_i]
+        to_log[f"act_dist_inputs_single_act{action_i}"] = action_dist_inputs_single[
             action_i
         ]
-        to_log[
-            f"act_dist_inputs_single_act{action_i}"
-        ] = action_dist_inputs_single[action_i]
         to_log[f"act_dist_inputs_single_max"] = max(action_dist_inputs_single)
     return to_log
 
@@ -369,9 +355,7 @@ def _add_q_values(policy, train_batch, to_log):
 
 def compute_entropy_from_raw_q_values(policy, q_values):
     actions_proba_batch = _apply_exploration(policy, dist_inputs=q_values)
-    actions_proba_batch = _convert_q_values_batch_to_proba_batch(
-        actions_proba_batch
-    )
+    actions_proba_batch = _convert_q_values_batch_to_proba_batch(actions_proba_batch)
     return _compute_entropy_pytorch(actions_proba_batch)
 
 
@@ -388,7 +372,7 @@ def _compute_entropy_pytorch(actions_proba_batch):
 def log_in_current_day_dir(exp_name):
     now = datetime.datetime.now()
     date_str = now.strftime("%Y_%m_%d")
-    hour_str = now.strftime("%H_%M_%S")
+    hour_str = now.strftime("%H_%M_%S_%f")
     base_dir = os.getenv("TUNE_RESULT_DIR", "~/ray_results")
     base_dir = os.path.expanduser(base_dir)
     exp_name = os.path.join(exp_name, date_str, hour_str)
@@ -431,9 +415,7 @@ def save_metrics(results, exp_name, filename, limit=False):
 
 def filter_nested(dict_or_list, keywords_to_keep):
     if isinstance(dict_or_list, list):
-        dict_or_list = [
-            filter_nested(v, keywords_to_keep) for v in dict_or_list
-        ]
+        dict_or_list = [filter_nested(v, keywords_to_keep) for v in dict_or_list]
         return dict_or_list
 
     dict_ = copy.deepcopy(dict_or_list)

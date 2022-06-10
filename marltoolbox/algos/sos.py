@@ -2,18 +2,21 @@
 # Code modified from:
 # https://github.com/julianstastny/openspiel-social-dilemmas
 ######
+import logging
 import os
 import random
 
-import torch
 import numpy as np
-from ray import tune
-
+import torch
+from marltoolbox.algos import algo_globals
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
     IteratedPrisonersDilemma,
     IteratedAsymBoS,
     IteratedThreatGame,
 )
+from ray import tune
+
+logger = logging.getLogger(__name__)
 
 THREAT_GAME_STATE_ORDER = [
     "Init",
@@ -32,37 +35,61 @@ PL1_LR_SCALING = 1.0
 class SOSTrainer(tune.Trainable):
     def setup(self, config: dict):
 
-        self.config = config
-        self.gamma = self.config.get("gamma")
-        self.learning_rate = self.config.get("lr")
-        self.method = self.config.get("method")
-        self._inner_epochs = self.config["inner_epochs"]
-        self.use_single_weights = False
-        self.seed = self.config["seed"]
-        global GRAD_MUL, XI_MUL, PL1_LR_SCALING
-        XI_MUL = self.config.get("xi_mul", 1.0)
-        GRAD_MUL = self.config.get("grad_mul", 1.0)
-        PL1_LR_SCALING = self.config.get("pl1_lr_scaling", 1.0)
+        if config:
+            self.config = config
+            self.gamma = self.config.get("gamma")
+            self.learning_rate = self.config.get("lr")
+            self.method = self.config.get("method")
+            self._inner_epochs = self.config["inner_epochs"]
+            self.use_single_weights = False
+            self.seed = self.config["seed"]
+            self._meta_learn_reward_fn = self.config.get("meta_learn_reward_fn", False)
+            self._relatif_reward_model = self.config.get("relatif_reward_model", None)
+            self._convert_log_to_numpy = self.config.get("convert_log_to_numpy", True)
 
-        random.seed(self.seed)
-        torch.manual_seed(self.seed)
-        np.random.seed(self.seed)
+            global GRAD_MUL, XI_MUL, PL1_LR_SCALING
+            XI_MUL = self.config.get("xi_mul", 1.0)
+            GRAD_MUL = self.config.get("grad_mul", 1.0)
+            PL1_LR_SCALING = self.config.get("pl1_lr_scaling", 1.0)
 
-        self._set_environment()
-        self.init_weigths(std=self.config.get("inital_weights_std"))
-        self._use_naive_grad = self.config.get(
-            "use_naive_grad", [False] * self.n_players
-        )
-        if self.use_single_weights:
-            self._exact_loss_matrix_game = (
-                self._exact_loss_matrix_game_two_by_two_actions
+            random.seed(self.seed)
+            torch.manual_seed(self.seed)
+            np.random.seed(self.seed)
+
+            self._set_environment()
+            self.init_weigths(std=self.config.get("inital_weights_std"))
+            self._use_naive_grad = self.config.get(
+                "use_naive_grad", [False] * self.n_players
             )
-        else:
-            self._exact_loss_matrix_game = self._exact_loss_matrix_game_generic
+            if self.use_single_weights:
+                self._exact_loss_matrix_game = (
+                    self._exact_loss_matrix_game_two_by_two_actions
+                )
+            else:
+                self._exact_loss_matrix_game = self._exact_loss_matrix_game_generic
 
     def _set_environment(self):
 
-        if self.config.get("env_name") == "IteratedPrisonersDilemma":
+        if "custom_payoff_threat_game" in self.config.keys():
+            if (
+                isinstance(self.config["custom_payoff_threat_game"], str)
+                and self.config["custom_payoff_threat_game"] == "use_global"
+            ):
+                payoff_matrix = algo_globals.MODIFIED_PAYOFF_MATRIX
+                print(
+                    f"Use global var to set the payoff matrix: {payoff_matrix.tolist()}"
+                )
+            else:
+                payoff_matrix = self.config["custom_payoff_threat_game"]
+                print(f"Use a custom threat game: {payoff_matrix.tolist()}")
+            env_class = IteratedThreatGame
+            self.players_ids = env_class({}).players_ids
+            self._state_order = THREAT_GAME_STATE_ORDER
+        elif "custom_payoff_matrix" in self.config.keys():
+            payoff_matrix = self.config["custom_payoff_matrix"]
+            self.players_ids = IteratedPrisonersDilemma({}).players_ids
+            print(f"Use a custom game: {np.array(payoff_matrix).tolist()}")
+        elif self.config.get("env_name") == "IteratedPrisonersDilemma":
             env_class = IteratedPrisonersDilemma
             payoff_matrix = env_class.PAYOFF_MATRIX
             self.players_ids = env_class({}).players_ids
@@ -89,19 +116,23 @@ class SOSTrainer(tune.Trainable):
             payoff_matrix = env_class.PAYOFF_MATRIX
             self.players_ids = env_class({}).players_ids
             self._state_order = THREAT_GAME_STATE_ORDER
-        elif "custom_payoff_threat_game" in self.config.keys():
-            payoff_matrix = self.config["custom_payoff_threat_game"]
-            env_class = IteratedThreatGame
-            self.players_ids = env_class({}).players_ids
-            self._state_order = THREAT_GAME_STATE_ORDER
-        elif "custom_payoff_matrix" in self.config.keys():
-            payoff_matrix = self.config["custom_payoff_matrix"]
-            self.players_ids = IteratedPrisonersDilemma({}).players_ids
+
         else:
             raise NotImplementedError()
+        if not isinstance(payoff_matrix, torch.Tensor):
+            payoff_matrix = torch.tensor(payoff_matrix)
 
-        self.n_actions_p1 = np.array(payoff_matrix).shape[0]
-        self.n_actions_p2 = np.array(payoff_matrix).shape[1]
+        payoff_matrix = payoff_matrix.float()
+        # if self._meta_learn_reward_fn:
+        #     self._base_payoff_matrix = payoff_matrix
+        #     self._relatif_reward_model = self._relatif_reward_model()
+        #     payoff_matrix = self.sample_payoff_matrix()
+        # else:
+        self.payoff_matrix_player_row = payoff_matrix[:, :, 0]
+        self.payoff_matrix_player_col = payoff_matrix[:, :, 1]
+
+        self.n_actions_p1 = payoff_matrix.shape[0]
+        self.n_actions_p2 = payoff_matrix.shape[1]
         self.n_non_init_states = self.n_actions_p1 * self.n_actions_p2
 
         if self.use_single_weights:
@@ -115,26 +146,43 @@ class SOSTrainer(tune.Trainable):
                 (self.n_non_init_states + 1, self.n_actions_p2),
             ]
 
-        self.payoff_matrix_player_row = torch.tensor(payoff_matrix[:, :, 0]).float()
-        self.payoff_matrix_player_col = torch.tensor(payoff_matrix[:, :, 1]).float()
-
         # Can be used to observe the order of the States associated with the weights
         # torch.reshape(self.payoff_matrix_player_row, (self.n_non_init_states, 1))
+
+    # def sample_payoff_matrix(self):
+    #     payoff_matrix = self._base_payoff_matrix
+    #     payoff_matrix[:, :, 0] = payoff_matrix[:, :, 0] + self._relatif_reward_model
+    #
+    #     self.payoff_matrix_player_row = payoff_matrix[:, :, 0]
+    #     self.payoff_matrix_player_col = payoff_matrix[:, :, 1]
+    #
+    #     return payoff_matrix
 
     def step(self):
         for _ in range(self._inner_epochs):
             losses = self.update_th()
+
+        # if self._meta_learn_reward_fn:
+        #     spi_loss = ...
+        #     grad_of_grads = torch.autograd.grad(
+        #         torch.sum(spi_loss),
+        #         self._relatif_reward_model,
+        #         create_graph=True,  # , allow_unused=True
+        #     )[0]
+
         mean_reward_player_row = -losses[0] * (1 - self.gamma)
         mean_reward_player_col = -losses[1] * (1 - self.gamma)
         to_log = {
             f"mean_reward_{self.players_ids[0]}": float(mean_reward_player_row),
             f"mean_reward_{self.players_ids[1]}": float(mean_reward_player_col),
             "episodes_total": self.training_iteration,
-            # "policy1": self.policy_player1.tolist(),
-            # "policy2": self.policy_player2.tolist(),
-            "weights_per_players": [
-                p_weights.tolist() for p_weights in self.weights_per_players
-            ],
+            "weights_per_players": self.weights_per_players,
+            # [
+            #     p_weights[self._inner_epoch_idx].tolist()
+            #     if self._meta_learn_reward_fn
+            #     else p_weights.tolist()
+            #     for p_weights in self.weights_per_players
+            # ],
         }
 
         for state_idx, proba_all_a in enumerate(self.policy_player1.tolist()):
@@ -151,9 +199,15 @@ class SOSTrainer(tune.Trainable):
         for state_idx, proba_s in enumerate(self.proba_states.tolist()):
             state = self._state_order[state_idx]
             to_log[f"P(s={state})"] = proba_s
+
+        if self._convert_log_to_numpy:
+            to_log = convert_to_numpy(to_log)
         return to_log
 
     def _exact_loss_matrix_game_two_by_two_actions(self):
+
+        if self._meta_learn_reward_fn:
+            raise NotImplementedError()
 
         self.policy_player1 = torch.sigmoid(self.weights_per_players[0])
         self.policy_player2 = torch.sigmoid(self.weights_per_players[1])
@@ -189,44 +243,71 @@ class SOSTrainer(tune.Trainable):
         return [L_1, L_2]
 
     def _exact_loss_matrix_game_generic(self):
-        # TODO use softmax instead of this complicated normalization...
-        pi_player_row = torch.sigmoid(self.weights_per_players[0])
-        pi_player_col = torch.sigmoid(self.weights_per_players[1])
+
+        if self._meta_learn_reward_fn:
+            pl1_weights = self.weights_per_players[self._inner_epoch_idx][0]
+            pl2_weights = self.weights_per_players[self._inner_epoch_idx][1]
+        else:
+            pl1_weights = self.weights_per_players[0]
+            pl2_weights = self.weights_per_players[1]
+
+        pi_player_row = torch.sigmoid(pl1_weights)
+        pi_player_col = torch.sigmoid(pl2_weights)
         sum_1 = torch.sum(pi_player_row, dim=1)
         sum_1 = torch.stack([sum_1 for _ in range(self.n_actions_p1)], dim=1)
         sum_2 = torch.sum(pi_player_col, dim=1)
         sum_2 = torch.stack([sum_2 for _ in range(self.n_actions_p2)], dim=1)
         pi_player_row = pi_player_row / sum_1
         pi_player_col = pi_player_col / sum_2
+        # The softmax could be used on dim=1 but then the probabilities are
+        # no more the same and the std used to generate the weights should be reduced
+        # pi_player_row_bis = torch.nn.functional.softmax(pl1_weights, dim=1)
+        # pi_player_col_bis = torch.nn.functional.softmax(pl2_weights, dim=1)
+        # assert torch.allclose(pi_player_row, pi_player_row_bis)
+        # assert torch.allclose(pi_player_col, pi_player_col_bis)
         self.policy_player1 = pi_player_row
         self.policy_player2 = pi_player_col
         # idx 0 in the weight is link to the initial state
-        pi_player_row_init_state = pi_player_row[:1, :]
-        pi_player_col_init_state = pi_player_col[:1, :]
-        all_initial_actions_proba_pairs = []
-        for action_p1 in range(self.n_actions_p1):
-            for action_p2 in range(self.n_actions_p2):
-                all_initial_actions_proba_pairs.append(
-                    pi_player_row_init_state[:, action_p1]
-                    * pi_player_col_init_state[:, action_p2]
-                )
-        p = torch.cat(
-            all_initial_actions_proba_pairs,
-        )
+        # pi_player_row_init_state = pi_player_row[:1, :]
+        # pi_player_col_init_state = pi_player_col[:1, :]
+        # all_initial_actions_proba_pairs = []
+        # for action_p1 in range(self.n_actions_p1):
+        #     for action_p2 in range(self.n_actions_p2):
+        #         all_initial_actions_proba_pairs.append(
+        #             pi_player_row_init_state[:, action_p1]
+        #             * pi_player_col_init_state[:, action_p2]
+        #         )
+        # p = torch.cat(
+        #     all_initial_actions_proba_pairs,
+        # )
+        p = torch.matmul(pi_player_row[:1, :].T, pi_player_col[:1, :]).flatten()
+        # assert torch.allclose(p, pbis)
 
-        pi_player_row_other_states = pi_player_row[1:, :]
-        pi_player_col_other_states = pi_player_col[1:, :]
-        all_actions_proba_pairs = []
-        for action_p1 in range(self.n_actions_p1):
-            for action_p2 in range(self.n_actions_p2):
-                all_actions_proba_pairs.append(
-                    pi_player_row_other_states[:, action_p1]
-                    * pi_player_col_other_states[:, action_p2]
-                )
+        # pi_player_row_other_states = pi_player_row[1:, :]
+        # pi_player_col_other_states = pi_player_col[1:, :]
+        # all_actions_proba_pairs = []
+        # for action_p1 in range(self.n_actions_p1):
+        #     for action_p2 in range(self.n_actions_p2):
+        #         all_actions_proba_pairs.append(
+        #             pi_player_row_other_states[:, action_p1]
+        #             * pi_player_col_other_states[:, action_p2]
+        #         )
+        # P = torch.stack(
+        #     all_actions_proba_pairs,
+        #     1,
+        # )
+        # Pbis = torch.matmul(pi_player_col[1:, :], pi_player_row[1:, :].T)
         P = torch.stack(
-            all_actions_proba_pairs,
-            1,
+            [
+                torch.matmul(
+                    pi_player_row[i, :].unsqueeze(dim=-1),
+                    pi_player_col[i, :].unsqueeze(dim=0),
+                ).flatten()
+                for i in range(1, 7)
+            ],
+            dim=0,
         )
+        # assert torch.allclose(P, Pter)
 
         # Probabilities of states for an infinite episode with gamma as the discound factor
         M = -torch.matmul(
@@ -242,6 +323,26 @@ class SOSTrainer(tune.Trainable):
             M,
             torch.reshape(self.payoff_matrix_player_col, (self.n_non_init_states, 1)),
         )
+
+        # Plot the grad graph
+        # from torchviz import make_dot
+        #
+        # dot = make_dot(
+        #     L_1,
+        #     params={"pl1_weights": pl1_weights},
+        #     # show_attrs=True,
+        #     # show_saved=True,
+        # )
+        # filename = os.path.join(os.getcwd(), "meta_gradient_reward_fn")
+        # dot.render(filename=filename, format="png")
+        # assert 0
+        # dot = make_dot(
+        #     L_2,
+        #     params={"pl2_weights": pl2_weights},
+        #     # show_attrs=True,
+        #     # show_saved=True,
+        # )
+
         return [L_1, L_2]
 
     def init_weigths(self, std):
@@ -255,6 +356,10 @@ class SOSTrainer(tune.Trainable):
             else:
                 init = torch.zeros(self.dims[i], requires_grad=True)
             self.weights_per_players.append(init)
+
+        if self._meta_learn_reward_fn:
+            self.weights_per_players = [self.weights_per_players]
+            self._inner_epoch_idx = 0
 
     def update_th(
         self,
@@ -281,15 +386,20 @@ class SOSTrainer(tune.Trainable):
     def _compute_gradients_wt_selected_method(self, a, b, ep, gam, losses, lss_lam):
         n_players = self.n_players
 
-        grad_L = _compute_vanilla_gradients(losses, n_players, self.weights_per_players)
+        if self._meta_learn_reward_fn:
+            weights_per_players = self.weights_per_players[self._inner_epoch_idx]
+        else:
+            weights_per_players = self.weights_per_players
+
+        grad_L = _compute_vanilla_gradients(losses, n_players, weights_per_players)
 
         if self.method == "la":
             grads = _get_la_gradients(
-                self.learning_rate, grad_L, n_players, self.weights_per_players
+                self.learning_rate, grad_L, n_players, weights_per_players
             )
         elif self.method == "lola":
             grads = _get_lola_exact_gradients(
-                self.learning_rate, grad_L, n_players, self.weights_per_players
+                self.learning_rate, grad_L, n_players, weights_per_players
             )
         elif self.method == "sos":
             grads = _get_sos_gradients(
@@ -298,28 +408,26 @@ class SOSTrainer(tune.Trainable):
                 b,
                 grad_L,
                 n_players,
-                self.weights_per_players,
+                weights_per_players,
             )
         elif self.method == "sga":
-            grads = _get_sga_gradients(ep, grad_L, n_players, self.weights_per_players)
+            grads = _get_sga_gradients(ep, grad_L, n_players, weights_per_players)
         elif self.method == "co":
-            grads = _get_co_gradients(gam, grad_L, n_players, self.weights_per_players)
+            grads = _get_co_gradients(gam, grad_L, n_players, weights_per_players)
         elif self.method == "eg":
             grads = _get_eg_gradients(
                 self._exact_loss_matrix_game,
                 self.learning_rate,
                 losses,
                 n_players,
-                self.weights_per_players,
+                weights_per_players,
             )
         elif self.method == "cgd":  # Slow implementation (matrix inversion)
             grads = _get_cgd_gradients(
-                self.learning_rate, grad_L, n_players, self.weights_per_players
+                self.learning_rate, grad_L, n_players, weights_per_players
             )
         elif self.method == "lss":  # Slow implementation (matrix inversion)
-            grads = _get_lss_gradients(
-                grad_L, lss_lam, n_players, self.weights_per_players
-            )
+            grads = _get_lss_gradients(grad_L, lss_lam, n_players, weights_per_players)
         elif self.method == "naive":  # Naive Learning
             grads = (grad_L, n_players)
         else:
@@ -337,13 +445,25 @@ class SOSTrainer(tune.Trainable):
         return grads
 
     def _update_weights(self, grads):
-        with torch.no_grad():
+        if self._meta_learn_reward_fn:
+            self.weights_per_players.append([None] * len(grads))
             for weight_i, weight_grad in enumerate(grads):
                 if weight_i == 0:
                     weight_grad *= PL1_LR_SCALING
-                self.weights_per_players[weight_i] -= (
+                self.weights_per_players[self._inner_epoch_idx + 1][
+                    weight_i
+                ] = self.weights_per_players[self._inner_epoch_idx][weight_i] - (
                     self.learning_rate * weight_grad / GRAD_MUL
                 )
+            self._inner_epoch_idx += 1
+        else:
+            with torch.no_grad():
+                for weight_i, weight_grad in enumerate(grads):
+                    if weight_i == 0:
+                        weight_grad *= PL1_LR_SCALING
+                    self.weights_per_players[weight_i] -= (
+                        self.learning_rate * weight_grad / GRAD_MUL
+                    )
 
     def save_checkpoint(self, checkpoint_dir):
         save_path = os.path.join(checkpoint_dir, "weights.pt")
@@ -586,7 +706,7 @@ def _get_lss_gradients(grad_L, lss_lam, n, th):
 def _get_cgd_gradients(alpha, grad_L, n, th):
     dims = [len(th[i]) for i in range(n)]
     xi = torch.cat([grad_L[i][i] for i in range(n)])
-    H_o = get_hessian(th, gra_get_naive_learning_gradientsd_L, diag=False)
+    H_o = get_hessian(th, grad_L, diag=False)
     grad = torch.matmul(torch.inverse(torch.eye(sum(dims)) + alpha * H_o), xi)
     grads = [grad[sum(dims[:i]) : sum(dims[: i + 1])] for i in range(n)]
     return grads
@@ -626,3 +746,17 @@ def format_pl_s_a(pl, s, a=None):
     if a is None:
         return f"pl{pl}_s{s}"
     return f"pl{pl}_s{s}_a{a}"
+
+
+def convert_to_numpy(to_log):
+    if isinstance(to_log, dict):
+        for k, v in to_log.items():
+            if isinstance(v, torch.Tensor):
+                to_log[k] = v.detach().numpy()
+            elif isinstance(v, list) or isinstance(v, tuple):
+                to_log[k] = [convert_to_numpy(el) for el in v]
+    elif isinstance(to_log, list) or isinstance(to_log, tuple):
+        to_log = [convert_to_numpy(el) for el in to_log]
+    elif isinstance(to_log, torch.Tensor):
+        to_log = to_log.detach().numpy()
+    return to_log
