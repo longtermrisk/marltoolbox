@@ -5,6 +5,7 @@
 import logging
 import os
 import random
+from typing import Iterable
 
 import numpy as np
 import torch
@@ -162,27 +163,20 @@ class SOSTrainer(tune.Trainable):
         for _ in range(self._inner_epochs):
             losses = self.update_th()
 
-        # if self._meta_learn_reward_fn:
-        #     spi_loss = ...
-        #     grad_of_grads = torch.autograd.grad(
-        #         torch.sum(spi_loss),
-        #         self._relatif_reward_model,
-        #         create_graph=True,  # , allow_unused=True
-        #     )[0]
-
         mean_reward_player_row = -losses[0] * (1 - self.gamma)
         mean_reward_player_col = -losses[1] * (1 - self.gamma)
+        current_pl_weights = (
+            self.weights_per_players[self._inner_epoch_idx]
+            if self._meta_learn_reward_fn
+            else self.weights_per_players
+        )
         to_log = {
             f"mean_reward_{self.players_ids[0]}": float(mean_reward_player_row),
             f"mean_reward_{self.players_ids[1]}": float(mean_reward_player_col),
             "episodes_total": self.training_iteration,
-            "weights_per_players": self.weights_per_players,
-            # [
-            #     p_weights[self._inner_epoch_idx].tolist()
-            #     if self._meta_learn_reward_fn
-            #     else p_weights.tolist()
-            #     for p_weights in self.weights_per_players
-            # ],
+            "weights_per_players": current_pl_weights
+            if self._meta_learn_reward_fn
+            else [p_weights.tolist() for p_weights in current_pl_weights],
         }
 
         for state_idx, proba_all_a in enumerate(self.policy_player1.tolist()):
@@ -201,7 +195,7 @@ class SOSTrainer(tune.Trainable):
             to_log[f"P(s={state})"] = proba_s
 
         if self._convert_log_to_numpy:
-            to_log = convert_to_numpy(to_log)
+            to_log = convert_to_float(to_log)
         return to_log
 
     def _exact_loss_matrix_game_two_by_two_actions(self):
@@ -748,15 +742,31 @@ def format_pl_s_a(pl, s, a=None):
     return f"pl{pl}_s{s}_a{a}"
 
 
-def convert_to_numpy(to_log):
+def convert_to_float(to_log):
     if isinstance(to_log, dict):
-        for k, v in to_log.items():
+        for k, v in list(to_log.items()):
             if isinstance(v, torch.Tensor):
-                to_log[k] = v.detach().numpy()
+                to_log[k] = to_log[k].detach().numpy().tolist()
+                to_log = unnest_list(to_log, k)
             elif isinstance(v, list) or isinstance(v, tuple):
-                to_log[k] = [convert_to_numpy(el) for el in v]
+                for i in range(len(v)):
+                    new_k = f"{k}_{i}"
+                    to_log[new_k] = convert_to_float(v[i])
+                    to_log = unnest_list(to_log, new_k)
     elif isinstance(to_log, list) or isinstance(to_log, tuple):
-        to_log = [convert_to_numpy(el) for el in to_log]
+        to_log = [convert_to_float(el) for el in to_log]
     elif isinstance(to_log, torch.Tensor):
-        to_log = to_log.detach().numpy()
+        to_log = to_log.detach().numpy().tolist()
+        # if isinstance(to_log, list):
+        #     to_log = to_log[0]
+    return to_log
+
+
+def unnest_list(to_log, k):
+    if isinstance(to_log[k], Iterable):
+        for i in range(len(to_log[k])):
+            new_k = f"{k}_{i}"
+            to_log[new_k] = to_log[k][i]
+            if isinstance(to_log[new_k], Iterable):
+                to_log = unnest_list(to_log, new_k)
     return to_log
