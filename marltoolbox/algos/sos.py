@@ -47,6 +47,10 @@ class SOSTrainer(tune.Trainable):
             self._meta_learn_reward_fn = self.config.get("meta_learn_reward_fn", False)
             self._relatif_reward_model = self.config.get("relatif_reward_model", None)
             self._convert_log_to_numpy = self.config.get("convert_log_to_numpy", True)
+            self._lr_warmup = self.config.get("lr_warmup_inner", None)
+            self._momentum = self.config.get("momentum_inner", 0.0)
+            self._last_grads = [0.0, 0.0]
+            self._n_updates_done = 0
 
             global GRAD_MUL, XI_MUL, PL1_LR_SCALING
             XI_MUL = self.config.get("xi_mul", 1.0)
@@ -71,64 +75,15 @@ class SOSTrainer(tune.Trainable):
 
     def _set_environment(self):
 
-        if "custom_payoff_threat_game" in self.config.keys():
-            if (
-                isinstance(self.config["custom_payoff_threat_game"], str)
-                and self.config["custom_payoff_threat_game"] == "use_global"
-            ):
-                payoff_matrix = algo_globals.MODIFIED_PAYOFF_MATRIX
-                print(
-                    f"Use global var to set the payoff matrix: {payoff_matrix.tolist()}"
-                )
-            else:
-                payoff_matrix = self.config["custom_payoff_threat_game"]
-                print(f"Use a custom threat game: {payoff_matrix.tolist()}")
-            env_class = IteratedThreatGame
-            self.players_ids = env_class({}).players_ids
-            self._state_order = THREAT_GAME_STATE_ORDER
-        elif "custom_payoff_matrix" in self.config.keys():
-            payoff_matrix = self.config["custom_payoff_matrix"]
-            self.players_ids = IteratedPrisonersDilemma({}).players_ids
-            print(f"Use a custom game: {np.array(payoff_matrix).tolist()}")
-        elif self.config.get("env_name") == "IteratedPrisonersDilemma":
-            env_class = IteratedPrisonersDilemma
-            payoff_matrix = env_class.PAYOFF_MATRIX
-            self.players_ids = env_class({}).players_ids
-            self._state_order = [
-                "Init",
-                "CC",
-                "CD",
-                "DC",
-                "DD",
-            ]
-        elif self.config.get("env_name") == "IteratedAsymBoS":
-            env_class = IteratedAsymBoS
-            payoff_matrix = env_class.PAYOFF_MATRIX
-            self.players_ids = env_class({}).players_ids
-            self._state_order = [
-                "Init",
-                "CC",
-                "CD",
-                "DC",
-                "DD",
-            ]
-        elif self.config.get("env_name") == "IteratedThreatGame":
-            env_class = IteratedThreatGame
-            payoff_matrix = env_class.PAYOFF_MATRIX
-            self.players_ids = env_class({}).players_ids
-            self._state_order = THREAT_GAME_STATE_ORDER
+        self.players_ids, self._state_order, payoff_matrix = get_payoff_matrix(
+            self.config
+        )
 
-        else:
-            raise NotImplementedError()
         if not isinstance(payoff_matrix, torch.Tensor):
             payoff_matrix = torch.tensor(payoff_matrix)
 
         payoff_matrix = payoff_matrix.float()
-        # if self._meta_learn_reward_fn:
-        #     self._base_payoff_matrix = payoff_matrix
-        #     self._relatif_reward_model = self._relatif_reward_model()
-        #     payoff_matrix = self.sample_payoff_matrix()
-        # else:
+
         self.payoff_matrix_player_row = payoff_matrix[:, :, 0]
         self.payoff_matrix_player_col = payoff_matrix[:, :, 1]
 
@@ -149,15 +104,6 @@ class SOSTrainer(tune.Trainable):
 
         # Can be used to observe the order of the States associated with the weights
         # torch.reshape(self.payoff_matrix_player_row, (self.n_non_init_states, 1))
-
-    # def sample_payoff_matrix(self):
-    #     payoff_matrix = self._base_payoff_matrix
-    #     payoff_matrix[:, :, 0] = payoff_matrix[:, :, 0] + self._relatif_reward_model
-    #
-    #     self.payoff_matrix_player_row = payoff_matrix[:, :, 0]
-    #     self.payoff_matrix_player_col = payoff_matrix[:, :, 1]
-    #
-    #     return payoff_matrix
 
     def step(self):
         for _ in range(self._inner_epochs):
@@ -444,10 +390,20 @@ class SOSTrainer(tune.Trainable):
             for weight_i, weight_grad in enumerate(grads):
                 if weight_i == 0:
                     weight_grad *= PL1_LR_SCALING
+                if self._momentum:
+                    weight_grad = (
+                        weight_grad + self._momentum * self._last_grads[weight_i]
+                    )
+                    self._last_grads[weight_i] = weight_grad
+                learning_rate = self.learning_rate
+                if self._lr_warmup and self._n_updates_done < self._lr_warmup:
+                    learning_rate = (
+                        learning_rate * self._n_updates_done / self._lr_warmup
+                    )
                 self.weights_per_players[self._inner_epoch_idx + 1][
                     weight_i
                 ] = self.weights_per_players[self._inner_epoch_idx][weight_i] - (
-                    self.learning_rate * weight_grad / GRAD_MUL
+                    learning_rate * weight_grad / GRAD_MUL
                 )
             self._inner_epoch_idx += 1
         else:
@@ -455,9 +411,20 @@ class SOSTrainer(tune.Trainable):
                 for weight_i, weight_grad in enumerate(grads):
                     if weight_i == 0:
                         weight_grad *= PL1_LR_SCALING
+                    if self._momentum:
+                        weight_grad = (
+                            weight_grad + self._momentum * self._last_grads[weight_i]
+                        )
+                        self._last_grads[weight_i] = weight_grad
+                    learning_rate = self.learning_rate
+                    if self._lr_warmup and self._n_updates_done < self._lr_warmup:
+                        learning_rate = (
+                            learning_rate * self._n_updates_done / self._lr_warmup
+                        )
                     self.weights_per_players[weight_i] -= (
-                        self.learning_rate * weight_grad / GRAD_MUL
+                        learning_rate * weight_grad / GRAD_MUL
                     )
+        self._n_updates_done += 1
 
     def save_checkpoint(self, checkpoint_dir):
         save_path = os.path.join(checkpoint_dir, "weights.pt")
@@ -770,3 +737,56 @@ def unnest_list(to_log, k):
             if isinstance(to_log[new_k], Iterable):
                 to_log = unnest_list(to_log, new_k)
     return to_log
+
+
+def get_payoff_matrix(config):
+    state_order = None
+    if "custom_payoff_threat_game" in config.keys():
+        if (
+            isinstance(config["custom_payoff_threat_game"], str)
+            and config["custom_payoff_threat_game"] == "use_global"
+        ):
+            payoff_matrix = algo_globals.MODIFIED_PAYOFF_MATRIX
+            print(f"Use global var to set the payoff matrix: {payoff_matrix.tolist()}")
+        else:
+            payoff_matrix = config["custom_payoff_threat_game"]
+            print(f"Use a custom threat game: {payoff_matrix.tolist()}")
+        env_class = IteratedThreatGame
+        players_ids = env_class({}).players_ids
+        state_order = THREAT_GAME_STATE_ORDER
+    elif "custom_payoff_matrix" in config.keys():
+        payoff_matrix = config["custom_payoff_matrix"]
+        players_ids = IteratedPrisonersDilemma({}).players_ids
+        print(f"Use a custom game: {np.array(payoff_matrix).tolist()}")
+    elif config.get("env_name") == "IteratedPrisonersDilemma":
+        env_class = IteratedPrisonersDilemma
+        payoff_matrix = env_class.PAYOFF_MATRIX
+        players_ids = env_class({}).players_ids
+        state_order = [
+            "Init",
+            "CC",
+            "CD",
+            "DC",
+            "DD",
+        ]
+    elif config.get("env_name") == "IteratedAsymBoS":
+        env_class = IteratedAsymBoS
+        payoff_matrix = env_class.PAYOFF_MATRIX
+        players_ids = env_class({}).players_ids
+        state_order = [
+            "Init",
+            "CC",
+            "CD",
+            "DC",
+            "DD",
+        ]
+    elif config.get("env_name") == "IteratedThreatGame":
+        env_class = IteratedThreatGame
+        payoff_matrix = env_class.PAYOFF_MATRIX
+        players_ids = env_class({}).players_ids
+        state_order = THREAT_GAME_STATE_ORDER
+
+    else:
+        raise NotImplementedError()
+
+    return players_ids, state_order, payoff_matrix
