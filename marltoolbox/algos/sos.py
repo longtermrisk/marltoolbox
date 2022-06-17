@@ -28,6 +28,25 @@ THREAT_GAME_STATE_ORDER = [
     "NG+TS",
     "NG+NT",
 ]
+DEMAND_GAME_STATE_ORDER = [
+    "Init",
+    "DM+DM",
+    "DM+RM",
+    "DM+DL",
+    "DM+RL",
+    "RM+DM",
+    "RM+RM",
+    "RM+DL",
+    "RM+RL",
+    "DL+DM",
+    "DL+RM",
+    "DL+DL",
+    "DL+RL",
+    "RL+DM",
+    "RL+RM",
+    "RL+DL",
+    "RL+RL",
+]
 GRAD_MUL = 1.0
 XI_MUL = 1.0
 PL1_LR_SCALING = 1.0
@@ -84,8 +103,8 @@ class SOSTrainer(tune.Trainable):
 
         payoff_matrix = payoff_matrix.float()
 
-        self.payoff_matrix_player_row = payoff_matrix[:, :, 0]
-        self.payoff_matrix_player_col = payoff_matrix[:, :, 1]
+        self.payoff_matrix_player_row = payoff_matrix[..., 0]
+        self.payoff_matrix_player_col = payoff_matrix[..., 1]
 
         self.n_actions_p1 = payoff_matrix.shape[0]
         self.n_actions_p2 = payoff_matrix.shape[1]
@@ -208,42 +227,16 @@ class SOSTrainer(tune.Trainable):
         self.policy_player1 = pi_player_row
         self.policy_player2 = pi_player_col
         # idx 0 in the weight is link to the initial state
-        # pi_player_row_init_state = pi_player_row[:1, :]
-        # pi_player_col_init_state = pi_player_col[:1, :]
-        # all_initial_actions_proba_pairs = []
-        # for action_p1 in range(self.n_actions_p1):
-        #     for action_p2 in range(self.n_actions_p2):
-        #         all_initial_actions_proba_pairs.append(
-        #             pi_player_row_init_state[:, action_p1]
-        #             * pi_player_col_init_state[:, action_p2]
-        #         )
-        # p = torch.cat(
-        #     all_initial_actions_proba_pairs,
-        # )
         p = torch.matmul(pi_player_row[:1, :].T, pi_player_col[:1, :]).flatten()
         # assert torch.allclose(p, pbis)
 
-        # pi_player_row_other_states = pi_player_row[1:, :]
-        # pi_player_col_other_states = pi_player_col[1:, :]
-        # all_actions_proba_pairs = []
-        # for action_p1 in range(self.n_actions_p1):
-        #     for action_p2 in range(self.n_actions_p2):
-        #         all_actions_proba_pairs.append(
-        #             pi_player_row_other_states[:, action_p1]
-        #             * pi_player_col_other_states[:, action_p2]
-        #         )
-        # P = torch.stack(
-        #     all_actions_proba_pairs,
-        #     1,
-        # )
-        # Pbis = torch.matmul(pi_player_col[1:, :], pi_player_row[1:, :].T)
         P = torch.stack(
             [
                 torch.matmul(
                     pi_player_row[i, :].unsqueeze(dim=-1),
                     pi_player_col[i, :].unsqueeze(dim=0),
                 ).flatten()
-                for i in range(1, 7)
+                for i in range(1, len(pi_player_col))
             ],
             dim=0,
         )
@@ -754,10 +747,25 @@ def get_payoff_matrix(config):
         env_class = IteratedThreatGame
         players_ids = env_class({}).players_ids
         state_order = THREAT_GAME_STATE_ORDER
-    elif "custom_payoff_matrix" in config.keys():
-        payoff_matrix = config["custom_payoff_matrix"]
+    elif "modified_payoff_matrix" in config.keys():
+        if (
+            isinstance(config["modified_payoff_matrix"], str)
+            and config["modified_payoff_matrix"] == "use_global"
+        ):
+            payoff_matrix = algo_globals.MODIFIED_PAYOFF_MATRIX
+            print(f"Use global var to set the payoff matrix: {payoff_matrix.tolist()}")
+        else:
+            payoff_matrix = config["modified_payoff_matrix"]
+            print(f"Use a custom game: {payoff_matrix.tolist()}")
         players_ids = IteratedPrisonersDilemma({}).players_ids
         print(f"Use a custom game: {np.array(payoff_matrix).tolist()}")
+        state_order = [
+            "Init",
+        ]
+        for act_pl1 in range(payoff_matrix.shape[0]):
+            for act_pl2 in range(payoff_matrix.shape[1]):
+                state_order.append(f"{act_pl1}_{act_pl2}")
+
     elif config.get("env_name") == "IteratedPrisonersDilemma":
         env_class = IteratedPrisonersDilemma
         payoff_matrix = env_class.PAYOFF_MATRIX
