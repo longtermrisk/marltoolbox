@@ -9,6 +9,8 @@ from typing import Iterable
 
 import numpy as np
 import torch
+from ray.rllib.policy.torch_policy import EntropyCoeffSchedule
+
 from marltoolbox.algos import algo_globals
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
     IteratedPrisonersDilemma,
@@ -50,9 +52,12 @@ DEMAND_GAME_STATE_ORDER = [
 GRAD_MUL = 1.0
 XI_MUL = 1.0
 PL1_LR_SCALING = 1.0
-USE_VARIABLE_LR = False
-# USE_VARIABLE_LR = True
-SOS_SCALING = 1.0
+
+# SECOND_DEGREE_MUL = 1.0
+SECOND_DEGREE_MUL = 500.0
+
+PRINT_GRAD = False
+# PRINT_GRAD = True
 
 
 class SOSTrainer(tune.Trainable):
@@ -60,23 +65,9 @@ class SOSTrainer(tune.Trainable):
 
         if config:
             self.config = config
+            self.n_players = 2
             self.gamma = self.config.get("gamma")
             self.learning_rate = self.config.get("lr")
-            if USE_VARIABLE_LR:
-                mul = 3
-                pl1_mul = (
-                    1 / mul
-                    if random.random() < 0.33
-                    else (mul if random.random() < 0.33 else 1)
-                )
-                pl2_mul = (
-                    1 / mul
-                    if random.random() < 0.33
-                    else (mul if random.random() < 0.33 else 1)
-                )
-                self.learning_rate = torch.tensor(
-                    [pl1_mul * self.learning_rate, pl2_mul * self.learning_rate]
-                )
             self.method = self.config.get("method")
             self._inner_epochs = self.config["inner_epochs"]
             self.use_single_weights = False
@@ -84,26 +75,46 @@ class SOSTrainer(tune.Trainable):
             self._meta_learn_reward_fn = self.config.get("meta_learn_reward_fn", False)
             self._relatif_reward_model = self.config.get("relatif_reward_model", None)
             self._convert_log_to_numpy = self.config.get("convert_log_to_numpy", True)
+            self._use_naive_grad = self.config.get(
+                "use_naive_grad", [False] * self.n_players
+            )
+            global GRAD_MUL, XI_MUL, PL1_LR_SCALING
+            XI_MUL = self.config.get("xi_mul", 1.0)
+            GRAD_MUL = self.config.get("grad_mul", 1.0)
+            PL1_LR_SCALING = self.config.get("pl1_lr_scaling", 1.0)
             self._lr_warmup = self.config.get("lr_warmup_inner", None)
             self._momentum = self.config.get("momentum_inner", 0.0)
             self._last_grads = [0.0, 0.0]
             self._n_updates_done = 0
             self._normalize_matrix = self.config.get("normalize_matrix", False)
+            self._non_naive_grad_scaling = self.config.get(
+                "non_naive_grad_scaling", 1.0
+            )
+            self._use_normal_init = self.config.get("use_normal_init", False)
+            self._add_bias_in_init = self.config.get("add_bias_in_init", False)
+            self._entropy_scheduler = self.config.get("entropy_scheduler", None)
+            if self._entropy_scheduler is not None:
+                self._entropy_scheduler = EntropyCoeffSchedule(
+                    entropy_coeff=None, entropy_coeff_schedule=self._entropy_scheduler
+                )
+            self._inital_weights_std_for_SOS = self.config.get(
+                "inital_weights_std_for_SOS", None
+            )
+            self._std = self.config.get("inital_weights_std")
+            if self._inital_weights_std_for_SOS is not None:
+                if not all(self._use_naive_grad):
+                    self._add_bias_in_init = False
+                    self._std = self._inital_weights_std_for_SOS
 
-            global GRAD_MUL, XI_MUL, PL1_LR_SCALING
-            XI_MUL = self.config.get("xi_mul", 1.0)
-            GRAD_MUL = self.config.get("grad_mul", 1.0)
-            PL1_LR_SCALING = self.config.get("pl1_lr_scaling", 1.0)
+            self.to_log = {}
 
             random.seed(self.seed)
             torch.manual_seed(self.seed)
             np.random.seed(self.seed)
 
             self._set_environment()
-            self.init_weigths(std=self.config.get("inital_weights_std"))
-            self._use_naive_grad = self.config.get(
-                "use_naive_grad", [False] * self.n_players
-            )
+            self.init_weigths(std=self._std)
+
             if self.use_single_weights:
                 self._exact_loss_matrix_game = (
                     self._exact_loss_matrix_game_two_by_two_actions
@@ -132,6 +143,9 @@ class SOSTrainer(tune.Trainable):
             self.payoff_matrix_player_col = (
                 self.p_m_pl_col_raw - self.p_m_pl_col_raw.mean()
             ) / self.p_m_pl_col_raw.std()
+        else:
+            self.payoff_matrix_player_row = self.p_m_pl_row_raw
+            self.payoff_matrix_player_col = self.p_m_pl_col_raw
 
         self.n_actions_p1 = payoff_matrix.shape[0]
         self.n_actions_p2 = payoff_matrix.shape[1]
@@ -153,7 +167,7 @@ class SOSTrainer(tune.Trainable):
 
     def step(self):
         for _ in range(self._inner_epochs):
-            losses = self.update_th()
+            losses, tot_grads, grads, entropy_regularisation = self.update_th()
 
         mean_reward_player_row = -losses[0] * (1 - self.gamma)
         mean_reward_player_col = -losses[1] * (1 - self.gamma)
@@ -170,6 +184,8 @@ class SOSTrainer(tune.Trainable):
             if self._meta_learn_reward_fn
             else [p_weights.tolist() for p_weights in current_pl_weights],
         }
+        to_log.update(self.to_log)
+        self.to_log = {}
 
         self._exact_loss_matrix_game(use_raw_payoff_matrix=True)
         for state_idx, proba_all_a in enumerate(self.policy_player1.tolist()):
@@ -188,6 +204,12 @@ class SOSTrainer(tune.Trainable):
         # for state_idx, proba_s in enumerate(self.proba_states.tolist()):
         #     state = self._state_order[state_idx + 1]
         #     to_log[f"P(s={state})"] = proba_s
+
+        to_log[f"tot_grad_norm"] = [torch.norm(el).detach() for el in tot_grads]
+        to_log[f"grads_norm"] = [torch.norm(el).detach() for el in grads]
+        to_log[f"entrop_regu_norm"] = [
+            torch.norm(el).detach() for el in entropy_regularisation
+        ]
 
         if self._convert_log_to_numpy:
             # to_log.pop("weights_per_players")
@@ -362,13 +384,17 @@ class SOSTrainer(tune.Trainable):
         self.n_players = len(self.dims)
         for i in range(self.n_players):
             if std > 0:
-                # init = torch.nn.init.normal_(
-                #     torch.empty(self.dims[i], requires_grad=True), std=std
-                # )
-                init = torch.nn.init.uniform_(
-                    torch.empty(self.dims[i], requires_grad=True), a=-std, b=std
-                )
-                init = init + 0.1 * init / torch.abs(init)
+                if self._use_normal_init:
+                    init = torch.nn.init.uniform_(
+                        torch.empty(self.dims[i], requires_grad=True), a=-std, b=std
+                    )
+                else:
+                    init = torch.nn.init.normal_(
+                        torch.empty(self.dims[i], requires_grad=True), std=std
+                    )
+                if self._add_bias_in_init:
+                    init = init + 0.1 * init / torch.abs(init)
+
             else:
                 init = torch.zeros(self.dims[i], requires_grad=True)
             self.weights_per_players.append(init)
@@ -401,10 +427,41 @@ class SOSTrainer(tune.Trainable):
             lss_lam,
         )
 
-        self._update_weights(grads)
-        return losses
+        entropy_regularisation = self.compute_entropy_regularisation()
+        tot_grads = [
+            pl_grads + pl_entropy_regu
+            for pl_grads, pl_entropy_regu in zip(grads, entropy_regularisation)
+        ]
 
-    def _compute_gradients_wt_selected_method(self, a, b, ep, gam, losses, lss_lam):
+        self._update_weights(tot_grads)
+        return losses, tot_grads, grads, entropy_regularisation
+
+    def compute_entropy_regularisation(self):
+        if self._entropy_scheduler is not None:
+
+            self._entropy_coeff = self._entropy_scheduler._entropy_coeff_schedule.value(
+                self._n_updates_done
+            )
+            entropy_pl1 = torch.special.entr(self.policy_player1).mean()
+            entropy_pl2 = torch.special.entr(self.policy_player2).mean()
+
+            self.to_log["entropy_pl1"] = entropy_pl1.detach()
+            self.to_log["entropy_pl2"] = entropy_pl2.detach()
+
+            entropy_losses = [
+                -self._entropy_coeff * entropy_pl1,
+                -self._entropy_coeff * entropy_pl2,
+            ]
+
+            entropy_grads = self._compute_vanilla_grad(
+                entropy_losses, vanilla_grad_only=True
+            )
+
+            return entropy_grads
+        else:
+            return [torch.tensor(0.0), torch.tensor(0.0)]
+
+    def _compute_vanilla_grad(self, losses, vanilla_grad_only=False):
         n_players = self.n_players
 
         if self._meta_learn_reward_fn:
@@ -412,7 +469,23 @@ class SOSTrainer(tune.Trainable):
         else:
             weights_per_players = self.weights_per_players
 
-        grad_L = _compute_vanilla_gradients(losses, n_players, weights_per_players)
+        if vanilla_grad_only:
+            grad_L = _compute_self_vanilla_gradients(
+                losses, n_players, weights_per_players
+            )
+        else:
+            grad_L = _compute_vanilla_gradients(losses, n_players, weights_per_players)
+
+        return grad_L
+
+    def _compute_gradients_wt_selected_method(self, a, b, ep, gam, losses, lss_lam):
+        n_players = self.n_players
+        if self._meta_learn_reward_fn:
+            weights_per_players = self.weights_per_players[self._inner_epoch_idx]
+        else:
+            weights_per_players = self.weights_per_players
+
+        grad_L = self._compute_vanilla_grad(losses)
 
         if self.method == "la":
             grads = _get_la_gradients(
@@ -457,9 +530,9 @@ class SOSTrainer(tune.Trainable):
         if any(self._use_naive_grad):
             # naive_grads = (grad_L, n_players)
             grads = [
-                pl_i_naive_grad[idx]
+                pl_i_naive_grad[idx]  # Only keep the self grad part of the naive grad
                 if pl_i_use_naive_grad
-                else pl_i_grad * SOS_SCALING  # * GRAD_MUL
+                else pl_i_grad * self._non_naive_grad_scaling
                 for idx, (pl_i_use_naive_grad, pl_i_grad, pl_i_naive_grad) in enumerate(
                     zip(self._use_naive_grad, grads, grad_L)
                 )
@@ -579,6 +652,11 @@ def _compute_vanilla_gradients(losses, n, th):
     return grad_L
 
 
+def _compute_self_vanilla_gradients(losses, n, th):
+    grad_L = [get_gradient(losses[i], th[i]) for i in range(n)]
+    return grad_L
+
+
 def _get_la_gradients(alpha, grad_L, n, th):
     terms = [
         sum(
@@ -593,7 +671,20 @@ def _get_la_gradients(alpha, grad_L, n, th):
         )
         for i in range(n)
     ]
-    grads = [grad_L[i][i] - alpha * get_gradient(terms[i], th[i]) for i in range(n)]
+    grads = [
+        grad_L[i][i] - SECOND_DEGREE_MUL * alpha * get_gradient(terms[i], th[i])
+        for i in range(n)
+    ]
+    if PRINT_GRAD:
+        print("vanilla grad", [grad_L[i][i] for i in range(n)])
+        print(
+            "LA, second degree only",
+            [
+                -SECOND_DEGREE_MUL * alpha * get_gradient(terms[i], th[i])
+                for i in range(n)
+            ],
+        )
+        print("LA, grads", grads)
     # grads = [grad_L[i][i] - alpha[i] * get_gradient(terms[i], th[i]) for i in range(n)]
     return grads
 
@@ -604,7 +695,7 @@ def _get_lola_exact_gradients(alpha, grad_L, n, th):
             [
                 torch.matmul(
                     grad_L[j][i],
-                    torch.transpose(grad_L[j][j].unsqueeze(dim=1), 0, 1),
+                    torch.transpose(grad_L[j][j], 0, 1),
                 )
                 for j in range(n)
                 if j != i
@@ -612,7 +703,19 @@ def _get_lola_exact_gradients(alpha, grad_L, n, th):
         )
         for i in range(n)
     ]
-    grads = [grad_L[i][i] - alpha * get_gradient(terms[i], th[i]) for i in range(n)]
+    grads = [
+        grad_L[i][i] - SECOND_DEGREE_MUL * alpha * get_gradient(terms[i], th[i])
+        for i in range(n)
+    ]
+    if PRINT_GRAD:
+        print(
+            "LOLA, second degree only",
+            [
+                -SECOND_DEGREE_MUL * alpha * get_gradient(terms[i], th[i])
+                for i in range(n)
+            ],
+        )
+        print("LOLA, grads", grads)
     return grads
 
 
@@ -687,7 +790,10 @@ def _get_sos_gradients(a, alpha, b, grad_L, n, th):
     xi_norm = torch.norm(xi)
     p2 = xi_norm**2 if xi_norm < b else 1
     p = min(p1, p2)
-    grads = [xi_0_reshaped[i] - p * alpha * chi_reshaped[i] for i in range(n)]
+    grads = [
+        xi_0_reshaped[i] - SECOND_DEGREE_MUL * p * alpha * chi_reshaped[i]
+        for i in range(n)
+    ]
     # grads = [xi_0_reshaped[i] - p * alpha[i] * chi_reshaped[i] for i in range(n)]
 
     # Make it work for different actions spaces (squeeze)
@@ -697,7 +803,12 @@ def _get_sos_gradients(a, alpha, b, grad_L, n, th):
         else grads_pl_i
         for grads_pl_i, th_pl_i in zip(grads, th)
     ]
-
+    if PRINT_GRAD:
+        print(
+            "SOS, second part, second degree only",
+            [-p * alpha * chi_reshaped[i] for i in range(n)],
+        )
+        print("SOS, grads", grads)
     return grads
 
 
@@ -832,6 +943,7 @@ def unnest_list(to_log, k):
 
 def get_payoff_matrix(config):
     if "custom_payoff_threat_game" in config.keys():
+        raise DeprecationWarning()
         if (
             isinstance(config["custom_payoff_threat_game"], str)
             and config["custom_payoff_threat_game"] == "use_global"
@@ -855,7 +967,6 @@ def get_payoff_matrix(config):
             payoff_matrix = config["modified_payoff_matrix"]
             print(f"Use a custom game: {payoff_matrix.tolist()}")
         players_ids = IteratedPrisonersDilemma({}).players_ids
-        print(f"Use a custom game: {np.array(payoff_matrix).tolist()}")
         state_order = [
             "Init",
         ]
