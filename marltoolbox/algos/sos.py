@@ -26,6 +26,12 @@ THREAT_GAME_STATE_ORDER = [
     "G+TR",
     "G+TS",
     "G+NT",
+    # "GR+TR",
+    # "GR+TS",
+    # "GR+NT",
+    # "GS+TR",
+    # "GS+TS",
+    # "GS+NT",
     "NG+TR",
     "NG+TS",
     "NG+NT",
@@ -445,6 +451,8 @@ class SOSTrainer(tune.Trainable):
             entropy_pl1 = torch.special.entr(self.policy_player1).mean()
             entropy_pl2 = torch.special.entr(self.policy_player2).mean()
 
+            self.to_log["n_updates_done"] = self._n_updates_done
+            self.to_log["entropy_coeff"] = self._entropy_coeff
             self.to_log["entropy_pl1"] = entropy_pl1.detach()
             self.to_log["entropy_pl2"] = entropy_pl2.detach()
 
