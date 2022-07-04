@@ -185,7 +185,7 @@ class SOSTrainer(tune.Trainable):
         to_log = {
             f"mean_reward_{self.players_ids[0]}": float(mean_reward_player_row),
             f"mean_reward_{self.players_ids[1]}": float(mean_reward_player_col),
-            "episodes_total": self.training_iteration,
+            "episodes_total": self.training_iteration + 1,
             "weights_per_players": current_pl_weights
             if self._meta_learn_reward_fn
             else [p_weights.tolist() for p_weights in current_pl_weights],
@@ -220,6 +220,7 @@ class SOSTrainer(tune.Trainable):
         if self._convert_log_to_numpy:
             # to_log.pop("weights_per_players")
             to_log = convert_to_float(to_log)
+
         return to_log
 
     def _exact_loss_matrix_game_two_by_two_actions(self):
@@ -298,36 +299,12 @@ class SOSTrainer(tune.Trainable):
 
     def _exact_loss_matrix_game_generic(self, use_raw_payoff_matrix=False):
 
-        # if self._meta_learn_reward_fn:
-        #     pl1_weights = self.weights_per_players[self._inner_epoch_idx][0]
-        #     pl2_weights = self.weights_per_players[self._inner_epoch_idx][1]
-        # else:
-        #     pl1_weights = self.weights_per_players[0]
-        #     pl2_weights = self.weights_per_players[1]
-        #
-        # pi_player_row = torch.sigmoid(pl1_weights)
-        # pi_player_col = torch.sigmoid(pl2_weights)
-        # sum_1 = torch.sum(pi_player_row, dim=1)
-        # sum_1 = torch.stack([sum_1 for _ in range(self.n_actions_p1)], dim=1)
-        # sum_2 = torch.sum(pi_player_col, dim=1)
-        # sum_2 = torch.stack([sum_2 for _ in range(self.n_actions_p2)], dim=1)
-        # pi_player_row = pi_player_row / sum_1
-        # pi_player_col = pi_player_col / sum_2
-        # # The softmax could be used on dim=1 but then the probabilities are
-        # # no more the same and the std used to generate the weights should be reduced
-        # # pi_player_row_bis = torch.nn.functional.softmax(pl1_weights, dim=1)
-        # # pi_player_col_bis = torch.nn.functional.softmax(pl2_weights, dim=1)
-        # # assert torch.allclose(pi_player_row, pi_player_row_bis)
-        # # assert torch.allclose(pi_player_col, pi_player_col_bis)
-        # self.policy_player1 = pi_player_row
-        # self.policy_player2 = pi_player_col
         self._compute_policies()
 
         # idx 0 in the weight is link to the initial state
         p = torch.matmul(
             self.policy_player1[:1, :].T, self.policy_player2[:1, :]
         ).flatten()
-        # assert torch.allclose(p, pbis)
 
         P = torch.stack(
             [
@@ -339,7 +316,6 @@ class SOSTrainer(tune.Trainable):
             ],
             dim=0,
         )
-        # assert torch.allclose(P, Pter)
 
         # Probabilities of states for an infinite episode with gamma as the discound factor
         M = -torch.matmul(
@@ -347,7 +323,6 @@ class SOSTrainer(tune.Trainable):
             torch.inverse(torch.eye(self.n_non_init_states) - self.gamma * P),
         )
         self.proba_states = -M * (1 - self.gamma)
-        # M = M - M.detach().mean()
         if use_raw_payoff_matrix:
             payoff_row = self.p_m_pl_row_raw
             payoff_col = self.p_m_pl_col_raw
@@ -594,6 +569,7 @@ class SOSTrainer(tune.Trainable):
                         # / GRAD_MUL
                     )
         self._n_updates_done += 1
+        # print("self._n_updates_done", self._n_updates_done)
 
     def save_checkpoint(self, checkpoint_dir):
         save_path = os.path.join(checkpoint_dir, "weights.pt")
