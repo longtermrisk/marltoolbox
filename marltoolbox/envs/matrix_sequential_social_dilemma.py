@@ -425,7 +425,7 @@ PLOT_ASSEMBLAGE_TAGS_2P_3A = [
 ]
 
 
-class IteratedThreatGame(
+class AsymmetricMatrixGame(
     NPlayersNDiscreteActionsInfoMixin, MatrixSequentialSocialDilemma
 ):
     """
@@ -439,13 +439,8 @@ class IteratedThreatGame(
     ACTION_SPACE_PL1 = Discrete(NUM_ACTIONS_PL1)
     NUM_STATES = NUM_ACTIONS_PL0 * NUM_ACTIONS_PL1 + 1
     OBSERVATION_SPACE = Discrete(NUM_STATES)
-    PAYOFF_MATRIX = np.array(
-        [
-            [[-5, +5], [-5.0, 5.0], [0.0, 0.0]],
-            [[-10, -2], [0, -1.9], [0.0, 0.0]],
-        ]
-    )
-    NAME = "IteratedThreatGame"
+    PAYOFF_MATRIX = None
+    NAME = "AsymmetricMatrixGame"
 
     def _support_ray_1_12_0(self):
         self._agent_ids = self.players_ids
@@ -519,3 +514,55 @@ class IteratedThreatGame(
         }
 
         return observations, rewards, done, info
+
+
+class ThreatGame(AsymmetricMatrixGame):
+    """
+    A two-agent environment for the BOTS + PD game.
+    """
+
+    NUM_ACTIONS = None
+    NUM_ACTIONS_PL0 = 2
+    NUM_ACTIONS_PL1 = 3
+    ACTION_SPACE_PL0 = Discrete(NUM_ACTIONS_PL0)
+    ACTION_SPACE_PL1 = Discrete(NUM_ACTIONS_PL1)
+    NUM_STATES = NUM_ACTIONS_PL0 * NUM_ACTIONS_PL1 + 1
+    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    PAYOFF_MATRIX = np.array(
+        [
+            [[-5.0, +5.0], [-5.0, 5.0], [0.0, 0.0]],
+            [[-10.0, -2.0], [0, -2.0], [0.0, 0.0]],
+        ]
+    )
+    NAME = "ThreatGame"
+
+    def __init__(self, config: dict = {}):
+        super().__init__(config)
+        assert self.max_steps == 1
+
+
+class DemandGame(AsymmetricMatrixGame):
+    """
+    A two-agent environment for the BOTS + PD game.
+    """
+
+    NUM_ACTIONS = None
+    NUM_ACTIONS_PL0 = 2
+    NUM_ACTIONS_PL1 = 3
+    ACTION_SPACE_PL0 = Discrete(NUM_ACTIONS_PL0)
+    ACTION_SPACE_PL1 = Discrete(NUM_ACTIONS_PL1)
+    NUM_STATES = NUM_ACTIONS_PL0 * NUM_ACTIONS_PL1 + 1
+    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    PAYOFF_MATRIX = np.array(
+        [
+            [[-3.0, -3.0], [2.0, 0.0], [5.0, -5.0], [5.0, -5.0]],
+            [[0.0, 2.0], [1.0, 1.0], [5.0, -5.0], [5.0, -5.0]],
+            [[-5.0, 5.0], [-5.0, 5.0], [1.0, 1.0], [2.0, 0.0]],
+            [[-5.0, 5.0], [-5.0, 5.0], [0.0, 2.0], [1.0, 1.0]],
+        ]
+    )
+    NAME = "DemandGame"
+
+    def __init__(self, config: dict = {}):
+        super().__init__(config)
+        assert self.max_steps == 1

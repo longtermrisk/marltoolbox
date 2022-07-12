@@ -32,19 +32,14 @@ def before_loss_init_load_policy_checkpoint(
     Example: determining the checkpoint to load conditional on the current seed
     (when doing a grid_search over random seeds and with a multistage training)
     """
-    checkpoint_path, policy_id = policy.config.get(
-        LOAD_FROM_CONFIG_KEY, (None, None)
-    )
+    checkpoint_path, policy_id = policy.config.get(LOAD_FROM_CONFIG_KEY, (None, None))
 
     if callable(checkpoint_path):
         checkpoint_path = checkpoint_path(policy.config)
 
     if checkpoint_path is not None:
         load_one_policy_checkpoint(policy_id, policy, checkpoint_path)
-        msg = (
-            f"marltoolbox restore: checkpoint found for policy_id: "
-            f"{policy_id}"
-        )
+        msg = f"marltoolbox restore: checkpoint found for policy_id: " f"{policy_id}"
         logger.debug(msg)
     else:
         msg = (
@@ -56,7 +51,7 @@ def before_loss_init_load_policy_checkpoint(
 
 
 def load_one_policy_checkpoint(
-    policy_id, policy, checkpoint_path, using_Tune_class=False
+    policy_id, policy, checkpoint_path, using_Tune_class=False, set_weight_only=False
 ):
     """
 
@@ -89,13 +84,19 @@ def load_one_policy_checkpoint(
         found_policy_id = False
         for p_id, state in objs["state"].items():
             if p_id == policy_id:
+                assert (
+                    not found_policy_id
+                ), "There are several policy in the checkpoint with the same policy_id. This should not be the case."
                 logger.debug(
                     f"going to load policy {policy_id} "
                     f"from checkpoint {checkpoint_path}"
                 )
-                policy.set_state(state)
+                if set_weight_only:
+                    policy.set_weights(state["weights"])
+                else:
+                    policy.set_state(state)
                 found_policy_id = True
-                break
+                # break
         if not found_policy_id:
             logger.debug(
                 f"policy_id {policy_id} not in "
@@ -110,7 +111,7 @@ def extract_checkpoints_from_experiment_analysis(
     """
     Extract all the best checkpoints from a tune analysis object. This tune
     analysis can contains several trials. Each trial can contains several
-    checkpoitn, only the best checkpoint per trial is returned.
+    checkpoints, only the best checkpoint per trial is returned.
 
     :param tune_experiment_analysis:
     :return: list of all the unique best checkpoints for each trials in the
@@ -166,10 +167,8 @@ def get_ckpt_dir_for_one_replicate(replicate_dir_path: str) -> str:
     :param replicate_dir_path: trial dir
     :return: path to checkpoint dir
     """
-    partialy_filtered_ckpt_dir = (
-        utils.path.get_children_paths_wt_selecting_filter(
-            replicate_dir_path, _filter="checkpoint_"
-        )
+    partialy_filtered_ckpt_dir = utils.path.get_children_paths_wt_selecting_filter(
+        replicate_dir_path, _filter="checkpoint_"
     )
     ckpt_dir = [
         file_path
@@ -187,10 +186,8 @@ def get_ckpt_from_ckpt_dir(ckpt_dir_path: str) -> str:
     :param ckpt_dir_path: checkpoint dir
     :return: path to checkpoint file
     """
-    partialy_filtered_ckpt_path = (
-        utils.path.get_children_paths_wt_discarding_filter(
-            ckpt_dir_path, _filter="tune_metadata"
-        )
+    partialy_filtered_ckpt_path = utils.path.get_children_paths_wt_discarding_filter(
+        ckpt_dir_path, _filter="tune_metadata"
     )
     filters = [
         # For Tune/RLLib

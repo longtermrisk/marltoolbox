@@ -279,11 +279,11 @@ def _log_action_prob_pytorch(
             to_log = add_entropy_to_log(train_batch, to_log)
             to_log = _add_proba_of_action_played(train_batch, to_log)
             to_log = _add_q_values(policy, train_batch, to_log)
-        else:
-            logger.warning(
-                "Key ACTION_DIST_INPUTS not found in train_batch. "
-                "Can't perform _log_action_prob_pytorch."
-            )
+        # else:
+        #     logger.warning(
+        #         "Key ACTION_DIST_INPUTS not found in train_batch. "
+        #         "Can't perform _log_action_prob_pytorch."
+        #     )
     else:
         raise NotImplementedError()
     return to_log
@@ -307,16 +307,15 @@ def add_entropy_to_log(train_batch, to_log):
     if _is_cuda_tensor(actions_proba_batch):
         actions_proba_batch = actions_proba_batch.cpu()
 
-    if "q_values" in train_batch.keys():
-        # Entropy of q_values used while playing in the environment
-        # Theses q values has been transformed by the exploration
-        actions_proba_batch = _convert_q_values_batch_to_proba_batch(
-            actions_proba_batch
-        )
+    # if "q_values" in train_batch.keys():
+    # Entropy of q_values used while playing in the environment
+    # Theses q values has been transformed by the exploration
+    actions_proba_batch = _convert_q_values_batch_to_proba_batch(actions_proba_batch)
 
-    entropy_avg, entropy_single = _compute_entropy_pytorch(actions_proba_batch)
-    to_log[f"entropy_buffer_samples_avg"] = entropy_avg
-    to_log[f"entropy_buffer_samples_single"] = entropy_single
+    if torch.any(actions_proba_batch != 0.0):
+        entropy_avg, entropy_single = _compute_entropy_pytorch(actions_proba_batch)
+        to_log[f"entropy_buffer_samples_avg"] = entropy_avg
+        to_log[f"entropy_buffer_samples_single"] = entropy_single
 
     return to_log
 

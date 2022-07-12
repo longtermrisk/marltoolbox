@@ -15,7 +15,7 @@ from marltoolbox.algos import algo_globals
 from marltoolbox.envs.matrix_sequential_social_dilemma import (
     IteratedPrisonersDilemma,
     IteratedAsymBoS,
-    IteratedThreatGame,
+    ThreatGame,
 )
 from ray import tune
 
@@ -937,7 +937,7 @@ def get_payoff_matrix(config):
         else:
             payoff_matrix = config["custom_payoff_threat_game"]
             print(f"Use a custom threat game: {payoff_matrix.tolist()}")
-        env_class = IteratedThreatGame
+        env_class = ThreatGame
         players_ids = env_class({}).players_ids
         state_order = THREAT_GAME_STATE_ORDER
     elif "modified_payoff_matrix" in config.keys():
@@ -981,7 +981,7 @@ def get_payoff_matrix(config):
             "DD",
         ]
     elif config.get("env_name") == "IteratedThreatGame":
-        env_class = IteratedThreatGame
+        env_class = ThreatGame
         payoff_matrix = env_class.PAYOFF_MATRIX
         players_ids = env_class({}).players_ids
         state_order = THREAT_GAME_STATE_ORDER
