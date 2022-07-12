@@ -303,6 +303,10 @@ class TensorBoardDataExtractor:
                     key: aggregation_operation(values, axis=0)
                     for key, aggregation_operation in aggregation_ops.items()
                 }
+                if "reward" in key and "mean" in key:
+                    aggregations["values"] = [
+                        str(el) for el in np.array(values).T.tolist()
+                    ]
                 self._write_csv(main_path, group_key, key, aggregations, steps)
 
     def _write_csv(self, main_path, group_key, key, aggregations, steps):
@@ -396,6 +400,8 @@ class SummaryPlotter:
                 df[f"mean{LOWER_ENVELOPE_SUFFIX}"] = df["mean"] - df["std"]
                 df[f"mean{UPPER_ENVELOPE_SUFFIX}"] = df["mean"] + df["std"]
             df = df.drop(columns=["std", "var", "median"])
+            if "values" in df.columns:
+                df = df.drop(columns=["values"])
 
             data_groups[tag] = df
 
@@ -409,6 +415,50 @@ class SummaryPlotter:
         )
         plot_helper = PlotHelper(plot_options)
         plot_helper.plot_lines(data_groups)
+
+    def plot_one_x_y_plot(self, save_dir_path, csv_file_list, y_label=None):
+        data_groups = {}
+        all_tags_seen = []
+
+        df = pd.read_csv(csv_file_list[0], sep=";", index_col=0)
+        tag = self.extract_tag_from_file_name(csv_file_list[0])
+        all_tags_seen.append(tag)
+        if "values" not in df.columns:
+            return None
+        last_values = df["values"].iloc[-1]
+        X = [
+            float(el.replace("[", "").replace("]", "").strip())
+            for el in last_values.split(",")
+        ]
+
+        df = pd.read_csv(csv_file_list[1], sep=";", index_col=0)
+        # tag = self.extract_tag_from_file_name(csv_file_list[1])
+        all_tags_seen.append(tag)
+        if "values" not in df.columns:
+            return None
+        last_values = df["values"].iloc[-1]
+        Y = [
+            float(el.replace("[", "").replace("]", "").strip())
+            for el in last_values.split(",")
+        ]
+
+        values = [[(x, y)] for x, y in zip(X, Y)]
+        # Only keep the last point of the training
+        df = pd.DataFrame(data=values, columns=["mean_reward_pl"])
+
+        data_groups[tag] = df
+
+        plot_options = PlotConfig(
+            xlabel="steps",
+            ylabel=fing_longer_substr(all_tags_seen).strip("_")
+            if y_label is None
+            else y_label,
+            save_dir_path=save_dir_path,
+            filename_prefix="dot_plot",
+            **self.additional_plot_config_kwargs,
+        )
+        plot_helper = PlotHelper(plot_options)
+        plot_helper.plot_dots(data_groups)
 
     def plot_several_lines_per_plot(
         self, save_dir_path, csv_file_list, plot_assemble_tags_in_one_plot
@@ -427,6 +477,7 @@ class SummaryPlotter:
                 # plot one assemblage
                 y_label = f"{assemblage_idx}_" + " or ".join(list_of_tags_in_assemblage)
                 self.plot_one_graph(save_dir_path, assemblage_list, y_label=y_label)
+                self.plot_one_x_y_plot(save_dir_path, assemblage_list, y_label=y_label)
 
     def _group_csv_file_in_aggregates(self, csv_file_list, list_of_tags_in_assemblage):
         print(f"Start the {list_of_tags_in_assemblage} assemblage")
