@@ -103,6 +103,7 @@ def load_one_policy_checkpoint(
                 f'checkpoint["worker"]["state"].keys() '
                 f'{objs["state"].keys()}'
             )
+        assert found_policy_id, f"policy to load ({policy_id}) not found"
 
 
 def extract_checkpoints_from_experiment_analysis(

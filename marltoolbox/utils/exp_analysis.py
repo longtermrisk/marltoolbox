@@ -22,9 +22,7 @@ def extract_value_from_last_training_iteration_for_each_trials(
     for trial in experiment_analysis.trials:
         last_results = trial.last_result
         _, _, value, found = move_to_key(last_results, key=metric)
-        assert (
-            found
-        ), f"metric: {metric} not found in last_results: {last_results}"
+        assert found, f"metric: {metric} not found in last_results: {last_results}"
         metric_values.append(value)
     return metric_values
 
@@ -41,9 +39,7 @@ def extract_metrics_for_each_trials(
             try:
                 dict_ = dict_[sub_key]
             except KeyError:
-                raise KeyError(
-                    f"sub_key {sub_key} not in dict_.keys() {dict_.keys()}"
-                )
+                raise KeyError(f"sub_key {sub_key} not in dict_.keys() {dict_.keys()}")
 
         value = dict_[metric_mode]
         metric_values.append(value)
@@ -63,9 +59,7 @@ def check_learning_achieved(
 
     last_results = tune_results.trials[trial_idx].last_result
     _, _, value, found = move_to_key(last_results, key=metric)
-    assert (
-        found
-    ), f"metric {metric} not found inside last_results {last_results}"
+    assert found, f"metric {metric} not found inside last_results {last_results}"
 
     msg = (
         f"Trial {trial_idx} achieved "
@@ -81,14 +75,10 @@ def check_learning_achieved(
     if max_ is not None:
         assert value <= max_, f"value {value} must be below max_ {max_}"
     if equal_ is not None:
-        assert value == equal_, (
-            f"value {value} must be equal to equal_ " f"{equal_}"
-        )
+        assert value == equal_, f"value {value} must be equal to equal_ " f"{equal_}"
 
 
-def extract_config_values_from_experiment_analysis(
-    tune_experiment_analysis, key
-):
+def extract_config_values_from_experiment_analysis(tune_experiment_analysis, key):
     values = []
     for trial in tune_experiment_analysis.trials:
         dict_, k, current_value, found = move_to_key(trial.config, key)
@@ -137,9 +127,7 @@ def filter_trials(
     assert metric_mode in RLLIB_METRICS_MODES
     print("Before trial filtering:", len(experiment_analysis.trials), "trials")
     trials_filtered = []
-    print(
-        "metric_threshold", metric_threshold, "threshold_mode", threshold_mode
-    )
+    print("metric_threshold", metric_threshold, "threshold_mode", threshold_mode)
     for trial_idx, trial in enumerate(experiment_analysis.trials):
         available_metrics = trial.metric_analysis
         try:

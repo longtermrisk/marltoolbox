@@ -8,7 +8,10 @@ from ray.rllib.models import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule
 from ray.rllib.policy.torch_policy import LearningRateSchedule
+from ray.rllib.utils import override
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType
+from ray.util.annotations import DeveloperAPI
 
 from marltoolbox.utils import log
 
@@ -84,13 +87,50 @@ def my_pg_loss_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, Tens
     }
 
 
-MyPGTorchPolicy = PGTorchPolicy.with_updates(
+def fix_add_modules(policy, obs_space, action_space, trainer_config):
+    for module_idx, module in policy.model.one_hot.items():
+        policy.model.add_module("one_hot_{}".format(module_idx), module)
+    for module_idx, module in policy.model.flatten.items():
+        policy.model.add_module("flatten_{}".format(module_idx), module)
+
+
+MyPGTorchPolicyIntermediaryStep = PGTorchPolicy.with_updates(
     optimizer_fn=sgd_optimizer,
     before_init=setup_early_mixins,
     mixins=[LearningRateSchedule, EntropyCoeffSchedule],
     stats_fn=log.augment_stats_fn_wt_additionnal_logs(my_pg_loss_stats),
     loss_fn=my_pg_torch_loss,
+    after_init=fix_add_modules,
 )
+
+
+class MyPGTorchPolicy(MyPGTorchPolicyIntermediaryStep):
+    @override(Policy)
+    @DeveloperAPI
+    def set_state(self, state: dict) -> None:
+        # Set optimizer vars first.
+        optimizer_vars = state.get("_optimizer_variables", None)
+        if optimizer_vars:
+            assert len(optimizer_vars) == len(self._optimizers)
+            # Fix when using PyTorch > 1.11
+            for o, s in zip(self._optimizers, optimizer_vars):
+                for v in s["param_groups"]:
+                    if "foreach" in v.keys():
+                        v["foreach"] = False if v["foreach"] is None else v["foreach"]
+                for v in s["state"].values():
+                    if "momentum_buffer" in v.keys():
+                        v["momentum_buffer"] = (
+                            False
+                            if v["momentum_buffer"] is None
+                            else v["momentum_buffer"]
+                        )
+                optim_state_dict = convert_to_torch_tensor(s, device=self.device)
+                o.load_state_dict(optim_state_dict)
+        # Set exploration's state.
+        if hasattr(self, "exploration") and "_exploration_state" in state:
+            self.exploration.set_state(state=state["_exploration_state"])
+        # Then the Policy's (NN) weights.
+        super().set_state(state)
 
 
 class MyPGTrainer(PGTrainer):
