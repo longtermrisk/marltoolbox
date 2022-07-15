@@ -72,6 +72,8 @@ PLOT_ASSEMBLAGE_TAGS = [
     ("grad_gnorm",),
     ("entropy_buffer_samples_avg",),
     ("entropy_avg",),
+    ("loss",),
+    ("td_error"),
     ("loss", "td_error"),
     ("learn_on_batch",),
     ("last_training_max_q_values",),
@@ -477,7 +479,10 @@ class SummaryPlotter:
                 # plot one assemblage
                 y_label = f"{assemblage_idx}_" + " or ".join(list_of_tags_in_assemblage)
                 self.plot_one_graph(save_dir_path, assemblage_list, y_label=y_label)
-                self.plot_one_x_y_plot(save_dir_path, assemblage_list, y_label=y_label)
+                if len(assemblage_list) > 1:
+                    self.plot_one_x_y_plot(
+                        save_dir_path, assemblage_list, y_label=y_label
+                    )
 
     def _group_csv_file_in_aggregates(self, csv_file_list, list_of_tags_in_assemblage):
         print(f"Start the {list_of_tags_in_assemblage} assemblage")
@@ -485,7 +490,7 @@ class SummaryPlotter:
         for csv_file in csv_file_list:
             if any(
                 [
-                    select_key in os.path.split(csv_file)[-1]
+                    select_key in "-".join(os.path.split(csv_file)[-1].split("-")[:-1])
                     for select_key in list_of_tags_in_assemblage
                 ]
             ):

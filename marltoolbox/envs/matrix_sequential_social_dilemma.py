@@ -404,24 +404,38 @@ PLOT_KEYS_2P_3A = [
     "0_0",
     "0_1",
     "0_2",
+    "0_3",
     "1_0",
     "1_1",
     "1_2",
+    "1_3",
     "2_0",
     "2_1",
     "2_2",
+    "2_3",
+    "3_0",
+    "3_1",
+    "3_2",
+    "3_3",
 ]
 
 PLOT_ASSEMBLAGE_TAGS_2P_3A = [
     ("0_0",),
     ("0_1",),
     ("0_2",),
+    ("0_3",),
     ("1_0",),
     ("1_1",),
     ("1_2",),
+    ("1_3",),
     ("2_0",),
     ("2_1",),
     ("2_2",),
+    ("2_3",),
+    ("3_0",),
+    ("3_1",),
+    ("3_2",),
+    ("3_3",),
 ]
 
 
@@ -441,6 +455,16 @@ class AsymmetricMatrixGame(
     OBSERVATION_SPACE = Discrete(NUM_STATES)
     PAYOFF_MATRIX = None
     NAME = "AsymmetricMatrixGame"
+
+    def __init__(self, config):
+        super().__init__(config)
+
+        if self.output_additional_info:
+            all_possible_joint_actions = []
+            for i in range(self.ACTION_SPACE_PL0.n):
+                for j in range(self.ACTION_SPACE_PL1.n):
+                    all_possible_joint_actions.append([i, j])
+            self._init_info(all_possible_joint_actions)
 
     def _support_ray_1_12_0(self):
         self._agent_ids = self.players_ids
@@ -547,8 +571,8 @@ class DemandGame(AsymmetricMatrixGame):
     """
 
     NUM_ACTIONS = None
-    NUM_ACTIONS_PL0 = 2
-    NUM_ACTIONS_PL1 = 3
+    NUM_ACTIONS_PL0 = 4
+    NUM_ACTIONS_PL1 = 4
     ACTION_SPACE_PL0 = Discrete(NUM_ACTIONS_PL0)
     ACTION_SPACE_PL1 = Discrete(NUM_ACTIONS_PL1)
     NUM_STATES = NUM_ACTIONS_PL0 * NUM_ACTIONS_PL1 + 1
