@@ -1,5 +1,6 @@
 import logging
 from abc import ABC
+from typing import List
 
 import numpy as np
 
@@ -49,8 +50,11 @@ class NPlayersNDiscreteActionsInfoMixin(InfoAccumulationInterface, ABC):
     (action profile: the set of actions used during one step by all players).
     """
 
-    def _init_info(self):
+    def _init_info(self, all_possible_joint_actions: List[List] = None):
         self.info_counters = {"n_steps_accumulated": 0}
+        if all_possible_joint_actions is not None:
+            for joint_actions in all_possible_joint_actions:
+                self.info_counters[self._get_id_for_actions(joint_actions)] = 0
 
     def _reset_info(self):
         for k in self.info_counters.keys():
@@ -66,11 +70,14 @@ class NPlayersNDiscreteActionsInfoMixin(InfoAccumulationInterface, ABC):
         return info
 
     def _accumulate_info(self, *actions):
-        id = "_".join([str(a) for a in actions])
+        id = self._get_id_for_actions(actions)
         if id not in self.info_counters:
             self.info_counters[id] = 0
         self.info_counters[id] += 1
         self.info_counters["n_steps_accumulated"] += 1
+
+    def _get_id_for_actions(self, actions):
+        return "_".join([str(a) for a in actions])
 
 
 class NPlayersNContinuousActionsInfoMixin(InfoAccumulationInterface, ABC):
