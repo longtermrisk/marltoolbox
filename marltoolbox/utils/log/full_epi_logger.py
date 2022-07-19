@@ -15,7 +15,11 @@ class FullEpisodeLogger:
     """
 
     def __init__(
-        self, logdir: str, log_interval: int, convert_one_hot_obs_to_idx: bool
+        self,
+        logdir: str,
+        log_interval: int,
+        convert_one_hot_obs_to_idx: bool,
+        logger_prefix: str = None,
     ):
         """
 
@@ -26,32 +30,42 @@ class FullEpisodeLogger:
             observation to their idx
             (indented to bue used when dealing with one hot observations)
         """
-        self.log_interval = log_interval
-        self.log_ful_epi_one_hot_obs = convert_one_hot_obs_to_idx
+        self._log_interval = log_interval
+        self._log_ful_epi_one_hot_obs = convert_one_hot_obs_to_idx
+        self._logger_prefix = logger_prefix
 
         file_path = os.path.join(logdir, "full_episodes_logs.json")
-        self.file_path = os.path.expanduser(file_path)
-        logger.info(f"FullEpisodeLogger: using as file_path: {self.file_path}")
+        self._file_path = os.path.expanduser(file_path)
+        logger.info(f"FullEpisodeLogger: using as file_path: {self._file_path}")
 
         self._init_logging_new_full_episode()
-        self.internal_episode_counter = -1
-        self.step_counter = 0
-        self.episode_finised = True
+        self._internal_episode_counter = -1
+        self._step_counter = 0
+        self._episode_finised = True
 
-        self.json_logger = JsonSimpleLogger(self.file_path)
+        self._json_logger = JsonSimpleLogger(self._file_path)
 
-    def on_episode_start(self):
-        if self.episode_finised:
-            self.episode_finised = False
-            self.internal_episode_counter += 1
+    def on_episode_start(self, episode_prefix: str = None):
+        if self._episode_finised:
+            self._episode_finised = False
+            self._internal_episode_counter += 1
 
-        if self.internal_episode_counter % self.log_interval == 0:
+        if self._internal_episode_counter % self._log_interval == 0:
             self._init_logging_new_full_episode()
-            self.json_logger.open()
-            self.json_logger.write_json(
-                {"status": f"start of episode {self.internal_episode_counter}"}
+            self._json_logger.open()
+
+            self._json_logger.write_json(
+                {"status": f"start of episode {self._internal_episode_counter}"}
             )
-            self.json_logger.write("\n")
+            self._json_logger.write("\n")
+
+            if self._logger_prefix is not None:
+                self._json_logger.write(self._logger_prefix)
+
+            if episode_prefix is not None:
+                self._json_logger.write(episode_prefix)
+
+            self._json_logger.write("\n")
 
     def _init_logging_new_full_episode(self):
         self._log_current_full_episode = True
@@ -94,7 +108,7 @@ class FullEpisodeLogger:
                 obs_after_act = episode.last_observation_for(agent_id)
                 self._log_full_epi_tmp_data[agent_id] = obs_after_act
 
-                if self.log_ful_epi_one_hot_obs:
+                if self._log_ful_epi_one_hot_obs:
                     obs_before_act = np.argwhere(obs_before_act)
                     obs_after_act = np.argwhere(obs_after_act)
 
@@ -107,34 +121,34 @@ class FullEpisodeLogger:
                     "epi": epi,
                 }
 
-        self.json_logger.write_json(step_data)
-        self.json_logger.write("\n")
-        self.step_counter += 1
+        self._json_logger.write_json(step_data)
+        self._json_logger.write("\n")
+        self._step_counter += 1
 
     def on_episode_end(self, base_env=None):
         if self._log_current_full_episode:
             if base_env is not None:
                 env = base_env.get_unwrapped()[0]
                 if hasattr(env, "max_steps"):
-                    assert self.step_counter == env.max_steps, (
+                    assert self._step_counter == env.max_steps, (
                         "The number of steps written to full episode "
                         "log file must be equal to the number of step in an "
-                        f"episode self.step_counter {self.step_counter} "
+                        f"episode self.step_counter {self._step_counter} "
                         f"must equal env.max_steps {env.max_steps}. "
                         "Otherwise there are some issue with the "
                         "state of the callback object, maybe being used by "
                         "several experiments at the same time."
                     )
-            self.json_logger.write_json(
-                {"status": f"end of episode {self.internal_episode_counter}"}
+            self._json_logger.write_json(
+                {"status": f"end of episode {self._internal_episode_counter}"}
             )
-            self.json_logger.write("\n")
-            self.json_logger.write("\n")
-            self.json_logger.flush()
-            self.json_logger.close()
+            self._json_logger.write("\n")
+            self._json_logger.write("\n")
+            self._json_logger.flush()
+            self._json_logger.close()
             self._log_current_full_episode = False
-            self.step_counter = 0
-        self.episode_finised = True
+            self._step_counter = 0
+        self._episode_finised = True
 
 
 class JsonSimpleLogger:

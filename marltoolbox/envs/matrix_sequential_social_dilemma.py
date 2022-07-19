@@ -160,6 +160,17 @@ class MatrixSequentialSocialDilemma(
                 action_player_row, action_player_col
             )
 
+    def convert_observation_into_actions(self, observation):
+        assert self.same_obs_for_each_player
+
+        if observation == self.NUM_STATES - 1:
+            return [None] * self.NUM_AGENTS
+
+        return [
+            observation // self.NUM_ACTIONS,
+            observation % self.NUM_ACTIONS,
+        ]
+
     def _produce_same_observations_for_each_player(
         self, action_player_0: int, action_player_1: int
     ):
@@ -223,6 +234,16 @@ class MatrixSequentialSocialDilemma(
     def __str__(self):
         return self.NAME
 
+    def enumerate_all_states(self, include_reset_state):
+        if include_reset_state and self.max_steps == 1:
+            yield self.NUM_STATES - 1
+        else:
+            for i in range(self.NUM_STATES):
+                yield i
+                if not include_reset_state and i == self.NUM_STATES - 2:
+                    # The reset state is NUM_STATE - 1
+                    break
+
 
 class IteratedMatchingPennies(
     TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma
@@ -282,7 +303,9 @@ class IteratedStagHunt(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDile
     NAME = "IteratedStagHunt"
 
 
-class IteratedChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
+# class IteratedChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
+class IteratedChicken(NPlayersNDiscreteActionsInfoMixin, MatrixSequentialSocialDilemma):
+
     """
     A two-agent environment for the Chicken game.
     """
@@ -538,6 +561,17 @@ class AsymmetricMatrixGame(
         }
 
         return observations, rewards, done, info
+
+    def convert_observation_into_actions(self, observation):
+        assert self.same_obs_for_each_player
+
+        if observation == self.NUM_STATES - 1:
+            return [None] * self.NUM_AGENTS
+
+        return [
+            observation // self.NUM_ACTIONS_PL1,
+            observation % self.NUM_ACTIONS_PL1,
+        ]
 
 
 class ThreatGame(AsymmetricMatrixGame):

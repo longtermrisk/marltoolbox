@@ -423,8 +423,8 @@ class SummaryPlotter:
         all_tags_seen = []
 
         df = pd.read_csv(csv_file_list[0], sep=";", index_col=0)
-        tag = self.extract_tag_from_file_name(csv_file_list[0])
-        all_tags_seen.append(tag)
+        tag_x = self.extract_tag_from_file_name(csv_file_list[0])
+        # all_tags_seen.append(tag)
         if "values" not in df.columns:
             return None
         last_values = df["values"].iloc[-1]
@@ -434,8 +434,8 @@ class SummaryPlotter:
         ]
 
         df = pd.read_csv(csv_file_list[1], sep=";", index_col=0)
-        # tag = self.extract_tag_from_file_name(csv_file_list[1])
-        all_tags_seen.append(tag)
+        tag_y = self.extract_tag_from_file_name(csv_file_list[1])
+        # all_tags_seen.append(tag)
         if "values" not in df.columns:
             return None
         last_values = df["values"].iloc[-1]
@@ -448,13 +448,11 @@ class SummaryPlotter:
         # Only keep the last point of the training
         df = pd.DataFrame(data=values, columns=["mean_reward_pl"])
 
-        data_groups[tag] = df
+        data_groups[tag_x] = df
 
         plot_options = PlotConfig(
-            xlabel="steps",
-            ylabel=fing_longer_substr(all_tags_seen).strip("_")
-            if y_label is None
-            else y_label,
+            xlabel=tag_x,
+            ylabel=tag_y,
             save_dir_path=save_dir_path,
             filename_prefix="dot_plot",
             **self.additional_plot_config_kwargs,
