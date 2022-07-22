@@ -42,10 +42,18 @@ class FullEpisodeLogger:
         self._internal_episode_counter = -1
         self._step_counter = 0
         self._episode_finised = True
+        self._current_episode_id = None
 
         self._json_logger = JsonSimpleLogger(self._file_path)
 
-    def on_episode_start(self, episode_prefix: str = None):
+    def on_episode_start(self, episode, episode_prefix: str = None):
+
+        if hasattr(episode, "episode_id"):
+            if self._current_episode_id is None:
+                self._current_episode_id = episode.episode_id
+            else:
+                return None
+
         if self._episode_finised:
             self._episode_finised = False
             self._internal_episode_counter += 1
@@ -79,6 +87,11 @@ class FullEpisodeLogger:
 
         assert episode is not None or step_data is not None
         assert episode is None or step_data is None
+
+        if hasattr(episode, "episode_id"):
+            assert self._current_episode_id is not None
+            if self._current_episode_id != episode.episode_id:
+                return None
 
         if step_data is None:
             step_data = {}
@@ -125,7 +138,14 @@ class FullEpisodeLogger:
         self._json_logger.write("\n")
         self._step_counter += 1
 
-    def on_episode_end(self, base_env=None):
+    def on_episode_end(self, episode, base_env=None):
+
+        if hasattr(episode, "episode_id"):
+            assert self._current_episode_id is not None
+            if self._current_episode_id != episode.episode_id:
+                return None
+            self._current_episode_id = None
+
         if self._log_current_full_episode:
             if base_env is not None:
                 env = base_env.get_unwrapped()[0]

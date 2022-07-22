@@ -44,10 +44,10 @@ class SupportRay1_12_0Mixin:
         self._agent_ids = self.players_ids
 
         self.observation_space = gym.spaces.Dict(
-            {k: self.OBSERVATION_SPACE for k in self._agent_ids}
+            {k: self.OBSERVATION_SPACE_ for k in self._agent_ids}
         )
         self.action_space = gym.spaces.Dict(
-            {k: self.ACTION_SPACE for k in self._agent_ids}
+            {k: self.ACTION_SPACE_ for k in self._agent_ids}
         )
 
 
@@ -73,8 +73,8 @@ class MatrixSequentialSocialDilemma(
     NUM_AGENTS = 2
     NUM_ACTIONS = None
     NUM_STATES = None
-    # ACTION_SPACE = None
-    OBSERVATION_SPACE = None
+    ACTION_SPACE_ = None
+    OBSERVATION_SPACE_ = None
     PAYOFF_MATRIX = None
     NAME = None
 
@@ -102,6 +102,12 @@ class MatrixSequentialSocialDilemma(
         if not hasattr(self, "action_space"):
             self._support_ray_1_12_0()
         return self.action_space
+
+    @property
+    def OBSERVATION_SPACE(self):
+        if not hasattr(self, "observation_space"):
+            self._support_ray_1_12_0()
+        return self.observation_space
 
     def _sanity_checks(self, config):
         assert self.PAYOFF_MATRIX is not None
@@ -254,8 +260,8 @@ class IteratedMatchingPennies(
 
     NUM_ACTIONS = 2
     NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
-    ACTION_SPACE = Discrete(NUM_ACTIONS)
-    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    ACTION_SPACE_ = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = np.array([[[+1, -1], [-1, +1]], [[-1, +1], [+1, -1]]])
     NAME = "IMP"
 
@@ -269,8 +275,8 @@ class IteratedPrisonersDilemma(
 
     NUM_ACTIONS = 2
     NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
-    ACTION_SPACE = Discrete(NUM_ACTIONS)
-    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    ACTION_SPACE_ = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = np.array([[[-1, -1], [-3, +0]], [[+0, -3], [-2, -2]]])
     NAME = "IPD"
 
@@ -284,8 +290,8 @@ class IteratedAsymPrisonersDilemma(
 
     NUM_ACTIONS = 2
     NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
-    ACTION_SPACE = Discrete(NUM_ACTIONS)
-    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    ACTION_SPACE_ = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = np.array([[[+0, -1], [-3, +0]], [[+0, -3], [-2, -2]]])
     NAME = "IPD"
 
@@ -297,8 +303,8 @@ class IteratedStagHunt(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDile
 
     NUM_ACTIONS = 2
     NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
-    ACTION_SPACE = Discrete(NUM_ACTIONS)
-    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    ACTION_SPACE_ = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = np.array([[[3, 3], [0, 2]], [[2, 0], [1, 1]]])
     NAME = "IteratedStagHunt"
 
@@ -312,8 +318,8 @@ class IteratedChicken(NPlayersNDiscreteActionsInfoMixin, MatrixSequentialSocialD
 
     NUM_ACTIONS = 2
     NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
-    ACTION_SPACE = Discrete(NUM_ACTIONS)
-    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    ACTION_SPACE_ = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = np.array([[[+0, +0], [-1.0, +1.0]], [[+1, -1], [-10, -10]]])
     NAME = "IteratedChicken"
 
@@ -325,8 +331,8 @@ class IteratedAsymChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialD
 
     NUM_ACTIONS = 2
     NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
-    ACTION_SPACE = Discrete(NUM_ACTIONS)
-    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    ACTION_SPACE_ = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = np.array([[[+2.0, +0], [-1.0, +1.0]], [[+2.5, -1], [-10, -10]]])
     NAME = "AsymmetricIteratedChicken"
 
@@ -338,8 +344,8 @@ class IteratedBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
 
     NUM_ACTIONS = 2
     NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
-    ACTION_SPACE = Discrete(NUM_ACTIONS)
-    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    ACTION_SPACE_ = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = np.array(
         [[[+3.0, +2.0], [+0.0, +0.0]], [[+0.0, +0.0], [+2.0, +3.0]]]
     )
@@ -354,7 +360,7 @@ class IteratedAsymBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilem
     NUM_ACTIONS = 2
     NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
-    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = np.array(
         [[[+4.0, +1.0], [+0.0, +0.0]], [[+0.0, +0.0], [+2.0, +2.0]]]
     )
@@ -366,7 +372,7 @@ def define_greed_fear_matrix_game(greed, fear):
         NUM_ACTIONS = 2
         NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
         ACTION_SPACE = Discrete(NUM_ACTIONS)
-        OBSERVATION_SPACE = Discrete(NUM_STATES)
+        OBSERVATION_SPACE_ = Discrete(NUM_STATES)
         R = 3
         P = 1
         T = R + greed
@@ -390,7 +396,7 @@ class IteratedBoSAndPD(
     NUM_ACTIONS = 3
     NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
     ACTION_SPACE = Discrete(NUM_ACTIONS)
-    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = np.array(
         [
             [[3.5, +1], [+0, +0], [-3, +2]],
@@ -475,7 +481,7 @@ class AsymmetricMatrixGame(
     ACTION_SPACE_PL0 = Discrete(NUM_ACTIONS_PL0)
     ACTION_SPACE_PL1 = Discrete(NUM_ACTIONS_PL1)
     NUM_STATES = NUM_ACTIONS_PL0 * NUM_ACTIONS_PL1 + 1
-    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = None
     NAME = "AsymmetricMatrixGame"
 
@@ -585,7 +591,7 @@ class ThreatGame(AsymmetricMatrixGame):
     ACTION_SPACE_PL0 = Discrete(NUM_ACTIONS_PL0)
     ACTION_SPACE_PL1 = Discrete(NUM_ACTIONS_PL1)
     NUM_STATES = NUM_ACTIONS_PL0 * NUM_ACTIONS_PL1 + 1
-    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = np.array(
         [
             [[-5.0, +5.0], [-5.0, 5.0], [0.0, 0.0]],
@@ -610,7 +616,7 @@ class DemandGame(AsymmetricMatrixGame):
     ACTION_SPACE_PL0 = Discrete(NUM_ACTIONS_PL0)
     ACTION_SPACE_PL1 = Discrete(NUM_ACTIONS_PL1)
     NUM_STATES = NUM_ACTIONS_PL0 * NUM_ACTIONS_PL1 + 1
-    OBSERVATION_SPACE = Discrete(NUM_STATES)
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = np.array(
         [
             [[-3.0, -3.0], [2.0, 0.0], [5.0, -5.0], [5.0, -5.0]],

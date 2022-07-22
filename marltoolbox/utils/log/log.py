@@ -55,7 +55,7 @@ def get_logging_callbacks_class(
             if log_full_epi:
                 if not self._is_full_episode_logging_initialized():
                     self._init_full_episode_logging(worker)
-                self._full_episode_logger.on_episode_start()
+                self._full_episode_logger.on_episode_start(episode)
 
             if log_model_sumamry:
                 self._log_model_sumamry(worker)
@@ -102,7 +102,7 @@ def get_logging_callbacks_class(
             **kwargs,
         ):
             if log_full_epi:
-                self._full_episode_logger.on_episode_end(base_env)
+                self._full_episode_logger.on_episode_end(episode, base_env)
 
         def on_train_result(self, *, trainer, result: dict, **kwargs):
             """Called at the end of Trainable.train().
