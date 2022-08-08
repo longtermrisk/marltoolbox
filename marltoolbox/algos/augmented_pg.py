@@ -88,10 +88,12 @@ def my_pg_loss_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, Tens
 
 
 def fix_add_modules(policy, obs_space, action_space, trainer_config):
-    for module_idx, module in policy.model.one_hot.items():
-        policy.model.add_module("one_hot_{}".format(module_idx), module)
-    for module_idx, module in policy.model.flatten.items():
-        policy.model.add_module("flatten_{}".format(module_idx), module)
+    if hasattr(policy.model, "one_hot"):
+        for module_idx, module in policy.model.one_hot.items():
+            policy.model.add_module("one_hot_{}".format(module_idx), module)
+    if hasattr(policy.model, "flatten"):
+        for module_idx, module in policy.model.flatten.items():
+            policy.model.add_module("flatten_{}".format(module_idx), module)
 
 
 MyPGTorchPolicyIntermediaryStep = PGTorchPolicy.with_updates(
@@ -104,7 +106,7 @@ MyPGTorchPolicyIntermediaryStep = PGTorchPolicy.with_updates(
 )
 
 
-class MyPGTorchPolicy(MyPGTorchPolicyIntermediaryStep):
+class FixSaveLoadWeightMixin:
     @override(Policy)
     @DeveloperAPI
     def set_state(self, state: dict) -> None:
@@ -131,6 +133,10 @@ class MyPGTorchPolicy(MyPGTorchPolicyIntermediaryStep):
             self.exploration.set_state(state=state["_exploration_state"])
         # Then the Policy's (NN) weights.
         super().set_state(state)
+
+
+class MyPGTorchPolicy(FixSaveLoadWeightMixin, MyPGTorchPolicyIntermediaryStep):
+    pass
 
 
 class MyPGTrainer(PGTrainer):

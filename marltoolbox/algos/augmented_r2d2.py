@@ -13,6 +13,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils.typing import TrainerConfigDict
 
+from marltoolbox.algos.augmented_pg import fix_add_modules, FixSaveLoadWeightMixin
 from marltoolbox.utils import log, optimizers, policy
 
 
@@ -22,7 +23,7 @@ def setup_early_mixins(
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-MyR2D2TorchPolicy = R2D2TorchPolicy.with_updates(
+MyR2D2TorchPolicyTemp = R2D2TorchPolicy.with_updates(
     optimizer_fn=optimizers.sgd_optimizer_dqn,
     loss_fn=r2d2_loss,
     stats_fn=log.augment_stats_fn_wt_additionnal_logs(build_q_stats),
@@ -32,15 +33,21 @@ MyR2D2TorchPolicy = R2D2TorchPolicy.with_updates(
         ComputeTDErrorMixin,
         policy.MyLearningRateSchedule,
     ],
+    after_init=fix_add_modules,
 )
 
-MyAdamR2D2TorchPolicy = MyR2D2TorchPolicy.with_updates(
-    optimizer_fn=optimizers.adam_optimizer_dqn,
-)
-MyAdamVanillaR2D2TorchPolicy = R2D2TorchPolicy.with_updates(
-    optimizer_fn=optimizers.adam_optimizer_dqn,
-)
 
-MySGDVanillaR2D2TorchPolicy = R2D2TorchPolicy.with_updates(
-    optimizer_fn=optimizers.sgd_optimizer_dqn,
-)
+class MyR2D2TorchPolicy(FixSaveLoadWeightMixin, MyR2D2TorchPolicyTemp):
+    pass
+
+
+# MyAdamR2D2TorchPolicy = MyR2D2TorchPolicy.with_updates(
+#     optimizer_fn=optimizers.adam_optimizer_dqn,
+# )
+# MyAdamVanillaR2D2TorchPolicy = R2D2TorchPolicy.with_updates(
+#     optimizer_fn=optimizers.adam_optimizer_dqn,
+# )
+#
+# MySGDVanillaR2D2TorchPolicy = R2D2TorchPolicy.with_updates(
+#     optimizer_fn=optimizers.sgd_optimizer_dqn,
+# )
