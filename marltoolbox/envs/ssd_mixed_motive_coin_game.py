@@ -37,17 +37,18 @@ PLOT_ASSEMBLAGE_TAGS = coin_game.PLOT_ASSEMBLAGE_TAGS + [
 
 
 class SSDMixedMotiveCoinGame(coin_game.CoinGame):
-    @override(coin_game.CoinGame)
+    # @override(coin_game.CoinGame)
     def __init__(self, config: dict = {}):
         super().__init__(config)
         self.punishment_helped = config.get("punishment_helped", False)
 
-        self.OBSERVATION_SPACE = gym.spaces.Box(
+        self.OBSERVATION_SPACE_ = gym.spaces.Box(
             low=0,
             high=1,
             shape=(self.grid_size, self.grid_size, 6),
             dtype="uint8",
         )
+        self._support_ray_1_12_0()
 
     @override(coin_game.CoinGame)
     def _load_config(self, config):
@@ -64,12 +65,8 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
     @override(coin_game.CoinGame)
     def _randomize_color_and_player_positions(self):
         # Reset coin color and the players and coin positions
-        self.red_pos = self.np_random.randint(
-            low=0, high=self.grid_size, size=(2,)
-        )
-        self.blue_pos = self.np_random.randint(
-            low=0, high=self.grid_size, size=(2,)
-        )
+        self.red_pos = self.np_random.randint(low=0, high=self.grid_size, size=(2,))
+        self.blue_pos = self.np_random.randint(low=0, high=self.grid_size, size=(2,))
 
         self.red_coin = self.np_random.randint(low=0, high=2)
         self.red_coin_pos = np.zeros(shape=(2,), dtype=np.int8)
@@ -89,22 +86,18 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
             self.red_coin_pos = self.np_random.randint(self.grid_size, size=2)
             success = 1 - self._same_pos(self.red_pos, self.red_coin_pos)
             success += 1 - self._same_pos(self.blue_pos, self.red_coin_pos)
-            success += 1 - self._same_pos(
-                self.blue_coin_pos, self.red_coin_pos
-            )
+            success += 1 - self._same_pos(self.blue_coin_pos, self.red_coin_pos)
 
         success = 0
         while success < self.NUM_AGENTS + 1:
             self.blue_coin_pos = self.np_random.randint(self.grid_size, size=2)
             success = 1 - self._same_pos(self.red_pos, self.blue_coin_pos)
             success += 1 - self._same_pos(self.blue_pos, self.blue_coin_pos)
-            success += 1 - self._same_pos(
-                self.blue_coin_pos, self.red_coin_pos
-            )
+            success += 1 - self._same_pos(self.blue_coin_pos, self.red_coin_pos)
 
     @override(coin_game.CoinGame)
     def _generate_observation(self):
-        obs = np.zeros((self.grid_size, self.grid_size, 6))
+        obs = np.zeros((self.grid_size, self.grid_size, 6), dtype=np.uint8)
         obs[self.red_pos[0], self.red_pos[1], 0] = 1
         obs[self.blue_pos[0], self.blue_pos[1], 1] = 1
         if self.red_coin:
@@ -137,9 +130,7 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
         picked_blue_coop = False
 
         if self._same_pos(self.red_pos, self.red_coin_pos):
-            if self.red_coin and self._same_pos(
-                self.blue_pos, self.red_coin_pos
-            ):
+            if self.red_coin and self._same_pos(self.blue_pos, self.red_coin_pos):
                 # Red coin is a coop coin
                 generate_new_coin = True
                 reward_red += 2.0
@@ -159,9 +150,7 @@ class SSDMixedMotiveCoinGame(coin_game.CoinGame):
                     reward_red -= 0.75
 
         elif self._same_pos(self.blue_pos, self.blue_coin_pos):
-            if not self.red_coin and self._same_pos(
-                self.red_pos, self.blue_coin_pos
-            ):
+            if not self.red_coin and self._same_pos(self.red_pos, self.blue_coin_pos):
                 # Blue coin is a coop coin
                 generate_new_coin = True
                 reward_blue += 3.0

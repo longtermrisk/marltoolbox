@@ -20,6 +20,11 @@ PLOT_KEYS = [
     "pick_speed_alone",
     "pick_speed_both",
     "pick_own_color",
+    "pick_regular",
+    "pick_threat",
+    "pick_surrogate",
+    "vanilla_reward",
+    "surrogate_reward",
 ]
 
 PLOT_ASSEMBLAGE_TAGS = [
@@ -38,6 +43,14 @@ PLOT_ASSEMBLAGE_TAGS = [
         "pick_speed_player_red_mean",
         "pick_speed_player_blue_mean",
     ),
+    ("pick_regular",),
+    ("pick_threat",),
+    ("pick_surrogate",),
+    ("pick_regular", "pick_threat"),
+    ("pick_regular", "pick_threat", "pick_surrogate"),
+    ("vanilla_reward",),
+    ("surrogate_reward",),
+    ("vanilla_reward", "surrogate_reward"),
 ]
 
 
@@ -136,7 +149,6 @@ class CoinGame(
         self.red_coin = self.np_random.randint(low=0, high=2)
         self.red_pos = self.np_random.randint(low=0, high=self.grid_size, size=(2,))
         self.blue_pos = self.np_random.randint(low=0, high=self.grid_size, size=(2,))
-        # self.coin_pos = np.zeros(shape=(2,), dtype=np.int8)
 
         self._players_do_not_overlap_at_start()
 
@@ -404,6 +416,9 @@ class ChickenCoinGame(CoinGame):
 
         super().__init__(config)
 
+    def _generate_coin(self):
+        self._coin_position_different_from_players_positions()
+
     def _compute_reward(self):
 
         reward_red = 0.0
@@ -465,18 +480,14 @@ class ChickenCoinGame(CoinGame):
         if len(self.red_pick) > 0:
             red_pick = sum(self.red_pick)
             player_red_info["pick_speed"] = red_pick / n_steps_played
-        if len(self.only_red_pick) > 0:
             only_red_pick = sum(self.only_red_pick)
             player_red_info["pick_speed_alone"] = only_red_pick / n_steps_played
 
-        if len(self.blue_pick) > 0:
             blue_pick = sum(self.blue_pick)
             player_blue_info["pick_speed"] = blue_pick / n_steps_played
-        if len(self.only_blue_pick) > 0:
             only_blue_pick = sum(self.only_blue_pick)
             player_blue_info["pick_speed_alone"] = only_blue_pick / n_steps_played
 
-        if len(self.both_pick) > 0:
             both_pick = sum(self.both_pick)
             player_red_info["pick_speed_both"] = both_pick / n_steps_played
 
@@ -508,3 +519,312 @@ class ChickenCoinGame(CoinGame):
         self.both_pick = []
         self.only_red_pick = []
         self.only_blue_pick = []
+
+
+class ThreatCoinGame(CoinGame):
+    NAME = "ThreatCoinGame"
+    NUM_ACTIONS = 5
+    ACTION_SPACE_ = Discrete(NUM_ACTIONS)
+    MOVES = [
+        np.array([0, 1]),
+        np.array([0, -1]),
+        np.array([1, 0]),
+        np.array([-1, 0]),
+        np.array([0, 0]),
+    ]
+
+    def __init__(self, config: dict = {}):
+        if "asymmetric" in config:
+            assert config["asymmetric"] == False
+        if "both_players_can_pick_the_same_coin" in config:
+            assert config["both_players_can_pick_the_same_coin"] == True
+
+        super().__init__(config)
+
+        self._target_can_neutralize_threat = config["target_can_neutralize_threat"]
+        self._add_surrogate_coin = config["add_surrogate_coin"]
+
+        self.OBSERVATION_SPACE_ = gym.spaces.Box(
+            low=0,
+            high=1,
+            shape=(self.grid_size, self.grid_size, 5),
+            dtype="uint8",
+        )
+        self._support_ray_1_12_0()
+
+    @override(CoinGame)
+    def _generate_coin(self):
+        self._wt_coin_pos_different_from_players_and_other_coin()
+
+    @override(gym.Env)
+    def step(self, actions: Dict):
+        """
+        :param actions: Dict containing both actions for player_1 and player_2
+        :return: obs, rewards, done, info
+        """
+        obs, rewards, done, info = super().step(actions)
+
+        if self.player_red_id in info.keys():
+            info[self.player_red_id]["vanilla_reward"] = self.reward_list[0]
+            info[self.player_red_id]["surrogate_reward"] = self.surrogate_reward_list[0]
+        else:
+            info[self.player_red_id] = {
+                "vanilla_reward": self.reward_list[0],
+                "surrogate_reward": self.surrogate_reward_list[0],
+            }
+
+        if self.player_blue_id in info.keys():
+            info[self.player_blue_id]["vanilla_reward"] = self.reward_list[1]
+            info[self.player_blue_id]["surrogate_reward"] = self.surrogate_reward_list[
+                1
+            ]
+        else:
+            info[self.player_blue_id] = {
+                "vanilla_reward": self.reward_list[1],
+                "surrogate_reward": self.surrogate_reward_list[1],
+            }
+        return obs, rewards, done, info
+
+    def _wt_coin_pos_different_from_players_and_other_coin(self):
+
+        success = 0
+        while success < self.NUM_AGENTS:
+            self.coin_pos_regular = self.np_random.randint(self.grid_size, size=2)
+            success = 1 - self._same_pos(self.red_pos, self.coin_pos_regular)
+            success += 1 - self._same_pos(self.blue_pos, self.coin_pos_regular)
+
+        success = 0
+        while success < self.NUM_AGENTS + 1:
+            self.coin_pos_threat = self.np_random.randint(self.grid_size, size=2)
+            success = 1 - self._same_pos(self.red_pos, self.coin_pos_threat)
+            success += 1 - self._same_pos(self.blue_pos, self.coin_pos_threat)
+            success += 1 - self._same_pos(self.coin_pos_regular, self.coin_pos_threat)
+
+        if self._add_surrogate_coin:
+            success = 0
+            while success < self.NUM_AGENTS + 2:
+                self.coin_pos_surrogate = self.np_random.randint(self.grid_size, size=2)
+                success = 1 - self._same_pos(self.red_pos, self.coin_pos_surrogate)
+                success += 1 - self._same_pos(self.blue_pos, self.coin_pos_surrogate)
+                success += 1 - self._same_pos(
+                    self.coin_pos_regular, self.coin_pos_surrogate
+                )
+                success += 1 - self._same_pos(
+                    self.coin_pos_threat, self.coin_pos_surrogate
+                )
+
+    @override(CoinGame)
+    def _generate_observation(self):
+        obs = np.zeros((self.grid_size, self.grid_size, 5), dtype=np.uint8)
+        obs[self.red_pos[0], self.red_pos[1], 0] = 1
+        obs[self.blue_pos[0], self.blue_pos[1], 1] = 1
+        # 2th feature is for the regular coin
+        obs[self.coin_pos_regular[0], self.coin_pos_regular[1], 2] = 1
+        # 3rd feature is for the threat coin
+        obs[self.coin_pos_threat[0], self.coin_pos_threat[1], 3] = 1
+        if self._add_surrogate_coin:
+            # 4th feature is for the surrogate coin
+            obs[self.coin_pos_surrogate[0], self.coin_pos_surrogate[1], 4] = 1
+
+        obs = self._apply_optional_invariance_to_the_player_trained(obs)
+        return obs
+
+    def _compute_reward(self):
+
+        reward_threatener, surrogate_reward_threatener = 0.0, 0.0
+        reward_target, surrogate_reward_target = 0.0, 0.0
+        generate_new_coins = False
+        threatener_pick_regular, target_pick_regular = (False, False)
+        threatener_pick_threat, target_pick_threat = (False, False)
+        threatener_pick_surrogate, target_pick_surrogate = (False, False)
+        (
+            target_pick_regular_by_priority,
+            target_pick_threat_by_priority,
+            target_pick_surrogate_by_priority,
+        ) = (False, False, False)
+
+        if self._same_pos(self.red_pos, self.coin_pos_regular) and self._same_pos(
+            self.blue_pos, self.coin_pos_regular
+        ):
+            generate_new_coins = True
+            reward_target += 1
+            target_pick_regular = True
+            target_pick_regular_by_priority = True
+        elif self._same_pos(self.red_pos, self.coin_pos_regular):
+            generate_new_coins = True
+            reward_threatener += 1
+            threatener_pick_regular = True
+        elif self._same_pos(self.blue_pos, self.coin_pos_regular):
+            generate_new_coins = True
+            reward_target += 1
+            target_pick_regular = True
+
+        if self._same_pos(self.red_pos, self.coin_pos_threat) and self._same_pos(
+            self.blue_pos, self.coin_pos_threat
+        ):
+            generate_new_coins = True
+            if self._target_can_neutralize_threat:
+                target_pick_threat_by_priority = True
+                target_pick_threat = True
+            else:
+                reward_threatener -= 2
+                reward_target -= 2
+                threatener_pick_threat = True
+        elif self._same_pos(self.red_pos, self.coin_pos_threat):
+            reward_threatener -= 2
+            reward_target -= 2
+            threatener_pick_threat = True
+        elif self._same_pos(self.blue_pos, self.coin_pos_threat):
+            if self._target_can_neutralize_threat:
+                generate_new_coins = True
+                target_pick_threat = True
+
+        if self._add_surrogate_coin:
+            surrogate_reward_threatener = reward_threatener
+            surrogate_reward_target = reward_target
+
+            if self._same_pos(self.red_pos, self.coin_pos_surrogate) and self._same_pos(
+                self.blue_pos, self.coin_pos_surrogate
+            ):
+                generate_new_coins = True
+                if self._target_can_neutralize_threat:
+                    target_pick_surrogate_by_priority = True
+                    target_pick_surrogate = True
+                else:
+                    reward_threatener -= 2
+                    reward_target -= 2
+                    threatener_pick_surrogate = True
+            elif self._same_pos(self.red_pos, self.coin_pos_surrogate):
+                reward_threatener -= 2
+                reward_target -= 2
+                threatener_pick_surrogate = True
+            elif self._same_pos(self.blue_pos, self.coin_pos_surrogate):
+                if self._target_can_neutralize_threat:
+                    generate_new_coins = True
+                    target_pick_surrogate = True
+
+        reward_list = [reward_threatener, reward_target]
+        surrogate_reward_list = [surrogate_reward_threatener, surrogate_reward_target]
+
+        if self.output_additional_info:
+            self._accumulate_info(
+                threatener_pick_regular=threatener_pick_regular,
+                target_pick_regular=target_pick_regular,
+                threatener_pick_threat=threatener_pick_threat,
+                target_pick_threat=target_pick_threat,
+                threatener_pick_surrogate=threatener_pick_surrogate,
+                target_pick_surrogate=target_pick_surrogate,
+                target_pick_regular_by_priority=target_pick_regular_by_priority,
+                target_pick_threat_by_priority=target_pick_threat_by_priority,
+                target_pick_surrogate_by_priority=target_pick_surrogate_by_priority,
+            )
+
+        self.reward_list = reward_list
+        self.surrogate_reward_list = surrogate_reward_list
+
+        if self._add_surrogate_coin:
+            return surrogate_reward_list, generate_new_coins
+        else:
+            return reward_list, generate_new_coins
+
+    @override(InfoAccumulationInterface)
+    def _get_episode_info(self, n_steps_played=None):
+        """
+        Output the following information:
+        pick_speed is the fraction of steps during which the player picked a
+        coin.
+        pick_own_color is the fraction of coins picked by the player which have
+        the same color as the player.
+        """
+        player_red_info, player_blue_info = {}, {}
+        if n_steps_played is None:
+            n_steps_played = len(self.threatener_pick_regular)
+            assert (
+                len(self.threatener_pick_regular)
+                == len(self.target_pick_regular)
+                == len(self.threatener_pick_threat)
+                == len(self.target_pick_threat)
+                == len(self.threatener_pick_surrogate)
+                == len(self.target_pick_surrogate)
+                == len(self.target_pick_regular_by_priority)
+                == len(self.target_pick_threat_by_priority)
+                == len(self.target_pick_surrogate_by_priority)
+            )
+
+        if len(self.threatener_pick_regular) > 0:
+            player_red_info["threatener_pick_regular"] = (
+                sum(self.threatener_pick_regular) / n_steps_played
+            )
+            player_blue_info["target_pick_regular"] = (
+                sum(self.target_pick_regular) / n_steps_played
+            )
+            player_red_info["threatener_pick_threat"] = (
+                sum(self.threatener_pick_threat) / n_steps_played
+            )
+            player_blue_info["target_pick_threat"] = (
+                sum(self.target_pick_threat) / n_steps_played
+            )
+            player_red_info["threatener_pick_surrogate"] = (
+                sum(self.threatener_pick_surrogate) / n_steps_played
+            )
+            player_blue_info["target_pick_surrogate"] = (
+                sum(self.target_pick_surrogate) / n_steps_played
+            )
+            player_blue_info["target_pick_regular_by_priority"] = (
+                sum(self.target_pick_regular_by_priority) / n_steps_played
+            )
+            player_blue_info["target_pick_threat_by_priority"] = (
+                sum(self.target_pick_threat_by_priority) / n_steps_played
+            )
+            player_blue_info["target_pick_surrogate_by_priority"] = (
+                sum(self.target_pick_surrogate_by_priority) / n_steps_played
+            )
+
+        return player_red_info, player_blue_info
+
+    @override(InfoAccumulationInterface)
+    def _init_info(self):
+        self.threatener_pick_regular = []
+        self.target_pick_regular = []
+        self.threatener_pick_threat = []
+        self.target_pick_threat = []
+        self.threatener_pick_surrogate = []
+        self.target_pick_surrogate = []
+        self.target_pick_regular_by_priority = []
+        self.target_pick_threat_by_priority = []
+        self.target_pick_surrogate_by_priority = []
+
+    @override(InfoAccumulationInterface)
+    def _reset_info(self):
+        self.threatener_pick_regular.clear()
+        self.target_pick_regular.clear()
+        self.threatener_pick_threat.clear()
+        self.target_pick_threat.clear()
+        self.threatener_pick_surrogate.clear()
+        self.target_pick_surrogate.clear()
+        self.target_pick_regular_by_priority.clear()
+        self.target_pick_threat_by_priority.clear()
+        self.target_pick_surrogate_by_priority.clear()
+
+    @override(InfoAccumulationInterface)
+    def _accumulate_info(
+        self,
+        threatener_pick_regular,
+        target_pick_regular,
+        threatener_pick_threat,
+        target_pick_threat,
+        threatener_pick_surrogate,
+        target_pick_surrogate,
+        target_pick_regular_by_priority,
+        target_pick_threat_by_priority,
+        target_pick_surrogate_by_priority,
+    ):
+        self.threatener_pick_regular.append(threatener_pick_regular)
+        self.target_pick_regular.append(target_pick_regular)
+        self.threatener_pick_threat.append(threatener_pick_threat)
+        self.target_pick_threat.append(target_pick_threat)
+        self.threatener_pick_surrogate.append(threatener_pick_surrogate)
+        self.target_pick_surrogate.append(target_pick_surrogate)
+        self.target_pick_regular_by_priority.append(target_pick_regular_by_priority)
+        self.target_pick_threat_by_priority.append(target_pick_threat_by_priority)
+        self.target_pick_surrogate_by_priority.append(target_pick_surrogate_by_priority)
