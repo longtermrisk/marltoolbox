@@ -416,7 +416,7 @@ class TwoPlayersCustomizableMatrixGame(
     NUM_ACTIONS = None
     NUM_STATES = None
     ACTION_SPACE = None
-    OBSERVATION_SPACE = None
+    OBSERVATION_SPACE_ = None
     PAYOFF_MATRIX = None
 
     def __init__(self, config: dict):
@@ -424,7 +424,7 @@ class TwoPlayersCustomizableMatrixGame(
         self.NUM_ACTIONS = config["NUM_ACTIONS"]
         self.ACTION_SPACE = Discrete(self.NUM_ACTIONS)
         self.NUM_STATES = self.NUM_ACTIONS**self.NUM_AGENTS + 1
-        self.OBSERVATION_SPACE = Discrete(self.NUM_STATES)
+        self.OBSERVATION_SPACE_ = Discrete(self.NUM_STATES)
 
         super().__init__(config)
 
@@ -498,7 +498,7 @@ class AsymmetricMatrixGame(
     def _support_ray_1_12_0(self):
         self._agent_ids = self.players_ids
         self.observation_space = gym.spaces.Dict(
-            {k: self.OBSERVATION_SPACE for k in self._agent_ids}
+            {k: self.OBSERVATION_SPACE_ for k in self._agent_ids}
         )
         assert len(self._agent_ids) == 2
         self.action_space = gym.spaces.Dict(
