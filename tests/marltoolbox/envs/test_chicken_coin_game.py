@@ -58,10 +58,6 @@ def helper_assert_info_one_time(
     overwrite_pos_fn,
     c_red_coin=None,
     batch_deltas=None,
-    blue_coop_fraction=None,
-    red_coop_fraction=None,
-    red_coop_speed=None,
-    blue_coop_speed=None,
     delta_err=0.01,
     **check_obs_kwargs,
 ):
@@ -138,17 +134,6 @@ def helper_assert_info_one_time(
                     blue_pick_alone,
                     info,
                     "player_blue",
-                    delta_err,
-                )
-                # assert_not_present_in_dict_or_close_to(
-                #     "pick_own_color", blue_own, info, "player_blue", delta_err
-                # )
-                _assert_ssdmmcg_cooperation_items(
-                    red_coop_fraction,
-                    blue_coop_fraction,
-                    red_coop_speed,
-                    blue_coop_speed,
-                    info,
                     delta_err,
                 )
 

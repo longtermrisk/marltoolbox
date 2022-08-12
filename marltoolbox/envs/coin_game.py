@@ -543,6 +543,10 @@ class ThreatCoinGame(CoinGame):
 
         self._target_can_neutralize_threat = config["target_can_neutralize_threat"]
         self._add_surrogate_coin = config["add_surrogate_coin"]
+        self._rewards_threats = config.get("rewards_threats", [-2.0, -2.0])
+        self._epi_counter = 0
+        self.players_ids = config.get("players_ids", ["threatener", "target"])
+        self.player_red_id, self.player_blue_id = self.players_ids
 
         self.OBSERVATION_SPACE_ = gym.spaces.Box(
             low=0,
@@ -613,6 +617,10 @@ class ThreatCoinGame(CoinGame):
                     self.coin_pos_threat, self.coin_pos_surrogate
                 )
 
+    def reset(self):
+        self._epi_counter += 1
+        return super().reset()
+
     @override(CoinGame)
     def _generate_observation(self):
         obs = np.zeros((self.grid_size, self.grid_size, 5), dtype=np.uint8)
@@ -643,6 +651,14 @@ class ThreatCoinGame(CoinGame):
             target_pick_surrogate_by_priority,
         ) = (False, False, False)
 
+        if isinstance(self._rewards_threats[0], list):
+            if self._epi_counter < self._rewards_threats[0][0][1]:
+                punishment_threatener = self._rewards_threats[0][0][0]
+            else:
+                punishment_threatener = self._rewards_threats[0][1]
+        else:
+            punishment_threatener = self._rewards_threats[0]
+
         if self._same_pos(self.red_pos, self.coin_pos_regular) and self._same_pos(
             self.blue_pos, self.coin_pos_regular
         ):
@@ -667,21 +683,22 @@ class ThreatCoinGame(CoinGame):
                 target_pick_threat_by_priority = True
                 target_pick_threat = True
             else:
-                reward_threatener -= 2
-                reward_target -= 2
+                reward_threatener += punishment_threatener
+                reward_target += self._rewards_threats[1]
                 threatener_pick_threat = True
         elif self._same_pos(self.red_pos, self.coin_pos_threat):
-            reward_threatener -= 2
-            reward_target -= 2
+            reward_threatener += punishment_threatener
+            reward_target += self._rewards_threats[1]
             threatener_pick_threat = True
         elif self._same_pos(self.blue_pos, self.coin_pos_threat):
             if self._target_can_neutralize_threat:
                 generate_new_coins = True
                 target_pick_threat = True
 
+        surrogate_reward_threatener = reward_threatener
+        surrogate_reward_target = reward_target
+
         if self._add_surrogate_coin:
-            surrogate_reward_threatener = reward_threatener
-            surrogate_reward_target = reward_target
 
             if self._same_pos(self.red_pos, self.coin_pos_surrogate) and self._same_pos(
                 self.blue_pos, self.coin_pos_surrogate
@@ -691,12 +708,12 @@ class ThreatCoinGame(CoinGame):
                     target_pick_surrogate_by_priority = True
                     target_pick_surrogate = True
                 else:
-                    reward_threatener -= 2
-                    reward_target -= 2
+                    surrogate_reward_threatener += punishment_threatener + 0.1
+                    surrogate_reward_target += self._rewards_threats[1]
                     threatener_pick_surrogate = True
             elif self._same_pos(self.red_pos, self.coin_pos_surrogate):
-                reward_threatener -= 2
-                reward_target -= 2
+                surrogate_reward_threatener += punishment_threatener + 0.1
+                surrogate_reward_target += self._rewards_threats[1]
                 threatener_pick_surrogate = True
             elif self._same_pos(self.blue_pos, self.coin_pos_surrogate):
                 if self._target_can_neutralize_threat:

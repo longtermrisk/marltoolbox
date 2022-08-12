@@ -14,6 +14,7 @@ def init_env(
     players_can_pick_same_coin=True,
     same_obs_for_each_player=False,
     batch_size=None,
+    **kwargs,
 ):
     config = {
         "max_steps": max_steps,
@@ -21,6 +22,10 @@ def init_env(
         "both_players_can_pick_the_same_coin": players_can_pick_same_coin,
         "same_obs_for_each_player": same_obs_for_each_player,
     }
+
+    for k, v in kwargs.items():
+        config[k] = v
+
     if batch_size is not None:
         config["batch_size"] = batch_size
     env = env_class(config)
@@ -60,10 +65,12 @@ def check_custom_obs(
                 )
 
 
-def check_single_obs(
-    player_obs, grid_size, n_layers, n_in_0, n_in_1, n_in_2_and_above
-):
-    assert player_obs.shape == (grid_size, grid_size, n_layers)
+def check_single_obs(player_obs, grid_size, n_layers, n_in_0, n_in_1, n_in_2_and_above):
+    assert player_obs.shape == (
+        grid_size,
+        grid_size,
+        n_layers,
+    ), f"player_obs.shape {player_obs.shape}"
     assert (
         player_obs[..., 0].sum() == n_in_0
     ), f"observe 1 player red in grid: {player_obs[..., 0]}"
@@ -129,9 +136,7 @@ def _get_random_single_action(env):
 
 def _get_random_action_batch(env, batch_size):
     actions = {
-        policy_id: [
-            random.randint(0, env.NUM_ACTIONS - 1) for _ in range(batch_size)
-        ]
+        policy_id: [random.randint(0, env.NUM_ACTIONS - 1) for _ in range(batch_size)]
         for policy_id in env.players_ids
     }
     return actions
@@ -170,9 +175,7 @@ def helper_test_multi_ple_episodes(
             obs, reward, done, info = env.step(actions)
             check_obs_fn(obs, **kwargs)
             assert_logger_buffer_size(env, n_steps=step_i)
-            assert not done["__all__"] or (
-                step_i == max_steps and done["__all__"]
-            )
+            assert not done["__all__"] or (step_i == max_steps and done["__all__"])
             if done["__all__"]:
                 obs = env.reset()
                 check_obs_fn(obs, **kwargs)
@@ -246,9 +249,7 @@ def helper_assert_info_one_time(
             obs, reward, done, info = env.step(actions)
             check_obs_fn(obs, **check_obs_kwargs)
             assert_logger_buffer_size(env, n_steps=step_i)
-            assert not done["__all__"] or (
-                step_i == max_steps and done["__all__"]
-            )
+            assert not done["__all__"] or (step_i == max_steps and done["__all__"])
 
             if done["__all__"]:
                 print("info", info)
@@ -295,9 +296,7 @@ def helper_assert_info_one_time(
             )
 
 
-def assert_not_present_in_dict_or_close_to(
-    key, value, info, player, delta_err
-):
+def assert_not_present_in_dict_or_close_to(key, value, info, player, delta_err):
     if value is None:
         assert key not in info[player]
     else:
@@ -305,9 +304,7 @@ def assert_not_present_in_dict_or_close_to(
 
 
 def _assert_close_enough(value, target, delta_err):
-    assert abs(value - target) < delta_err, (
-        f"{abs(value - target)} <" f" {delta_err}"
-    )
+    assert abs(value - target) < delta_err, f"{abs(value - target)} <" f" {delta_err}"
 
 
 def _read_actions(
@@ -321,17 +318,13 @@ def _read_actions(
         return _read_single_action(p_red_act, p_blue_act, step_i)
 
 
-def _read_actions_batch(
-    p_red_act, p_blue_act, step_i, batch_deltas, n_steps_in_epi
-):
+def _read_actions_batch(p_red_act, p_blue_act, step_i, batch_deltas, n_steps_in_epi):
     actions = {
         "player_red": [
-            p_red_act[(step_i + delta) % n_steps_in_epi]
-            for delta in batch_deltas
+            p_red_act[(step_i + delta) % n_steps_in_epi] for delta in batch_deltas
         ],
         "player_blue": [
-            p_blue_act[(step_i + delta) % n_steps_in_epi]
-            for delta in batch_deltas
+            p_blue_act[(step_i + delta) % n_steps_in_epi] for delta in batch_deltas
         ],
     }
     return actions

@@ -547,7 +547,15 @@ class SummaryPlotter:
                     for select_key in list_of_tags_in_assemblage
                 ]
             ):
-                assemblage_list.append(csv_file)
+                file_name = os.path.split(csv_file)[1]
+                end_of_tag_in_filename = file_name.split("-")[-2]
+                if not (
+                    end_of_tag_in_filename.endswith("_max")
+                    or end_of_tag_in_filename.endswith("_min")
+                ):
+                    assemblage_list.append(csv_file)
+                else:
+                    print("Contains max or min values thus skipping", file_name)
         # print("csv files selected for assemblage", assemblage_list)
         assemblage_list = sorted(assemblage_list)
         return assemblage_list
@@ -563,7 +571,10 @@ class SummaryPlotter:
         tag = "_".join(path_split)
 
         for to_remove, replacement in self.plot_labels_cleaning:
-            tag = tag.replace(to_remove, replacement)
+            while to_remove in tag:
+                tag = tag.replace(to_remove, replacement)
+
+        tag = tag.strip("_")
 
         return tag
 
@@ -592,6 +603,11 @@ def add_summary_plots(
         ("learner_stats_", ""),
         ("info_learner_", ""),
         ("player_", "pl_"),
+        ("custom_metrics", ""),
+        ("_mean", ""),
+        ("info_", ""),
+        ("player_", "pl_"),
+        ("index_", "idx_"),
     ),
     additional_plot_config_kwargs={
         "figsize": (8, 8),
