@@ -25,6 +25,7 @@ PLOT_KEYS = [
     "pick_surrogate",
     "vanilla_reward",
     "surrogate_reward",
+    "cell_",
 ]
 
 PLOT_ASSEMBLAGE_TAGS = [
@@ -51,6 +52,9 @@ PLOT_ASSEMBLAGE_TAGS = [
     ("vanilla_reward",),
     ("surrogate_reward",),
     ("vanilla_reward", "surrogate_reward"),
+    ("cell_",),
+    ("cell_0_",),
+    ("cell_1_",),
 ]
 
 
@@ -845,3 +849,171 @@ class ThreatCoinGame(CoinGame):
         self.target_pick_regular_by_priority.append(target_pick_regular_by_priority)
         self.target_pick_threat_by_priority.append(target_pick_threat_by_priority)
         self.target_pick_surrogate_by_priority.append(target_pick_surrogate_by_priority)
+
+
+class ThreatCoinGameV2(ThreatCoinGame):
+    NAME = "ThreatCoinGameV2"
+
+    def __init__(self, config: dict = {}):
+
+        super().__init__(config)
+
+        self._threat_game_payoff_matrix = config.get(
+            "threat_game_payoff_matrix",
+            np.array(
+                [
+                    [[-5.0, +5.0], [-5.0, 5.0], [0.0, 0.0]],
+                    [[-10.0, -2.0], [0, -2.0], [0.0, 0.0]],
+                ]
+            ),
+        )
+        del self._rewards_threats
+
+    def _compute_reward(self):
+
+        reward_threatener, surrogate_reward_threatener = 0.0, 0.0
+        reward_target, surrogate_reward_target = 0.0, 0.0
+        generate_new_coins = False
+        cell_0_0 = False
+        cell_0_1 = False
+        cell_0_2 = False
+        cell_1_0 = False
+        cell_1_1 = False
+        cell_1_2 = False
+
+        if self._same_pos(self.red_pos, self.coin_pos_threat):
+            action_threatener = 0
+            generate_new_coins = True
+        else:
+            action_threatener = 2
+
+        if self._same_pos(self.blue_pos, self.coin_pos_regular):
+            action_target = 1
+            generate_new_coins = True
+        else:
+            action_target = 0
+
+        reward_target, reward_threatener = self._threat_game_payoff_matrix[
+            action_target, action_threatener, :
+        ].tolist()
+
+        if self._add_surrogate_coin:
+            if self._same_pos(self.red_pos, self.coin_pos_surrogate):
+                assert action_threatener == 2
+                action_threatener = 1
+                generate_new_coins = True
+
+            (
+                surrogate_reward_target,
+                surrogate_reward_threatener,
+            ) = self._threat_game_payoff_matrix[
+                action_target, action_threatener, :
+            ].tolist()
+
+        if action_target == 0:
+            if action_threatener == 0:
+                cell_0_0 = True
+            elif action_threatener == 1:
+                cell_0_1 = True
+            elif action_threatener == 2:
+                cell_0_2 = True
+            else:
+                raise NotImplementedError()
+        elif action_target == 1:
+            if action_threatener == 0:
+                cell_1_0 = True
+            elif action_threatener == 1:
+                cell_1_1 = True
+            elif action_threatener == 2:
+                cell_1_2 = True
+            else:
+                raise NotImplementedError()
+        else:
+            raise NotImplementedError()
+
+        reward_list = [reward_threatener, reward_target]
+        surrogate_reward_list = [surrogate_reward_threatener, surrogate_reward_target]
+
+        if self.output_additional_info:
+            self._accumulate_info(
+                cell_0_0=cell_0_0,
+                cell_0_1=cell_0_1,
+                cell_0_2=cell_0_2,
+                cell_1_0=cell_1_0,
+                cell_1_1=cell_1_1,
+                cell_1_2=cell_1_2,
+            )
+
+        self.reward_list = reward_list
+        self.surrogate_reward_list = surrogate_reward_list
+
+        if self._add_surrogate_coin:
+            return surrogate_reward_list, generate_new_coins
+        else:
+            return reward_list, generate_new_coins
+
+    @override(InfoAccumulationInterface)
+    def _get_episode_info(self, n_steps_played=None):
+        """
+        Output the following information:
+        pick_speed is the fraction of steps during which the player picked a
+        coin.
+        pick_own_color is the fraction of coins picked by the player which have
+        the same color as the player.
+        """
+        player_red_info, player_blue_info = {}, {}
+        if n_steps_played is None:
+            n_steps_played = len(self.cell_0_0)
+            assert (
+                len(self.cell_0_0)
+                == len(self.cell_0_1)
+                == len(self.cell_0_2)
+                == len(self.cell_1_0)
+                == len(self.cell_1_1)
+                == len(self.cell_1_2)
+            )
+
+        if len(self.cell_0_0) > 0:
+            player_blue_info["cell_0_0"] = sum(self.cell_0_0) / n_steps_played
+            player_red_info["cell_0_1"] = sum(self.cell_0_1) / n_steps_played
+            player_red_info["cell_0_2"] = sum(self.cell_0_2) / n_steps_played
+            player_red_info["cell_1_0"] = sum(self.cell_1_0) / n_steps_played
+            player_red_info["cell_1_1"] = sum(self.cell_1_1) / n_steps_played
+            player_red_info["cell_1_2"] = sum(self.cell_1_2) / n_steps_played
+
+        return player_red_info, player_blue_info
+
+    @override(InfoAccumulationInterface)
+    def _init_info(self):
+        self.cell_0_0 = []
+        self.cell_0_1 = []
+        self.cell_0_2 = []
+        self.cell_1_0 = []
+        self.cell_1_1 = []
+        self.cell_1_2 = []
+
+    @override(InfoAccumulationInterface)
+    def _reset_info(self):
+        self.cell_0_0.clear()
+        self.cell_0_1.clear()
+        self.cell_0_2.clear()
+        self.cell_1_0.clear()
+        self.cell_1_1.clear()
+        self.cell_1_2.clear()
+
+    @override(InfoAccumulationInterface)
+    def _accumulate_info(
+        self,
+        cell_0_0,
+        cell_0_1,
+        cell_0_2,
+        cell_1_0,
+        cell_1_1,
+        cell_1_2,
+    ):
+        self.cell_0_0.append(cell_0_0)
+        self.cell_0_1.append(cell_0_1)
+        self.cell_0_2.append(cell_0_2)
+        self.cell_1_0.append(cell_1_0)
+        self.cell_1_1.append(cell_1_1)
+        self.cell_1_2.append(cell_1_2)
