@@ -3,6 +3,7 @@
 # https://github.com/alshedivat/lola/tree/master/lola
 ##########
 import logging
+import random
 from abc import ABC
 from collections import Iterable
 
@@ -359,7 +360,7 @@ class IteratedAsymBoS(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilem
 
     NUM_ACTIONS = 2
     NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
-    ACTION_SPACE = Discrete(NUM_ACTIONS)
+    ACTION_SPACE_ = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = np.array(
         [[[+4.0, +1.0], [+0.0, +0.0]], [[+0.0, +0.0], [+2.0, +2.0]]]
@@ -371,7 +372,7 @@ def define_greed_fear_matrix_game(greed, fear):
     class GreedFearGame(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
         NUM_ACTIONS = 2
         NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
-        ACTION_SPACE = Discrete(NUM_ACTIONS)
+        ACTION_SPACE_ = Discrete(NUM_ACTIONS)
         OBSERVATION_SPACE_ = Discrete(NUM_STATES)
         R = 3
         P = 1
@@ -395,7 +396,7 @@ class IteratedBoSAndPD(
 
     NUM_ACTIONS = 3
     NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
-    ACTION_SPACE = Discrete(NUM_ACTIONS)
+    ACTION_SPACE_ = Discrete(NUM_ACTIONS)
     OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = np.array(
         [
@@ -415,14 +416,14 @@ class TwoPlayersCustomizableMatrixGame(
 
     NUM_ACTIONS = None
     NUM_STATES = None
-    ACTION_SPACE = None
+    ACTION_SPACE_ = None
     OBSERVATION_SPACE_ = None
     PAYOFF_MATRIX = None
 
     def __init__(self, config: dict):
         self.PAYOFF_MATRIX = config["PAYOFF_MATRIX"]
         self.NUM_ACTIONS = config["NUM_ACTIONS"]
-        self.ACTION_SPACE = Discrete(self.NUM_ACTIONS)
+        self.ACTION_SPACE_ = Discrete(self.NUM_ACTIONS)
         self.NUM_STATES = self.NUM_ACTIONS**self.NUM_AGENTS + 1
         self.OBSERVATION_SPACE_ = Discrete(self.NUM_STATES)
 
@@ -580,6 +581,9 @@ class AsymmetricMatrixGame(
         ]
 
 
+m_ = 1 / 1
+
+
 class ThreatGame(AsymmetricMatrixGame):
     """
     A two-agent environment for the BOTS + PD game.
@@ -594,8 +598,9 @@ class ThreatGame(AsymmetricMatrixGame):
     OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     PAYOFF_MATRIX = np.array(
         [
-            [[-5.0, +5.0], [-5.0, 5.0], [0.0, 0.0]],
-            [[-10.0, -2.0], [0, -2.0], [0.0, 0.0]],
+            [[-5.0 * m_, +5.0], [-5.0 * m_, 5.0], [0.0, 0.0]],
+            # [[-10.0 * m_, -2.0], [0, -1.0], [0.0, 0.0]],
+            [[-10.0 * m_, -5.0], [0, -1.0], [10.0, 3.5]],
         ]
     )
     NAME = "ThreatGame"
@@ -603,6 +608,18 @@ class ThreatGame(AsymmetricMatrixGame):
     def __init__(self, config: dict = {}):
         super().__init__(config)
         assert self.max_steps == 1
+        if config.get("add_surrogate_goal", False):
+            # self.PAYOFF_MATRIX[1, 1, 0] = -10
+            self.PAYOFF_MATRIX = np.array(
+                [
+                    [[-5.0, +5.0], [-5.0, 5.0], [0.0, 0.0]],
+                    # The changes in the last cell are needed to balance the speed of the learning of each agent
+                    [[-10.0, -2.0], [-10.0, -1.0], [10.0, 3.5]],
+                    # [[-10.0, -5.0], [-10.0, -1.0], [10.0, 4.0]],
+                    # Doesn't work, the target always learns quickly to switch to give in
+                    # [[-10.0, -2.0], [-10.0, -1.0], [0.0, 0.0]],
+                ]
+            )
 
 
 class DemandGame(AsymmetricMatrixGame):
@@ -630,3 +647,95 @@ class DemandGame(AsymmetricMatrixGame):
     def __init__(self, config: dict = {}):
         super().__init__(config)
         assert self.max_steps == 1
+        if config.get("add_surrogate_goal", False):
+            self.PAYOFF_MATRIX = np.array(
+                [
+                    [[-5.0, -5.0], [-5.0, -5.0], [-5.0, -5.0], [-5.0, -5.0]],
+                    [[-5.0, -5.0], [-5.0, -5.0], [-5.0, -5.0], [-5.0, -5.0]],
+                    [[-5.0, -5.0], [-5.0, -5.0], [-3.0, -3.0], [2.0, 0.0]],
+                    [[-5.0, -5.0], [-5.0, -5.0], [0.0, 2.0], [1.0, 1.0]],
+                ]
+            )
+
+
+class PerfectCoordIteratedChicken(IteratedChicken):
+
+    NUM_ACTIONS = 3
+    NUM_STATES = NUM_ACTIONS**MatrixSequentialSocialDilemma.NUM_AGENTS + 1
+    ACTION_SPACE_ = Discrete(NUM_ACTIONS)
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
+    NAME = "PerfectCoordIteratedChicken"
+
+    def step(self, actions: dict):
+
+        action_row = actions[self.player_row_id]
+        action_col = actions[self.player_col_id]
+
+        if action_row == 2:
+            action_row = random.randint(0, 1)
+        if action_col == 2:
+            action_col = random.randint(0, 1)
+
+        return super().step(
+            {self.player_row_id: action_row, self.player_col_id: action_col}
+        )
+
+    def _sanity_checks(self, config):
+        pass
+
+
+class PerfectCoordThreatGame(ThreatGame):
+
+    NUM_ACTIONS_PL0 = 3
+    NUM_ACTIONS_PL1 = 4
+    ACTION_SPACE_PL0 = Discrete(NUM_ACTIONS_PL0)
+    ACTION_SPACE_PL1 = Discrete(NUM_ACTIONS_PL1)
+    NUM_STATES = NUM_ACTIONS_PL0 * NUM_ACTIONS_PL1 + 1
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
+    NAME = "PerfectCoordThreatGame"
+
+    def step(self, actions: dict):
+
+        action_row = actions[self.player_row_id]
+        action_col = actions[self.player_col_id]
+
+        if action_row == 2:
+            action_row = random.randint(0, 1)
+        if action_col == 3:
+            action_col = random.randint(0, 2)
+
+        return super().step(
+            {self.player_row_id: action_row, self.player_col_id: action_col}
+        )
+
+    def _sanity_checks(self, config):
+        pass
+
+
+class PerfectCoordDemandGame(DemandGame):
+
+    NUM_ACTIONS = None
+    NUM_ACTIONS_PL0 = 5
+    NUM_ACTIONS_PL1 = 5
+    ACTION_SPACE_PL0 = Discrete(NUM_ACTIONS_PL0)
+    ACTION_SPACE_PL1 = Discrete(NUM_ACTIONS_PL1)
+    NUM_STATES = NUM_ACTIONS_PL0 * NUM_ACTIONS_PL1 + 1
+    OBSERVATION_SPACE_ = Discrete(NUM_STATES)
+    NAME = "PerfectCoordDemandGame"
+
+    def step(self, actions: dict):
+
+        action_row = actions[self.player_row_id]
+        action_col = actions[self.player_col_id]
+
+        if action_row == 4:
+            action_row = random.randint(0, 3)
+        if action_col == 4:
+            action_col = random.randint(0, 3)
+
+        return super().step(
+            {self.player_row_id: action_row, self.player_col_id: action_col}
+        )
+
+    def _sanity_checks(self, config):
+        pass

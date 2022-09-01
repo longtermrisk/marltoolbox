@@ -4,16 +4,20 @@ import torch
 from ray.rllib import Policy, SampleBatch
 from ray.rllib.agents.pg import PGTrainer, PGTorchPolicy
 from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.execution.common import _get_global_vars
 from ray.rllib.models import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils import override
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_TRAINED, NUM_ENV_STEPS_SAMPLED
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType
 from ray.util.annotations import DeveloperAPI
 
 from marltoolbox.utils import log
+from marltoolbox.utils import optimizers
+from marltoolbox.utils.log import get_stats_parameters_from_policy
 
 
 def my_pg_torch_loss(
@@ -66,10 +70,6 @@ def setup_early_mixins(
     )
 
 
-def sgd_optimizer(policy: Policy, config: TrainerConfigDict) -> "torch.optim.Optimizer":
-    return torch.optim.SGD(policy.model.parameters(), lr=policy.cur_lr)
-
-
 def my_pg_loss_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     """Returns the calculated loss in a stats dict.
 
@@ -82,6 +82,9 @@ def my_pg_loss_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, Tens
     """
 
     return {
+        "cur_lr": policy.cur_lr,
+        "param": get_stats_parameters_from_policy(policy),
+        "entropy_coeff": policy.entropy_coeff,
         "policy_loss": torch.mean(torch.stack(policy.get_tower_stats("policy_loss"))),
         "entropy_loss": torch.mean(torch.stack(policy.get_tower_stats("entropy_loss"))),
     }
@@ -97,7 +100,7 @@ def fix_add_modules(policy, obs_space, action_space, trainer_config):
 
 
 MyPGTorchPolicyIntermediaryStep = PGTorchPolicy.with_updates(
-    optimizer_fn=sgd_optimizer,
+    optimizer_fn=optimizers.sgd_optimizer_spl,
     before_init=setup_early_mixins,
     mixins=[LearningRateSchedule, EntropyCoeffSchedule],
     stats_fn=log.augment_stats_fn_wt_additionnal_logs(my_pg_loss_stats),
@@ -141,3 +144,9 @@ class MyPGTorchPolicy(FixSaveLoadWeightMixin, MyPGTorchPolicyIntermediaryStep):
 
 class MyPGTrainer(PGTrainer):
     _allow_unknown_configs = True
+
+    def training_iteration(self):
+        train_results = super().training_iteration()
+        global_vars = {"timestep": self._counters[NUM_ENV_STEPS_SAMPLED]}
+        self.workers.foreach_worker(lambda w: w.set_global_vars(global_vars))
+        return train_results

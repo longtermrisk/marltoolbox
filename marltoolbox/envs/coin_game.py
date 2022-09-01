@@ -1,5 +1,6 @@
 import copy
 import logging
+import random
 from collections import Iterable
 from typing import Dict
 
@@ -26,6 +27,8 @@ PLOT_KEYS = [
     "vanilla_reward",
     "surrogate_reward",
     "cell_",
+    "target_alone",
+    "threatener_alone",
 ]
 
 PLOT_ASSEMBLAGE_TAGS = [
@@ -55,6 +58,9 @@ PLOT_ASSEMBLAGE_TAGS = [
     ("cell_",),
     ("cell_0_",),
     ("cell_1_",),
+    ("cell_none",),
+    ("target_alone",),
+    ("threatener_alone",),
 ]
 
 
@@ -413,6 +419,7 @@ class ChickenCoinGame(CoinGame):
     ]
 
     def __init__(self, config: dict = {}):
+        self._reward_every_n_steps = config.get("reward_every_n_steps", 1)
         if "asymmetric" in config:
             assert config["asymmetric"] == False
         if "both_players_can_pick_the_same_coin" in config:
@@ -430,24 +437,25 @@ class ChickenCoinGame(CoinGame):
         generate_new_coin = False
         red_pick, blue_pick = (False, False)
 
-        if self._same_pos(self.red_pos, self.coin_pos) and self._same_pos(
-            self.blue_pos, self.coin_pos
-        ):
-            generate_new_coin = True
-            reward_red -= 3
-            reward_blue -= 3
-            red_pick = True
-            blue_pick = True
-        elif self._same_pos(self.red_pos, self.coin_pos):
-            generate_new_coin = True
-            reward_red += 1
-            reward_blue -= 1
-            red_pick = True
-        elif self._same_pos(self.blue_pos, self.coin_pos):
-            generate_new_coin = True
-            reward_red -= 1
-            reward_blue += 1
-            blue_pick = True
+        if self.step_count_in_current_episode % self._reward_every_n_steps == 0:
+            if self._same_pos(self.red_pos, self.coin_pos) and self._same_pos(
+                self.blue_pos, self.coin_pos
+            ):
+                generate_new_coin = True
+                reward_red -= 3
+                reward_blue -= 3
+                red_pick = True
+                blue_pick = True
+            elif self._same_pos(self.red_pos, self.coin_pos):
+                generate_new_coin = True
+                reward_red += 1
+                reward_blue -= 1
+                red_pick = True
+            elif self._same_pos(self.blue_pos, self.coin_pos):
+                generate_new_coin = True
+                reward_red -= 1
+                reward_blue += 1
+                blue_pick = True
 
         reward_list = [reward_red, reward_blue]
         if self.output_additional_info:
@@ -857,7 +865,7 @@ class ThreatCoinGameV2(ThreatCoinGame):
     def __init__(self, config: dict = {}):
 
         super().__init__(config)
-
+        self._reward_every_n_steps = config.get("reward_every_n_steps", 1)
         self._threat_game_payoff_matrix = config.get(
             "threat_game_payoff_matrix",
             np.array(
@@ -881,68 +889,70 @@ class ThreatCoinGameV2(ThreatCoinGame):
         cell_1_1 = False
         cell_1_2 = False
 
-        if self._same_pos(self.red_pos, self.coin_pos_threat):
-            action_threatener = 0
-            generate_new_coins = True
-        else:
-            action_threatener = 2
+        if self.step_count_in_current_episode % self._reward_every_n_steps == 0:
 
-        if self._same_pos(self.blue_pos, self.coin_pos_regular):
-            action_target = 1
-            generate_new_coins = True
-        else:
-            action_target = 0
-
-        reward_target, reward_threatener = self._threat_game_payoff_matrix[
-            action_target, action_threatener, :
-        ].tolist()
-
-        if self._add_surrogate_coin:
-            if self._same_pos(self.red_pos, self.coin_pos_surrogate):
-                assert action_threatener == 2
-                action_threatener = 1
+            if self._same_pos(self.red_pos, self.coin_pos_threat):
+                action_threatener = 0
                 generate_new_coins = True
+            else:
+                action_threatener = 2
 
-            (
-                surrogate_reward_target,
-                surrogate_reward_threatener,
-            ) = self._threat_game_payoff_matrix[
+            if self._same_pos(self.blue_pos, self.coin_pos_regular):
+                action_target = 1
+                generate_new_coins = True
+            else:
+                action_target = 0
+
+            reward_target, reward_threatener = self._threat_game_payoff_matrix[
                 action_target, action_threatener, :
             ].tolist()
 
-        if action_target == 0:
-            if action_threatener == 0:
-                cell_0_0 = True
-            elif action_threatener == 1:
-                cell_0_1 = True
-            elif action_threatener == 2:
-                cell_0_2 = True
+            if self._add_surrogate_coin:
+                if self._same_pos(self.red_pos, self.coin_pos_surrogate):
+                    assert action_threatener == 2
+                    action_threatener = 1
+                    generate_new_coins = True
+
+                (
+                    surrogate_reward_target,
+                    surrogate_reward_threatener,
+                ) = self._threat_game_payoff_matrix[
+                    action_target, action_threatener, :
+                ].tolist()
+
+            if action_target == 0:
+                if action_threatener == 0:
+                    cell_0_0 = True
+                elif action_threatener == 1:
+                    cell_0_1 = True
+                elif action_threatener == 2:
+                    cell_0_2 = True
+                else:
+                    raise NotImplementedError()
+            elif action_target == 1:
+                if action_threatener == 0:
+                    cell_1_0 = True
+                elif action_threatener == 1:
+                    cell_1_1 = True
+                elif action_threatener == 2:
+                    cell_1_2 = True
+                else:
+                    raise NotImplementedError()
             else:
                 raise NotImplementedError()
-        elif action_target == 1:
-            if action_threatener == 0:
-                cell_1_0 = True
-            elif action_threatener == 1:
-                cell_1_1 = True
-            elif action_threatener == 2:
-                cell_1_2 = True
-            else:
-                raise NotImplementedError()
-        else:
-            raise NotImplementedError()
+
+            if self.output_additional_info:
+                self._accumulate_info(
+                    cell_0_0=cell_0_0,
+                    cell_0_1=cell_0_1,
+                    cell_0_2=cell_0_2,
+                    cell_1_0=cell_1_0,
+                    cell_1_1=cell_1_1,
+                    cell_1_2=cell_1_2,
+                )
 
         reward_list = [reward_threatener, reward_target]
         surrogate_reward_list = [surrogate_reward_threatener, surrogate_reward_target]
-
-        if self.output_additional_info:
-            self._accumulate_info(
-                cell_0_0=cell_0_0,
-                cell_0_1=cell_0_1,
-                cell_0_2=cell_0_2,
-                cell_1_0=cell_1_0,
-                cell_1_1=cell_1_1,
-                cell_1_2=cell_1_2,
-            )
 
         self.reward_list = reward_list
         self.surrogate_reward_list = surrogate_reward_list
@@ -980,40 +990,316 @@ class ThreatCoinGameV2(ThreatCoinGame):
             player_red_info["cell_1_0"] = sum(self.cell_1_0) / n_steps_played
             player_red_info["cell_1_1"] = sum(self.cell_1_1) / n_steps_played
             player_red_info["cell_1_2"] = sum(self.cell_1_2) / n_steps_played
-
+            player_red_info["cell_none"] = sum(self.cell_none) / n_steps_played
+            player_red_info["threatener_alone"] = (
+                sum(self.threatener_alone) / n_steps_played
+            )
+            player_red_info["target_alone"] = sum(self.target_alone) / n_steps_played
         return player_red_info, player_blue_info
 
     @override(InfoAccumulationInterface)
     def _init_info(self):
+        self.threatener_alone = []
+        self.target_alone = []
         self.cell_0_0 = []
         self.cell_0_1 = []
         self.cell_0_2 = []
         self.cell_1_0 = []
         self.cell_1_1 = []
         self.cell_1_2 = []
+        self.cell_none = []
 
     @override(InfoAccumulationInterface)
     def _reset_info(self):
+        self.threatener_alone.clear()
+        self.target_alone.clear()
         self.cell_0_0.clear()
         self.cell_0_1.clear()
         self.cell_0_2.clear()
         self.cell_1_0.clear()
         self.cell_1_1.clear()
         self.cell_1_2.clear()
+        self.cell_none.clear()
 
     @override(InfoAccumulationInterface)
     def _accumulate_info(
         self,
-        cell_0_0,
-        cell_0_1,
-        cell_0_2,
-        cell_1_0,
-        cell_1_1,
-        cell_1_2,
+        threatener_alone=False,
+        target_alone=False,
+        cell_0_0=False,
+        cell_0_1=False,
+        cell_0_2=False,
+        cell_1_0=False,
+        cell_1_1=False,
+        cell_1_2=False,
+        cell_none=False,
     ):
+        self.threatener_alone.append(threatener_alone)
+        self.target_alone.append(target_alone)
         self.cell_0_0.append(cell_0_0)
         self.cell_0_1.append(cell_0_1)
         self.cell_0_2.append(cell_0_2)
         self.cell_1_0.append(cell_1_0)
         self.cell_1_1.append(cell_1_1)
         self.cell_1_2.append(cell_1_2)
+        self.cell_none.append(cell_none)
+
+
+class ThreatCoinGameV3(ThreatCoinGameV2):
+    NAME = "ThreatCoinGameV3"
+
+    def __init__(self, config: dict = {}):
+
+        super().__init__(config)
+        self._use_fixed_pos = config.get("use_fixed_pos", False)
+        self._generate_coin_every_n_steps = config.get(
+            "generate_coin_every_n_steps", False
+        )
+        self._bootstrap_training = config.get("bootstrap_training", False)
+        self._last_generation = None
+        self.OBSERVATION_SPACE_ = gym.spaces.Box(
+            low=0,
+            high=1,
+            shape=(self.grid_size, self.grid_size, 7),
+            dtype="uint8",
+        )
+        self._support_ray_1_12_0()
+
+    @override(CoinGame)
+    def _generate_observation(self):
+
+        obs = np.zeros((self.grid_size, self.grid_size, 7), dtype=np.uint8)
+        obs[self.red_pos[0], self.red_pos[1], 0] = 1
+        obs[self.blue_pos[0], self.blue_pos[1], 1] = 1
+        # 2th feature is for the give in coin
+        obs[self.coin_pos_give_in[0], self.coin_pos_give_in[1], 2] = 1
+        # 3rd feature is for not give in coin
+        obs[self.coin_pos_not_give_in[0], self.coin_pos_not_give_in[1], 3] = 1
+        # 4th feature is for the threat in coin
+        obs[self.coin_pos_threat[0], self.coin_pos_threat[1], 4] = 1
+        # if self._add_surrogate_coin:
+        # 4th feature is for the surrogate coin
+        obs[self.coin_pos_surrogate[0], self.coin_pos_surrogate[1], 5] = 1
+        # 6rd feature is for not give in coin
+        obs[self.coin_pos_no_threat[0], self.coin_pos_no_threat[1], 6] = 1
+
+        obs = self._apply_optional_invariance_to_the_player_trained(obs)
+        return obs
+
+    def _wt_coin_pos_different_from_players_and_other_coin(self):
+        if self._use_fixed_pos and self._last_generation is not None:
+            self.red_pos = self._last_generation["red_pos"]
+            self.blue_pos = self._last_generation["blue_pos"]
+            self.coin_pos_give_in = self._last_generation["coin_pos_give_in"]
+            self.coin_pos_not_give_in = self._last_generation["coin_pos_not_give_in"]
+            self.coin_pos_threat = self._last_generation["coin_pos_threat"]
+            self.coin_pos_no_threat = self._last_generation["coin_pos_no_threat"]
+            self.coin_pos_surrogate = self._last_generation["coin_pos_surrogate"]
+            return None
+
+        success = 0
+        while success < self.NUM_AGENTS:
+            self.coin_pos_give_in = self.np_random.randint(self.grid_size, size=2)
+            success = 1 - self._same_pos(self.red_pos, self.coin_pos_give_in)
+            success += 1 - self._same_pos(self.blue_pos, self.coin_pos_give_in)
+
+        success = 0
+        while success < self.NUM_AGENTS + 1:
+            self.coin_pos_not_give_in = self.np_random.randint(self.grid_size, size=2)
+            success = 1 - self._same_pos(self.red_pos, self.coin_pos_not_give_in)
+            success += 1 - self._same_pos(self.blue_pos, self.coin_pos_not_give_in)
+            success += 1 - self._same_pos(
+                self.coin_pos_give_in, self.coin_pos_not_give_in
+            )
+
+        success = 0
+        while success < self.NUM_AGENTS + 2:
+            self.coin_pos_threat = self.np_random.randint(self.grid_size, size=2)
+            success = 1 - self._same_pos(self.red_pos, self.coin_pos_threat)
+            success += 1 - self._same_pos(self.blue_pos, self.coin_pos_threat)
+            success += 1 - self._same_pos(self.coin_pos_give_in, self.coin_pos_threat)
+            success += 1 - self._same_pos(
+                self.coin_pos_not_give_in, self.coin_pos_threat
+            )
+
+        success = 0
+        while success < self.NUM_AGENTS + 3:
+            self.coin_pos_no_threat = self.np_random.randint(self.grid_size, size=2)
+            success = 1 - self._same_pos(self.red_pos, self.coin_pos_no_threat)
+            success += 1 - self._same_pos(self.blue_pos, self.coin_pos_no_threat)
+            success += 1 - self._same_pos(
+                self.coin_pos_give_in, self.coin_pos_no_threat
+            )
+            success += 1 - self._same_pos(
+                self.coin_pos_not_give_in, self.coin_pos_no_threat
+            )
+            success += 1 - self._same_pos(self.coin_pos_threat, self.coin_pos_no_threat)
+
+        # if self._add_surrogate_coin:
+        success = 0
+        while success < self.NUM_AGENTS + 4:
+            self.coin_pos_surrogate = self.np_random.randint(self.grid_size, size=2)
+            success = 1 - self._same_pos(self.red_pos, self.coin_pos_surrogate)
+            success += 1 - self._same_pos(self.blue_pos, self.coin_pos_surrogate)
+            success += 1 - self._same_pos(
+                self.coin_pos_give_in, self.coin_pos_surrogate
+            )
+            success += 1 - self._same_pos(
+                self.coin_pos_not_give_in, self.coin_pos_surrogate
+            )
+            success += 1 - self._same_pos(self.coin_pos_threat, self.coin_pos_surrogate)
+            success += 1 - self._same_pos(
+                self.coin_pos_no_threat, self.coin_pos_surrogate
+            )
+
+        self._last_generation = {
+            "red_pos": self.red_pos,
+            "blue_pos": self.blue_pos,
+            "coin_pos_give_in": self.coin_pos_give_in,
+            "coin_pos_not_give_in": self.coin_pos_not_give_in,
+            "coin_pos_threat": self.coin_pos_threat,
+            "coin_pos_no_threat": self.coin_pos_no_threat,
+            "coin_pos_surrogate": self.coin_pos_surrogate,
+        }
+
+    def _compute_reward(self):
+
+        reward_threatener, surrogate_reward_threatener = 0.0, 0.0
+        reward_target, surrogate_reward_target = 0.0, 0.0
+        generate_new_coins = False
+        cell_0_0 = False
+        cell_0_1 = False
+        cell_0_2 = False
+        cell_1_0 = False
+        cell_1_1 = False
+        cell_1_2 = False
+        cell_none = False
+        target_alone = False
+        threatener_alone = False
+
+        if self.step_count_in_current_episode % self._reward_every_n_steps == 0:
+
+            if self._same_pos(self.red_pos, self.coin_pos_threat):
+                action_threatener = 0
+            elif (
+                self._same_pos(self.red_pos, self.coin_pos_surrogate)
+                and self._add_surrogate_coin
+            ):
+                action_threatener = 1
+            elif self._same_pos(self.red_pos, self.coin_pos_no_threat):
+                action_threatener = 2
+            else:
+                action_threatener = None
+
+            if self._same_pos(self.blue_pos, self.coin_pos_give_in):
+                action_target = 0
+            elif self._same_pos(self.blue_pos, self.coin_pos_not_give_in):
+                action_target = 1
+            else:
+                action_target = None
+
+            if action_threatener is not None and action_target is not None:
+                generate_new_coins = True
+                reward_target, reward_threatener = self._threat_game_payoff_matrix[
+                    action_target, action_threatener, :
+                ].tolist()
+            else:
+                reward_target, reward_threatener = np.min(
+                    np.min(self._threat_game_payoff_matrix, axis=1), axis=0
+                )
+
+            if action_target == 0:
+                if action_threatener == 0:
+                    cell_0_0 = True
+                elif action_threatener == 1:
+                    cell_0_1 = True
+                elif action_threatener == 2:
+                    cell_0_2 = True
+                else:
+                    cell_none = True
+            elif action_target == 1:
+                if action_threatener == 0:
+                    cell_1_0 = True
+                elif action_threatener == 1:
+                    cell_1_1 = True
+                elif action_threatener == 2:
+                    cell_1_2 = True
+                else:
+                    cell_none = True
+            else:
+                cell_none = True
+
+            if self._bootstrap_training:
+                bonus = 5.0 / 10.0
+                if action_threatener is not None:
+                    reward_threatener += bonus / 3.0
+                    if cell_none:
+                        threatener_alone = True
+                if action_target is not None:
+                    reward_target += bonus / 2.0
+                    if cell_none:
+                        target_alone = True
+
+            if self.output_additional_info:
+                self._accumulate_info(
+                    threatener_alone=threatener_alone,
+                    target_alone=target_alone,
+                    cell_0_0=cell_0_0,
+                    cell_0_1=cell_0_1,
+                    cell_0_2=cell_0_2,
+                    cell_1_0=cell_1_0,
+                    cell_1_1=cell_1_1,
+                    cell_1_2=cell_1_2,
+                    cell_none=cell_none,
+                )
+
+        reward_list = [reward_threatener, reward_target]
+
+        self.reward_list = reward_list
+        self.surrogate_reward_list = reward_list
+
+        if (
+            self._generate_coin_every_n_steps
+            and self.step_count_in_current_episode % self._generate_coin_every_n_steps
+            == 0
+        ):
+            generate_new_coins = True
+
+        return reward_list, generate_new_coins
+
+
+class PerfectCoordMixing:
+    NUM_ACTIONS = 6
+    ACTION_SPACE_ = Discrete(NUM_ACTIONS)
+    MOVES = [
+        np.array([0, 1]),
+        np.array([0, -1]),
+        np.array([1, 0]),
+        np.array([-1, 0]),
+        np.array([0, 0]),
+        None,
+    ]
+
+    def _move_players(self, actions):
+        "Action number 6 is picking a random action."
+
+        action_red, action_blue = actions
+
+        if action_red == 5:
+            action_red = random.randint(0, 4)
+        if action_blue == 5:
+            action_blue = random.randint(0, 4)
+
+        super()._move_players([action_red, action_blue])
+
+
+class PerfectCoordChickenCoinGame(PerfectCoordMixing, ChickenCoinGame):
+    NAME = "PerfectCoordChickenCoinGame"
+
+
+class PerfectCoordThreatCoinGame(PerfectCoordMixing, ThreatCoinGame):
+    NAME = "PerfectCoordChickenCoinGame"
+
+
+class PerfectCoordThreatCoinGameV2(PerfectCoordMixing, ThreatCoinGameV2):
+    NAME = "PerfectCoordChickenCoinGame"

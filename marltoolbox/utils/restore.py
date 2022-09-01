@@ -80,7 +80,7 @@ def load_one_policy_checkpoint(
         objs = pickle.loads(checkpoint["worker"])
         # TODO Should let the user decide to load that too
         # self.sync_filters(objs["filters"])
-        logger.warning("restoring ckpt: not loading objs['filters']")
+        # logger.warning("restoring ckpt: not loading objs['filters']")
         found_policy_id = False
         for p_id, state in objs["state"].items():
             if p_id == policy_id:

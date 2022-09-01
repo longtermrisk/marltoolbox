@@ -9,6 +9,7 @@ import re
 from collections import Iterable
 
 import gym
+import numpy as np
 import torch
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
@@ -122,6 +123,25 @@ def get_logging_callbacks_class(
                     result,
                     function_to_exec=get_explore_temperature_from_policy,
                 )
+                if (
+                    hasattr(trainer, "local_replay_buffer")
+                    and trainer.local_replay_buffer is not None
+                ):
+                    to_log = {
+                        "buffer_capacity": trainer.local_replay_buffer.capacity,
+                    }
+                    for policy_id in trainer.local_replay_buffer.replay_buffers.keys():
+                        to_log[
+                            f"buffer_num_timesteps_added_wrap_{policy_id}"
+                        ] = trainer.local_replay_buffer.replay_buffers[
+                            policy_id
+                        ]._num_timesteps_added_wrap
+                        to_log[
+                            f"buffer_num_timesteps_added_{policy_id}"
+                        ] = trainer.local_replay_buffer.replay_buffers[
+                            policy_id
+                        ]._num_timesteps_added
+                    result.update(to_log)
             if log_weights:
                 if not hasattr(self, "on_train_result_counter"):
                     self.on_train_result_counter = 0
@@ -213,7 +233,11 @@ def get_explore_temperature_from_policy(policy: Policy, policy_id: PolicyID) -> 
             to_log[
                 f"worker_{exploration_obj.worker_index}/{policy_id}/temperature"
             ] = exploration_obj.temperature
-
+        if hasattr(exploration_obj, "epsilon_schedule"):
+            epsilon = exploration_obj.epsilon_schedule(exploration_obj.last_timestep)
+            to_log[
+                f"worker_{exploration_obj.worker_index}/{policy_id}/epsilon_greedy"
+            ] = epsilon
     return to_log
 
 
@@ -225,6 +249,17 @@ def get_weights_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
     for k, v in weights.items():
         if isinstance(v, Iterable):
             to_log[f"{policy_id}/{k}"] = v
+
+    return to_log
+
+
+def get_stats_parameters_from_policy(policy):
+    to_log = {}
+    weights = policy.get_weights()
+
+    for k, v in weights.items():
+        if isinstance(v, Iterable):
+            to_log[f"norm_{k}"] = np.linalg.norm(v)
 
     return to_log
 

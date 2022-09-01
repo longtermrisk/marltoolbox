@@ -52,9 +52,7 @@ def build_q_losses_wt_additional_logs(
         train_batch[SampleBatch.ACTIONS].long(), policy.action_space.n
     )
     q_t_selected = torch.sum(
-        torch.where(
-            q_t > FLOAT_MIN, q_t, torch.tensor(0.0, device=policy.device)
-        )
+        torch.where(q_t > FLOAT_MIN, q_t, torch.tensor(0.0, device=policy.device))
         * one_hot_selection,
         1,
     )
@@ -130,12 +128,11 @@ def build_q_losses_wt_additional_logs(
 def my_build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     q_stats = dqn_torch_policy.build_q_stats(policy, batch)
 
-    entropy_avg, _ = log.compute_entropy_from_raw_q_values(
-        policy, policy.last_q_t
-    )
+    entropy_avg, _ = log.compute_entropy_from_raw_q_values(policy, policy.last_q_t)
     q_stats.update(
         {
             "entropy_avg": entropy_avg,
+            "param": log.get_stats_parameters_from_policy(policy),
         }
     )
 
