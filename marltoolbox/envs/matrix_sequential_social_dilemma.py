@@ -91,6 +91,7 @@ class MatrixSequentialSocialDilemma(
         self.same_obs_for_each_player = config.get("same_obs_for_each_player", True)
 
         self.step_count_in_current_episode = None
+        self._info_already_accumulated = False
 
         # To store info about the fraction of each states
         if self.output_additional_info:
@@ -146,7 +147,7 @@ class MatrixSequentialSocialDilemma(
         action_player_row = actions[self.player_row_id]
         action_player_col = actions[self.player_col_id]
 
-        if self.output_additional_info:
+        if self.output_additional_info and not self._info_already_accumulated:
             self._accumulate_info(action_player_row, action_player_col)
 
         observations = self._produce_observations(action_player_row, action_player_col)
@@ -324,6 +325,16 @@ class IteratedChicken(NPlayersNDiscreteActionsInfoMixin, MatrixSequentialSocialD
     PAYOFF_MATRIX = np.array([[[+0, +0], [-1.0, +1.0]], [[+1, -1], [-10, -10]]])
     NAME = "IteratedChicken"
 
+    def __init__(self, config):
+        super().__init__(config)
+
+        if self.output_additional_info:
+            all_possible_joint_actions = []
+            for i in range(self.NUM_ACTIONS):
+                for j in range(self.NUM_ACTIONS):
+                    all_possible_joint_actions.append([i, j])
+            self._init_info(all_possible_joint_actions)
+
 
 class IteratedAsymChicken(TwoPlayersTwoActionsInfoMixin, MatrixSequentialSocialDilemma):
     """
@@ -430,43 +441,51 @@ class TwoPlayersCustomizableMatrixGame(
         super().__init__(config)
 
 
-PLOT_KEYS_2P_3A = [
-    "0_0",
-    "0_1",
-    "0_2",
-    "0_3",
-    "1_0",
-    "1_1",
-    "1_2",
-    "1_3",
-    "2_0",
-    "2_1",
-    "2_2",
-    "2_3",
-    "3_0",
-    "3_1",
-    "3_2",
-    "3_3",
-]
+PLOT_KEYS_2P_3A = []
+PLOT_ASSEMBLAGE_TAGS_2P_3A = []
 
-PLOT_ASSEMBLAGE_TAGS_2P_3A = [
-    ("0_0",),
-    ("0_1",),
-    ("0_2",),
-    ("0_3",),
-    ("1_0",),
-    ("1_1",),
-    ("1_2",),
-    ("1_3",),
-    ("2_0",),
-    ("2_1",),
-    ("2_2",),
-    ("2_3",),
-    ("3_0",),
-    ("3_1",),
-    ("3_2",),
-    ("3_3",),
-]
+for i in range(10):
+    for j in range(10):
+        key = f"{i}_{j}"
+        PLOT_KEYS_2P_3A.append(key)
+        PLOT_ASSEMBLAGE_TAGS_2P_3A.append((key,))
+# PLOT_KEYS_2P_3A = [
+#     "0_0",
+#     "0_1",
+#     "0_2",
+#     "0_3",
+#     "1_0",
+#     "1_1",
+#     "1_2",
+#     "1_3",
+#     "2_0",
+#     "2_1",
+#     "2_2",
+#     "2_3",
+#     "3_0",
+#     "3_1",
+#     "3_2",
+#     "3_3",
+# ]
+#
+# PLOT_ASSEMBLAGE_TAGS_2P_3A = [
+#     ("0_0",),
+#     ("0_1",),
+#     ("0_2",),
+#     ("0_3",),
+#     ("1_0",),
+#     ("1_1",),
+#     ("1_2",),
+#     ("1_3",),
+#     ("2_0",),
+#     ("2_1",),
+#     ("2_2",),
+#     ("2_3",),
+#     ("3_0",),
+#     ("3_1",),
+#     ("3_2",),
+#     ("3_3",),
+# ]
 
 
 class AsymmetricMatrixGame(
@@ -666,10 +685,24 @@ class PerfectCoordIteratedChicken(IteratedChicken):
     OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     NAME = "PerfectCoordIteratedChicken"
 
+    def __init__(self, config):
+        super().__init__(config)
+
+        if self.output_additional_info:
+            all_possible_joint_actions = []
+            for i in range(self.NUM_ACTIONS):
+                for j in range(self.NUM_ACTIONS):
+                    all_possible_joint_actions.append([i, j])
+            self._init_info(all_possible_joint_actions)
+
     def step(self, actions: dict):
 
         action_row = actions[self.player_row_id]
         action_col = actions[self.player_col_id]
+
+        if self.output_additional_info:
+            self._info_already_accumulated = True
+            self._accumulate_info(action_row, action_col)
 
         if action_row == 2:
             action_row = random.randint(0, 1)
@@ -699,6 +732,10 @@ class PerfectCoordThreatGame(ThreatGame):
         action_row = actions[self.player_row_id]
         action_col = actions[self.player_col_id]
 
+        if self.output_additional_info:
+            self._info_already_accumulated = True
+            self._accumulate_info(action_row, action_col)
+
         if action_row == 2:
             action_row = random.randint(0, 1)
         if action_col == 3:
@@ -723,10 +760,24 @@ class PerfectCoordDemandGame(DemandGame):
     OBSERVATION_SPACE_ = Discrete(NUM_STATES)
     NAME = "PerfectCoordDemandGame"
 
+    def __init__(self, config):
+        super().__init__(config)
+
+        if self.output_additional_info:
+            all_possible_joint_actions = []
+            for i in range(self.NUM_ACTIONS_PL0):
+                for j in range(self.NUM_ACTIONS_PL1):
+                    all_possible_joint_actions.append([i, j])
+            self._init_info(all_possible_joint_actions)
+
     def step(self, actions: dict):
 
         action_row = actions[self.player_row_id]
         action_col = actions[self.player_col_id]
+
+        if self.output_additional_info:
+            self._info_already_accumulated = True
+            self._accumulate_info(action_row, action_col)
 
         if action_row == 4:
             action_row = random.randint(0, 3)

@@ -457,15 +457,17 @@ class ChickenCoinGame(CoinGame):
                 reward_blue += 1
                 blue_pick = True
 
+            if self.output_additional_info:
+                self._accumulate_info(
+                    any_pick=red_pick or blue_pick,
+                    red_pick=red_pick,
+                    blue_pick=blue_pick,
+                    both_pick=red_pick and blue_pick,
+                    only_red_pick=red_pick and not blue_pick,
+                    only_blue_pick=not red_pick and blue_pick,
+                )
+
         reward_list = [reward_red, reward_blue]
-        if self.output_additional_info:
-            self._accumulate_info(
-                red_pick=red_pick,
-                blue_pick=blue_pick,
-                both_pick=red_pick and blue_pick,
-                only_red_pick=red_pick and not blue_pick,
-                only_blue_pick=not red_pick and blue_pick,
-            )
 
         return reward_list, generate_new_coin
 
@@ -487,6 +489,7 @@ class ChickenCoinGame(CoinGame):
                 == len(self.only_red_pick)
                 == len(self.only_blue_pick)
                 == len(self.both_pick)
+                == len(self.any_pick)
             )
 
         if len(self.red_pick) > 0:
@@ -503,10 +506,14 @@ class ChickenCoinGame(CoinGame):
             both_pick = sum(self.both_pick)
             player_red_info["pick_speed_both"] = both_pick / n_steps_played
 
+            any_pick = sum(self.any_pick)
+            player_red_info["any_pick"] = any_pick / n_steps_played
+
         return player_red_info, player_blue_info
 
     @override(InfoAccumulationInterface)
     def _reset_info(self):
+        self.any_pick.clear()
         self.red_pick.clear()
         self.blue_pick.clear()
         self.both_pick.clear()
@@ -515,9 +522,10 @@ class ChickenCoinGame(CoinGame):
 
     @override(InfoAccumulationInterface)
     def _accumulate_info(
-        self, red_pick, blue_pick, both_pick, only_red_pick, only_blue_pick
+        self, any_pick, red_pick, blue_pick, both_pick, only_red_pick, only_blue_pick
     ):
 
+        self.any_pick.append(any_pick)
         self.red_pick.append(red_pick)
         self.blue_pick.append(blue_pick)
         self.both_pick.append(both_pick)
@@ -526,6 +534,7 @@ class ChickenCoinGame(CoinGame):
 
     @override(InfoAccumulationInterface)
     def _init_info(self):
+        self.any_pick = []
         self.red_pick = []
         self.blue_pick = []
         self.both_pick = []

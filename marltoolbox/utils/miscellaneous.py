@@ -2,6 +2,7 @@ import copy
 import difflib
 import logging
 import os
+import random
 import time
 from typing import TYPE_CHECKING
 
@@ -34,10 +35,7 @@ def overwrite_config(dict_: dict, key, value):
 
     if current_value != value:
         if found:
-            if (
-                isinstance(current_value, tuple)
-                and current_value[0] == OVERWRITE_KEY
-            ):
+            if isinstance(current_value, tuple) and current_value[0] == OVERWRITE_KEY:
                 print(
                     f"NOT Overwriting (k: v): ({key}:{current_value}) "
                     f"with value: {value}.",
@@ -53,8 +51,7 @@ def overwrite_config(dict_: dict, key, value):
                 sub_struct[k] = value
         else:
             print(
-                f"Adding (k: v): ({key}:{value}) in dict.keys:"
-                f" {sub_struct.keys()}"
+                f"Adding (k: v): ({key}:{value}) in dict.keys:" f" {sub_struct.keys()}"
             )
             sub_struct[k] = value
     return dict_
@@ -95,9 +92,7 @@ def merge_policy_postprocessing_fn(*postprocessing_fn_list):
     :return: a function which calls all provided function in order
     """
 
-    def merged_postprocessing_fn(
-        policy, sample_batch, other_agent_batches, episode
-    ):
+    def merged_postprocessing_fn(policy, sample_batch, other_agent_batches, episode):
         for postprocessing_fn in postprocessing_fn_list:
             sample_batch = postprocessing_fn(
                 policy, sample_batch, other_agent_batches, episode
@@ -126,9 +121,7 @@ def check_using_tune_class(config):
     return config.get("TuneTrainerClass", None) is not None
 
 
-def set_config_for_evaluation(
-    config: dict, policies_to_train=["None"]
-) -> dict:
+def set_config_for_evaluation(config: dict, policies_to_train=["None"]) -> dict:
     config_copy = copy.deepcopy(config)
 
     # Always multiagent
@@ -155,8 +148,8 @@ def set_config_for_evaluation(
 
 
 def get_random_seeds(n_seeds):
-    timestamp = int(time.time())
-    seeds = [seed + timestamp for seed in list(range(n_seeds))]
+    # timestamp = int(time.time())
+    seeds = [random.randint(0, int(1e9)) for _ in range(n_seeds)]
     return seeds
 
 

@@ -18,11 +18,25 @@ def sgd_optimizer_spl(
 
 
 def sgd_optimizer(policy: Policy, config: TrainerConfigDict, parameters):
+    if "weight_decay" in config["optimizer"]:
+        weight_decay = config["optimizer"]["weight_decay"]
+    elif "weight_decay" in config["env_config"]:
+        weight_decay = config["env_config"]["weight_decay"]
+    else:
+        weight_decay = 1e-4
+
+    if "momentum" in config["optimizer"]:
+        momentum = config["optimizer"]["momentum"]
+    elif "momentum" in config["env_config"]:
+        momentum = config["env_config"]["momentum"]
+    else:
+        momentum = 0.0
+
     return torch.optim.SGD(
         parameters,
         lr=policy.cur_lr,
-        momentum=config["optimizer"]["sgd_momentum"],
-        weight_decay=config["env_config"].get("weight_decay", 1e-4),
+        momentum=momentum,
+        weight_decay=weight_decay,
     )
 
 
@@ -34,31 +48,41 @@ def adam_optimizer_dqn(
     if not hasattr(policy, "q_func_vars"):
         policy.q_func_vars = policy.model.variables()
 
-    if "betas" in config["optimizer"].keys():
-        betas = config["optimizer"].pop("betas")
-    else:
-        betas = (0.9, 0.999)
-
-    # assert len(list(config["optimizer"].keys())) == 0
-
-    return torch.optim.Adam(
-        policy.q_func_vars,
-        lr=policy.cur_lr,
-        eps=config["adam_epsilon"],
-        betas=betas,
-    )
+    return adam_optimizer(policy, config, policy.q_func_vars)
 
 
 def adam_optimizer_spl(
     policy: Policy, config: TrainerConfigDict
 ) -> "torch.optim.Optimizer":
+    return adam_optimizer(policy, config, policy.model.parameters())
+
+
+def adam_optimizer(policy: Policy, config: TrainerConfigDict, parameters):
     if "betas" in config["optimizer"].keys():
         betas = config["optimizer"].pop("betas")
+    elif "betas" in config["env_config"].keys():
+        betas = config["env_config"]["env_config"]
     else:
         betas = (0.9, 0.999)
+
+    if "weight_decay" in config["optimizer"]:
+        weight_decay = config["optimizer"]["weight_decay"]
+    elif "weight_decay" in config["env_config"]:
+        weight_decay = config["env_config"]["weight_decay"]
+    else:
+        weight_decay = 0.0
+
+    if "adam_epsilon" in config["optimizer"]:
+        adam_epsilon = config["optimizer"]["adam_epsilon"]
+    elif "adam_epsilon" in config["env_config"]:
+        adam_epsilon = config["env_config"]["adam_epsilon"]
+    else:
+        adam_epsilon = 1e-08
+
     return torch.optim.Adam(
-        policy.model.parameters(),
+        parameters,
         lr=policy.cur_lr,
-        eps=config["adam_epsilon"],
+        eps=adam_epsilon,
         betas=betas,
+        weight_decay=weight_decay,
     )

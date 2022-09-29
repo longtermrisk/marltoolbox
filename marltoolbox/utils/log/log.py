@@ -20,6 +20,7 @@ from ray.rllib.utils.typing import PolicyID, TensorType
 from ray.util.debug import log_once
 from torch.distributions import Categorical
 from typing import Dict, Callable, TYPE_CHECKING, Optional, List
+from ray.util.debug import log_once
 
 from marltoolbox.utils.log.full_epi_logger import FullEpisodeLogger
 from marltoolbox.utils.log.model_summarizer import ModelSummarizer
@@ -119,6 +120,9 @@ def get_logging_callbacks_class(
                     trainer, result, function_to_exec=get_log_from_policy
                 )
                 self._update_train_result_wt_to_log(
+                    trainer, result, function_to_exec=get_stats_parameters_from_policy
+                )
+                self._update_train_result_wt_to_log(
                     trainer,
                     result,
                     function_to_exec=get_explore_temperature_from_policy,
@@ -203,7 +207,7 @@ def get_logging_callbacks_class(
                         if key not in dict_.keys():
                             dict_[key] = v
                         else:
-                            logger.warning(f"key:{key} already exists in result.keys()")
+                            log_once(f"key:{key} already exists in result.keys()")
             return dict_
 
     return LoggingCallbacks
@@ -253,13 +257,14 @@ def get_weights_from_policy(policy: Policy, policy_id: PolicyID) -> dict:
     return to_log
 
 
-def get_stats_parameters_from_policy(policy):
+def get_stats_parameters_from_policy(policy, policy_id=None):
     to_log = {}
     weights = policy.get_weights()
+    policy_id = policy_id if policy_id is not None else ""
 
     for k, v in weights.items():
         if isinstance(v, Iterable):
-            to_log[f"norm_{k}"] = np.linalg.norm(v)
+            to_log[f"{policy_id}_norm_{k}"] = np.linalg.norm(v)
 
     return to_log
 

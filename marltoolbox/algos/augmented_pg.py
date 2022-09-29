@@ -4,20 +4,18 @@ import torch
 from ray.rllib import Policy, SampleBatch
 from ray.rllib.agents.pg import PGTrainer, PGTorchPolicy
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.execution.common import _get_global_vars
 from ray.rllib.models import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils import override
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_TRAINED, NUM_ENV_STEPS_SAMPLED
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType
 from ray.util.annotations import DeveloperAPI
 
 from marltoolbox.utils import log
 from marltoolbox.utils import optimizers
-from marltoolbox.utils.log import get_stats_parameters_from_policy
 
 
 def my_pg_torch_loss(
@@ -83,7 +81,7 @@ def my_pg_loss_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, Tens
 
     return {
         "cur_lr": policy.cur_lr,
-        "param": get_stats_parameters_from_policy(policy),
+        # "param": get_stats_parameters_from_policy(policy),
         "entropy_coeff": policy.entropy_coeff,
         "policy_loss": torch.mean(torch.stack(policy.get_tower_stats("policy_loss"))),
         "entropy_loss": torch.mean(torch.stack(policy.get_tower_stats("entropy_loss"))),
@@ -91,12 +89,38 @@ def my_pg_loss_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, Tens
 
 
 def fix_add_modules(policy, obs_space, action_space, trainer_config):
+    # These modules may not be added because they are in a dictionary
     if hasattr(policy.model, "one_hot"):
         for module_idx, module in policy.model.one_hot.items():
             policy.model.add_module("one_hot_{}".format(module_idx), module)
     if hasattr(policy.model, "flatten"):
         for module_idx, module in policy.model.flatten.items():
             policy.model.add_module("flatten_{}".format(module_idx), module)
+    if hasattr(policy.model, "cnns"):
+        for module_idx, module in policy.model.cnns.items():
+            policy.model.add_module("cnns_{}".format(module_idx), module)
+    # These are useless because the modules should have already been added by PyTorch
+    if hasattr(policy.model, "lstm") and policy.model.lstm is not None:
+        policy.model.add_module("lstm", policy.model.lstm)
+    if (
+        hasattr(policy.model, "_value_branch_separate")
+        and policy.model._value_branch_separate is not None
+    ):
+        policy.model.add_module(
+            "_value_branch_separate", policy.model._value_branch_separate
+        )
+    if (
+        hasattr(policy.model, "_logits_branch")
+        and policy.model._logits_branch is not None
+    ):
+        policy.model.add_module("_logits_branch", policy.model._logits_branch)
+    if (
+        hasattr(policy.model, "_value_branch")
+        and policy.model._value_branch is not None
+    ):
+        policy.model.add_module("_value_branch", policy.model._value_branch)
+    if hasattr(policy.model, "_convs") and policy.model._convs is not None:
+        policy.model.add_module("_convs", policy.model._convs)
 
 
 MyPGTorchPolicyIntermediaryStep = PGTorchPolicy.with_updates(
@@ -113,29 +137,33 @@ class FixSaveLoadWeightMixin:
     @override(Policy)
     @DeveloperAPI
     def set_state(self, state: dict) -> None:
-        # Set optimizer vars first.
-        optimizer_vars = state.get("_optimizer_variables", None)
-        if optimizer_vars:
-            assert len(optimizer_vars) == len(self._optimizers)
-            # Fix when using PyTorch > 1.11
-            for o, s in zip(self._optimizers, optimizer_vars):
-                for v in s["param_groups"]:
-                    if "foreach" in v.keys():
-                        v["foreach"] = False if v["foreach"] is None else v["foreach"]
-                for v in s["state"].values():
-                    if "momentum_buffer" in v.keys():
-                        v["momentum_buffer"] = (
-                            False
-                            if v["momentum_buffer"] is None
-                            else v["momentum_buffer"]
-                        )
-                optim_state_dict = convert_to_torch_tensor(s, device=self.device)
-                o.load_state_dict(optim_state_dict)
-        # Set exploration's state.
-        if hasattr(self, "exploration") and "_exploration_state" in state:
-            self.exploration.set_state(state=state["_exploration_state"])
+        set_state(self, state)
         # Then the Policy's (NN) weights.
         super().set_state(state)
+
+
+def set_state(policy, state):
+    # Set optimizer vars first.
+    optimizer_vars = state.get("_optimizer_variables", None)
+    if optimizer_vars:
+        assert len(optimizer_vars) == len(policy._optimizers)
+        # Fix when using PyTorch > 1.11
+        for o, s in zip(policy._optimizers, optimizer_vars):
+            for v in s["param_groups"]:
+                if "foreach" in v.keys():
+                    v["foreach"] = False if v["foreach"] is None else v["foreach"]
+            for v in s["state"].values():
+                if "momentum_buffer" in v.keys():
+                    v["momentum_buffer"] = (
+                        False if v["momentum_buffer"] is None else v["momentum_buffer"]
+                    )
+            optim_state_dict = convert_to_torch_tensor(s, device=policy.device)
+            o.load_state_dict(optim_state_dict)
+    # Set exploration's state.
+    if hasattr(policy, "exploration") and "_exploration_state" in state:
+        if "last_timestep" not in state["_exploration_state"].keys():
+            state["_exploration_state"]["last_timestep"] = 0
+        policy.exploration.set_state(state=state["_exploration_state"])
 
 
 class MyPGTorchPolicy(FixSaveLoadWeightMixin, MyPGTorchPolicyIntermediaryStep):

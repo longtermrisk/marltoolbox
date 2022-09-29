@@ -303,9 +303,7 @@ class TensorBoardDataExtractor:
                     for k in keys_1:
                         if k not in keys_2:
                             if k not in missing_k_detected:
-                                print(
-                                    f"key {k} is not present in all " f"event_readers"
-                                )
+                                print(f"key {k} is not present in all event_readers")
                                 missing_k_detected.append(k)
 
     def _get_common_keys(self, all_keys):

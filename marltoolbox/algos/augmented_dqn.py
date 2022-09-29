@@ -132,7 +132,7 @@ def my_build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     q_stats.update(
         {
             "entropy_avg": entropy_avg,
-            "param": log.get_stats_parameters_from_policy(policy),
+            # "param": log.get_stats_parameters_from_policy(policy),
         }
     )
 
